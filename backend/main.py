@@ -95,6 +95,18 @@ app.add_middleware(
 )
 
 
+@app.get("/")
+def root() -> dict:
+    """Basic root endpoint for platform health checks."""
+    return {"status": "ok", "service": "resume-intelligence-platform"}
+
+
+@app.get("/health")
+def health() -> dict:
+    """Explicit health endpoint for Railway and uptime probes."""
+    return {"status": "healthy"}
+
+
 class GapCloseRequest(BaseModel):
     """Gap close request payload."""
 
