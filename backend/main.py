@@ -86,9 +86,22 @@ def _persist_stage_cache(stage_cache: Dict[str, Dict[str, Any]]) -> None:
 
 stage_cache: Dict[str, Dict[str, Any]] = _load_stage_cache()
 
+_DEFAULT_ALLOWED_ORIGINS = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+]
+
+
+def _get_allowed_origins() -> list[str]:
+    """Resolve CORS origins from environment with safe localhost defaults."""
+    raw = os.getenv("CORS_ALLOWED_ORIGINS", "")
+    from_env = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return from_env or _DEFAULT_ALLOWED_ORIGINS
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=_get_allowed_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
