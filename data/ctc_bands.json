@@ -1,0 +1,16 @@
+{
+  "ctc_bands": {
+    "junior":  {"service":{"min":4,"max":8},"startup_early":{"min":6,"max":12},"product_mid":{"min":8,"max":15},"product_unicorn":{"min":10,"max":18},"faang":{"min":15,"max":25}},
+    "mid":     {"service":{"min":8,"max":15},"startup_early":{"min":12,"max":22},"product_mid":{"min":15,"max":28},"product_unicorn":{"min":20,"max":35},"faang":{"min":30,"max":55}},
+    "senior":  {"service":{"min":15,"max":25},"startup_early":{"min":20,"max":35},"product_mid":{"min":28,"max":45},"product_unicorn":{"min":35,"max":60},"faang":{"min":50,"max":90}},
+    "staff":   {"service":{"min":22,"max":38},"startup_early":{"min":30,"max":55},"product_mid":{"min":40,"max":70},"product_unicorn":{"min":55,"max":95},"faang":{"min":80,"max":150}}
+  },
+  "company_tiers": {
+    "faang":           {"label":"FAANG / Tier-1 Global","examples":["Google","Meta","Amazon","Microsoft"],"min_score":85},
+    "product_unicorn": {"label":"Indian Product Unicorn","examples":["Flipkart","Swiggy","Razorpay","CRED","PhonePe","Meesho"],"min_score":72},
+    "product_mid":     {"label":"Mid-size Product Company","examples":["Zepto","Groww","Slice","Niyo"],"min_score":60},
+    "startup_early":   {"label":"Series A-C Startup","examples":["Series A-C funded startups"],"min_score":45},
+    "service":         {"label":"IT Services / Enterprise","examples":["TCS","Infosys","Wipro","HCL"],"min_score":0}
+  },
+  "score_to_tier": {"85":"faang","72":"product_unicorn","60":"product_mid","45":"startup_early","0":"service"}
+}

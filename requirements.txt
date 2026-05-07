@@ -1,0 +1,16 @@
+anthropic
+openai
+fastapi
+uvicorn[standard]
+python-multipart
+pdfplumber
+python-docx
+rich
+streamlit
+python-dotenv
+typer
+plotly
+pydantic
+pytesseract
+Pillow
+pdf2image
