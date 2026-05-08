@@ -12,10 +12,10 @@ passes = []
 
 # 1. Model assignments
 print("1. MODEL ASSIGNMENTS")
-from agents.resume_understanding import ResumeUnderstandingAgent
-from agents.jd_intelligence import JDIntelligenceAgent
-from agents.gap_analyzer import GapAnalyzerAgent
-from agents.rewriter import RewriterAgent
+from backend.agents.resume_understanding import ResumeUnderstandingAgent
+from backend.agents.jd_intelligence import JDIntelligenceAgent
+from backend.agents.gap_analyzer import GapAnalyzerAgent
+from backend.agents.rewriter import RewriterAgent
 
 a1 = ResumeUnderstandingAgent()
 a2 = JDIntelligenceAgent()
@@ -43,7 +43,7 @@ for name, ok in checks:
 
 # 2. Agent contract
 print("\n2. AGENT CONTRACT")
-from agents.base_agent import BaseAgent
+from backend.agents.base_agent import BaseAgent
 checks2 = [
     ("Agent 1 run(dict)->dict", callable(a1.run)),
     ("Agent 2 run(dict)->dict", callable(a2.run)),
@@ -59,11 +59,11 @@ for name, ok in checks2:
 
 # Cross-import check
 for ag_file in ["resume_understanding", "jd_intelligence", "gap_analyzer", "rewriter"]:
-    src = open(f"agents/{ag_file}.py").read()
+    src = open(f"backend/agents/{ag_file}.py").read()
     for other in ["resume_understanding", "jd_intelligence", "gap_analyzer", "rewriter"]:
         if other == ag_file:
             continue
-        if f"from agents.{other}" in src or f"from .{other}" in src:
+        if f"from backend.agents.{other}" in src or f"from .{other}" in src:
             name = f"Agent {ag_file} does NOT import {other}"
             status = "PASS"
             print(f"  {status}: {name}")
@@ -71,12 +71,12 @@ for ag_file in ["resume_understanding", "jd_intelligence", "gap_analyzer", "rewr
 
 # 3. Pydantic schema usage
 print("\n3. PYDANTIC SCHEMA USAGE")
-from schemas.agent1_schema import ResumeUnderstandingInput, ResumeUnderstandingOutput
-from schemas.agent2_schema import JDIntelligenceInput, JDIntelligenceOutput
-from schemas.agent3_schema import GapAnalyzerInput, GapAnalyzerOutput
-from schemas.agent4_schema import RewriterInput, RewriterOutput, ProjectRewrite, ExperienceRewrite, SkillsMap, StyleOutput
-from schemas.common import Seniority, CompanyType, RewriteStyle, GapSeverity, GapType, ResumeSection
-from schemas.agent2_schema import HiddenSignal
+from backend.schemas.agent1_schema import ResumeUnderstandingInput, ResumeUnderstandingOutput
+from backend.schemas.agent2_schema import JDIntelligenceInput, JDIntelligenceOutput
+from backend.schemas.agent3_schema import GapAnalyzerInput, GapAnalyzerOutput
+from backend.schemas.agent4_schema import RewriterInput, RewriterOutput, ProjectRewrite, ExperienceRewrite, SkillsMap, StyleOutput
+from backend.schemas.common import Seniority, CompanyType, RewriteStyle, GapSeverity, GapType, ResumeSection
+from backend.schemas.agent2_schema import HiddenSignal
 
 schema_checks = [
     "ResumeUnderstandingInput",
@@ -106,10 +106,10 @@ for name in schema_checks:
 # 4. Input validation at top of run()
 print("\n4. INPUT VALIDATION IN run()")
 files_checks = [
-    ("Agent 1 validates input", "ResumeUnderstandingInput(**input_dict)", "agents/resume_understanding.py"),
-    ("Agent 2 validates input", "JDIntelligenceInput(**input_dict)", "agents/jd_intelligence.py"),
-    ("Agent 3 validates input", "GapAnalyzerInput(**input_dict)", "agents/gap_analyzer.py"),
-    ("Agent 4 validates input", "RewriterInput(**input_dict)", "agents/rewriter.py"),
+    ("Agent 1 validates input", "ResumeUnderstandingInput(**input_dict)", "backend/agents/resume_understanding.py"),
+    ("Agent 2 validates input", "JDIntelligenceInput(**input_dict)", "backend/agents/jd_intelligence.py"),
+    ("Agent 3 validates input", "GapAnalyzerInput(**input_dict)", "backend/agents/gap_analyzer.py"),
+    ("Agent 4 validates input", "RewriterInput(**input_dict)", "backend/agents/rewriter.py"),
 ]
 for name, snippet, filepath in files_checks:
     src = open(filepath).read()
@@ -121,10 +121,10 @@ for name, snippet, filepath in files_checks:
 # 5. Output validation via model_dump()
 print("\n5. OUTPUT VIA model_dump()")
 dump_checks = [
-    ("Agent 1 uses model_dump()", ".model_dump()", "agents/resume_understanding.py"),
-    ("Agent 2 uses model_dump()", ".model_dump()", "agents/jd_intelligence.py"),
-    ("Agent 3 uses model_dump()", ".model_dump()", "agents/gap_analyzer.py"),
-    ("Agent 4 uses model_dump()", ".model_dump()", "agents/rewriter.py"),
+    ("Agent 1 uses model_dump()", ".model_dump()", "backend/agents/resume_understanding.py"),
+    ("Agent 2 uses model_dump()", ".model_dump()", "backend/agents/jd_intelligence.py"),
+    ("Agent 3 uses model_dump()", ".model_dump()", "backend/agents/gap_analyzer.py"),
+    ("Agent 4 uses model_dump()", ".model_dump()", "backend/agents/rewriter.py"),
 ]
 for name, snippet, filepath in dump_checks:
     src = open(filepath).read()
@@ -135,7 +135,7 @@ for name, snippet, filepath in dump_checks:
 
 # 6. Anti-hallucination rules
 print("\n6. ANTI-HALLUCINATION (Agent 4)")
-rewrite_src = open("agents/rewriter.py").read()
+rewrite_src = open("backend/agents/rewriter.py").read()
 hall_checks = [
     ("Never invent companies", "Never invent companies"),
     ("Never invent degrees", "Never invent degrees"),
@@ -153,14 +153,14 @@ for name, snippet in hall_checks:
 # 7. API key rules
 print("\n7. API KEY RULES")
 no_key = [
-    ("No hardcoded keys in Agent 1", not bool(re.search(r'sk-proj-|sk-ant-', open("agents/resume_understanding.py").read()))),
-    ("No hardcoded keys in Agent 2", not bool(re.search(r'sk-proj-|sk-ant-', open("agents/jd_intelligence.py").read()))),
-    ("No hardcoded keys in Agent 3", not bool(re.search(r'sk-proj-|sk-ant-', open("agents/gap_analyzer.py").read()))),
-    ("No hardcoded keys in Agent 4", not bool(re.search(r'sk-proj-|sk-ant-', open("agents/rewriter.py").read()))),
-    ("No direct env access in Agent 1", "os.environ" not in open("agents/resume_understanding.py").read()),
-    ("No direct env access in Agent 2", "os.environ" not in open("agents/jd_intelligence.py").read()),
-    ("No direct env access in Agent 3", "os.environ" not in open("agents/gap_analyzer.py").read()),
-    ("No direct env access in Agent 4", "os.environ" not in open("agents/rewriter.py").read()),
+    ("No hardcoded keys in Agent 1", not bool(re.search(r'sk-proj-|sk-ant-', open("backend/agents/resume_understanding.py").read()))),
+    ("No hardcoded keys in Agent 2", not bool(re.search(r'sk-proj-|sk-ant-', open("backend/agents/jd_intelligence.py").read()))),
+    ("No hardcoded keys in Agent 3", not bool(re.search(r'sk-proj-|sk-ant-', open("backend/agents/gap_analyzer.py").read()))),
+    ("No hardcoded keys in Agent 4", not bool(re.search(r'sk-proj-|sk-ant-', open("backend/agents/rewriter.py").read()))),
+    ("No direct env access in Agent 1", "os.environ" not in open("backend/agents/resume_understanding.py").read()),
+    ("No direct env access in Agent 2", "os.environ" not in open("backend/agents/jd_intelligence.py").read()),
+    ("No direct env access in Agent 3", "os.environ" not in open("backend/agents/gap_analyzer.py").read()),
+    ("No direct env access in Agent 4", "os.environ" not in open("backend/agents/rewriter.py").read()),
 ]
 for name, ok in no_key:
     status = "PASS" if ok else "FAIL"
@@ -178,7 +178,7 @@ forbidden = [
 for pattern in forbidden:
     found_in = []
     for f in ["resume_understanding.py", "jd_intelligence.py", "gap_analyzer.py", "rewriter.py"]:
-        src = open(f"agents/{f}").read()
+        src = open(f"backend/agents/{f}").read()
         if pattern in src:
             found_in.append(f.replace(".py", ""))
     name = f"No '{pattern}' in any agent"
@@ -203,10 +203,10 @@ for name, ok in style_checks:
 # 10. JSON output enforcement
 print("\n10. JSON OUTPUT ENFORCEMENT")
 json_checks = [
-    ("Agent 1 says ONLY valid JSON", "ONLY valid JSON" in open("agents/resume_understanding.py").read()),
-    ("Agent 2 says ONLY valid JSON", "ONLY valid JSON" in open("agents/jd_intelligence.py").read()),
-    ("Agent 3 says ONLY valid JSON", "ONLY valid JSON" in open("agents/gap_analyzer.py").read()),
-    ("Agent 4 says ONLY valid JSON", "ONLY valid JSON" in open("agents/rewriter.py").read()),
+    ("Agent 1 says ONLY valid JSON", "ONLY valid JSON" in open("backend/agents/resume_understanding.py").read()),
+    ("Agent 2 says ONLY valid JSON", "ONLY valid JSON" in open("backend/agents/jd_intelligence.py").read()),
+    ("Agent 3 says ONLY valid JSON", "ONLY valid JSON" in open("backend/agents/gap_analyzer.py").read()),
+    ("Agent 4 says ONLY valid JSON", "ONLY valid JSON" in open("backend/agents/rewriter.py").read()),
 ]
 for name, ok in json_checks:
     status = "PASS" if ok else "FAIL"

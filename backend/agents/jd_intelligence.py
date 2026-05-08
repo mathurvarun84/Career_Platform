@@ -21,8 +21,8 @@ import json
 from typing import Dict, List
 
 from .base_agent import BaseAgent
-from schemas.agent2_schema import JDIntelligenceInput, JDIntelligenceOutput, HiddenSignal
-from schemas.common import Seniority, CompanyType
+from backend.schemas.agent2_schema import JDIntelligenceInput, JDIntelligenceOutput, HiddenSignal
+from backend.schemas.common import Seniority, CompanyType
 
 
 class JDIntelligenceAgent(BaseAgent):

@@ -207,7 +207,7 @@ const waitForAnalysisCompletion = async (
       }
       if (payload.status === "error") {
         source.close();
-        reject(new Error(payload.error ?? "Analysis failed on server."));
+        reject(new Error(payload.error ?? payload.label ?? "Analysis failed on server."));
       }
     };
 

@@ -10,9 +10,9 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-from agents.rewriter import COMPANY_HEADER_START, RewriterAgent
+from backend.agents.rewriter import COMPANY_HEADER_START, RewriterAgent
 from engine.resume_builder import build_final_docx
-from schemas.common import SectionText, SubEntry
+from backend.schemas.common import SectionText, SubEntry
 from validator.rewriter_validator import RewriterValidator
 
 

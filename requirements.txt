@@ -14,3 +14,8 @@ pydantic
 pytesseract
 Pillow
 pdf2image
+requests>=2.31.0
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
+pytest-mock>=3.0.0
+httpx>=0.24.0

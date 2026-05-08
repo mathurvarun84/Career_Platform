@@ -14,12 +14,12 @@ Resume Intelligence Platform V2 is an AI-assisted resume evaluation and rewritin
 
 ```text
 .
-|-- agents/          # LLM agents for resume, JD, gap, rewrite, and recruiter simulation
 |-- backend/         # FastAPI API used by the React frontend
+|   |-- agents/      # LLM agents for resume, JD, gap, rewrite, recruiter simulation, JD fetch
+|   `-- schemas/     # Pydantic input/output contracts for agents and JD fetch
 |-- engine/          # ATS scoring, percentile, career positioning, and DOCX generation
 |-- frontend/        # React/Vite web UI
 |-- memory/          # Local per-user session and style memory helpers
-|-- schemas/         # Pydantic input/output contracts for agents
 |-- app.py           # Streamlit application
 |-- orchestrator.py  # Coordinates parsing, agents, scoring, rewrites, and exports
 `-- parser.py        # Resume file parsing helpers

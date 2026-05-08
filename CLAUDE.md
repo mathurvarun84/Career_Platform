@@ -28,8 +28,8 @@ resume_platform/
 ├── parser.py          # PDF/DOCX/TXT → clean text
 ├── gap_session.py     # interactive diff + .docx export
 ├── renderer.py        # rich terminal rendering
-├── schemas/           # Pydantic models (agent1–5_schema.py, common.py)
-├── agents/            # base_agent.py + A1–A5
+├── backend/schemas/   # Pydantic models (agent1–5_schema.py, common.py, jd_fetch_schema.py)
+├── backend/agents/    # base_agent.py + A1–A5 + jd_fetcher.py
 ├── engine/            # ats_scorer.py (NO LLM), percentile.py (NO LLM)
 ├── memory/            # session_store.py, style_extractor.py
 └── data/benchmarks.json
@@ -104,11 +104,11 @@ Name: H1 16pt bold centered | Contact: Normal centered | Section: H2 teal(0,128,
 
 ## Testing gates
 ```bash
-python -c "from engine.ats_scorer import score_resume; from engine.percentile import get_percentile; from agents.base_agent import BaseAgent; from parser import parse_resume; print('OK')"
+python -c "from engine.ats_scorer import score_resume; from engine.percentile import get_percentile; from backend.agents.base_agent import BaseAgent; from parser import parse_resume; print('OK')"
 python -c "from orchestrator import Orchestrator; print('OK')"
 python -c "from gap_session import run_gap_session; print('OK')"
 # Schema gate:
-python -c "from schemas.common import *; from schemas.agent1_schema import *; print('All schemas OK')"
+python -c "from backend.schemas.common import *; from backend.schemas.agent1_schema import *; print('All schemas OK')"
 ```
 
 ## Session fixes applied (Merged Fix Set)

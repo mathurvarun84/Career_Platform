@@ -46,12 +46,20 @@ Rules:
   Brand sub:   "Powered by Advanced AI"
     fontSize 11px, fontWeight 400, color #6b7280
 
-  Right button: Download Report
-    background #6366f1, color #fff, borderRadius 10px
+  Right buttons: Analyze Another Resume + Download Report
+    Analyze Another Resume: background #7c3aed, color #fff, borderRadius 10px
+    padding 10px 20px, fontSize 13px, fontWeight 700
+    3D shadow active:   0 3px 0 #5b21b6, 0 5px 12px rgba(124,58,237,0.25)
+    3D shadow disabled: 0 3px 0 #d1d5db
+    disabled bg: #f3f4f6, disabled color: #9ca3af
+    disabled when: no analysis result OR loading
+    active:translateY(3px) on click
+    Download Report: background #6366f1, color #fff, borderRadius 10px
     padding 10px 20px, fontSize 13px, fontWeight 700
     3D shadow active:   0 3px 0 #4338ca, 0 5px 12px rgba(99,102,241,0.25)
     3D shadow disabled: 0 3px 0 #d1d5db
     disabled bg: #f3f4f6, disabled color: #9ca3af
+    disabled when: no analysis result OR loading OR downloading
     active:translateY(3px) on click
 ```
 

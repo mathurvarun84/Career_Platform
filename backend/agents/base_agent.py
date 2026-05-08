@@ -70,7 +70,7 @@ class BaseAgent(ABC):
                         logger.warning(
                             "%s: OpenAI API error on attempt 1, retrying. %s",
                             self.__class__.__name__,
-                            e,
+                            self._format_exception_detail(e),
                         )
                         continue
                     raise
@@ -110,6 +110,16 @@ class BaseAgent(ABC):
             f"{self.__class__.__name__}: Unknown provider '{self.provider}'. "
             "Must be 'openai' or 'anthropic'."
         )
+
+    def _format_exception_detail(self, error: Exception) -> str:
+        """Return a concise exception string including root cause details."""
+        detail = str(error) or error.__class__.__name__
+        root = error.__cause__
+        if root:
+            root_detail = str(root) or root.__class__.__name__
+            if root_detail and root_detail not in detail:
+                return f"{detail} | cause: {root_detail}"
+        return detail
 
     def _uses_max_completion_tokens(self) -> bool:
         """Return True for OpenAI model families that reject max_tokens."""

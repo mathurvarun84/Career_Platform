@@ -15,14 +15,14 @@ import logging
 from typing import Any, Dict, List, Optional
 
 from .base_agent import BaseAgent
-from schemas.agent3_schema import (
+from backend.schemas.agent3_schema import (
     GapAnalyzerInput,
     GapAnalyzerOutput,
     DetailedEvalOutput,
     SectionGap,
     SubLocationChange,
 )
-from schemas.common import SectionText
+from backend.schemas.common import SectionText
 
 # Canonical sections every analysis must cover
 CANONICAL_SECTIONS = [

@@ -11,7 +11,7 @@ Uses Anthropic Claude via the Anthropic SDK (provider='anthropic').
 import json
 import logging
 
-from agents.base_agent import BaseAgent
+from .base_agent import BaseAgent
 
 
 logger = logging.getLogger(__name__)

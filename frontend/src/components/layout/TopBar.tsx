@@ -9,6 +9,7 @@ export default function TopBar() {
   const jobId = useResumeStore((state) => state.jobId);
   const selectedStyle = useResumeStore((state) => state.selectedStyle);
   const isLoading = useResumeStore((state) => state.isLoading);
+  const resetAnalysis = useResumeStore((state) => state.resetAnalysis);
   const { isMobile } = useWindowSize();
   const [isPressed, setIsPressed] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -116,39 +117,69 @@ export default function TopBar() {
         </div>
       </div>
 
-      <button
-        onClick={handleDownload}
-        disabled={!analysisResult || isLoading || isDownloading}
-        aria-label="Download Report"
-        onMouseDown={() => setIsPressed(true)}
-        onMouseUp={() => setIsPressed(false)}
-        onMouseLeave={() => setIsPressed(false)}
-        style={{
-          background:
-            analysisResult && !isLoading && !isDownloading ? "#6366f1" : "#f3f4f6",
-          color:
-            analysisResult && !isLoading && !isDownloading ? "#ffffff" : "#9ca3af",
-          borderRadius: "10px",
-          padding: "10px 20px",
-          fontSize: "13px",
-          fontWeight: 700,
-          border: "none",
-          cursor:
-            analysisResult && !isLoading && !isDownloading ? "pointer" : "not-allowed",
-          transform:
-            analysisResult && !isLoading && !isDownloading && isPressed
-              ? "translateY(3px)"
-              : "translateY(0px)",
-          transition: "transform 0.1s, box-shadow 0.1s",
-          boxShadow: analysisResult && !isLoading && !isDownloading
-            ? isPressed
-              ? "0 1px 0 #4338ca"
-              : "0 3px 0 #4338ca, 0 5px 12px rgba(99,102,241,0.25)"
-            : "0 3px 0 #d1d5db",
-        }}
-      >
-        {isDownloading ? "⏳ Downloading..." : isMobile ? "↓" : "Download Report"}
-      </button>
+      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+        <button
+          onClick={resetAnalysis}
+          disabled={!analysisResult || isLoading}
+          aria-label="Analyze another resume"
+          onMouseDown={() => setIsPressed(true)}
+          onMouseUp={() => setIsPressed(false)}
+          onMouseLeave={() => setIsPressed(false)}
+          style={{
+            background: (!analysisResult || isLoading) ? "#f3f4f6" : "#7c3aed",
+            color: (!analysisResult || isLoading) ? "#9ca3af" : "#ffffff",
+            borderRadius: "10px",
+            padding: "10px 20px",
+            fontSize: "13px",
+            fontWeight: 700,
+            border: "none",
+            cursor: (!analysisResult || isLoading) ? "not-allowed" : "pointer",
+            transform: (!analysisResult || isLoading) || isPressed ? "translateY(3px)" : "translateY(0px)",
+            transition: "transform 0.1s, box-shadow 0.1s",
+            boxShadow: (!analysisResult || isLoading)
+              ? "0 3px 0 #d1d5db"
+              : isPressed
+                ? "0 1px 0 #5b21b6"
+                : "0 3px 0 #5b21b6, 0 5px 12px rgba(124, 58, 237, 0.25)",
+          }}
+        >
+          {isMobile ? "↻" : "Analyze Another Resume"}
+        </button>
+
+        <button
+          onClick={handleDownload}
+          disabled={!analysisResult || isLoading || isDownloading}
+          aria-label="Download Report"
+          onMouseDown={() => setIsPressed(true)}
+          onMouseUp={() => setIsPressed(false)}
+          onMouseLeave={() => setIsPressed(false)}
+          style={{
+            background:
+              analysisResult && !isLoading && !isDownloading ? "#6366f1" : "#f3f4f6",
+            color:
+              analysisResult && !isLoading && !isDownloading ? "#ffffff" : "#9ca3af",
+            borderRadius: "10px",
+            padding: "10px 20px",
+            fontSize: "13px",
+            fontWeight: 700,
+            border: "none",
+            cursor:
+              analysisResult && !isLoading && !isDownloading ? "pointer" : "not-allowed",
+            transform:
+              analysisResult && !isLoading && !isDownloading && isPressed
+                ? "translateY(3px)"
+                : "translateY(0px)",
+            transition: "transform 0.1s, box-shadow 0.1s",
+            boxShadow: analysisResult && !isLoading && !isDownloading
+              ? isPressed
+                ? "0 1px 0 #4338ca"
+                : "0 3px 0 #4338ca, 0 5px 12px rgba(99,102,241,0.25)"
+              : "0 3px 0 #d1d5db",
+          }}
+        >
+          {isDownloading ? "⏳ Downloading..." : isMobile ? "↓" : "Download Report"}
+        </button>
+      </div>
     </header>
   );
 }

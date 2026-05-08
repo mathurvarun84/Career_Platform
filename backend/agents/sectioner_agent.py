@@ -14,7 +14,7 @@ import logging
 from typing import Dict
 
 from .base_agent import BaseAgent
-from schemas.common import ResumeSections, SectionText
+from backend.schemas.common import ResumeSections, SectionText
 
 
 SECTIONER_SYSTEM_PROMPT = """You are a resume parser. Your only job is to extract each section's text verbatim.

@@ -24,11 +24,11 @@ import logging
 import re
 from typing import Any
 
-from schemas.common import SectionText, SubEntry
+from backend.schemas.common import SectionText, SubEntry
 
 # Import marker helpers from rewriter (or redefine if circular import risk)
 try:
-    from agents.rewriter import _ensure_experience_markers
+    from backend.agents.rewriter import _ensure_experience_markers
 except ImportError:
     def _ensure_experience_markers(text: str, sub_label: str) -> str:  # type: ignore
         return text
@@ -472,7 +472,7 @@ class RewriterValidator:
                 # Preserve verbatim for all 3 styles
                 content = section_text.full_text
                 if section_name == 'experience' and section_text.sub_entries:
-                    from agents.rewriter import _ensure_experience_markers
+                    from backend.agents.rewriter import _ensure_experience_markers
                     parts = [
                         _ensure_experience_markers(e.verbatim_text, e.label)
                         for e in section_text.sub_entries

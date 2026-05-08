@@ -19,8 +19,8 @@ from typing import Any, Dict
 from pydantic import BaseModel, Field
 
 from .base_agent import BaseAgent
-from schemas.agent4_schema import RewriterInput
-from schemas.common import SectionText
+from backend.schemas.agent4_schema import RewriterInput
+from backend.schemas.common import SectionText
 
 
 COMPANY_HEADER_START = "##COMPANY##"

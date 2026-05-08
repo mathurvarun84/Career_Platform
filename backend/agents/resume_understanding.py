@@ -19,8 +19,8 @@ import json
 from typing import Dict, List, Optional
 
 from .base_agent import BaseAgent
-from schemas.common import Seniority, ResumeSection
-from schemas.agent1_schema import (
+from backend.schemas.common import Seniority, ResumeSection
+from backend.schemas.agent1_schema import (
     ResumeUnderstandingInput,
     ResumeUnderstandingOutput,
     ResumeHealthOutput,
@@ -162,7 +162,7 @@ class ResumeUnderstandingAgent(BaseAgent):
             overall_health=parsed_output.get("overall_health", ""),
         )
 
-        from schemas.common import SectionText, SubEntry
+        from backend.schemas.common import SectionText, SubEntry
         raw_sections = parsed_output.get("sections", {})
         resume_sections: dict = {}
         for sec_name, sec_data in raw_sections.items():

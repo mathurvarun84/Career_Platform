@@ -10,12 +10,12 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, Optional
 
-from agents.gap_analyzer import GapAnalyzerAgent
-from agents.jd_intelligence import JDIntelligenceAgent
-from agents.recruiter_sim import RecruiterSimulatorAgent
-from agents.resume_understanding import ResumeUnderstandingAgent
-from agents.sectioner_agent import SectionerAgent
-from agents.rewriter import RewriterAgent
+from backend.agents.gap_analyzer import GapAnalyzerAgent
+from backend.agents.jd_intelligence import JDIntelligenceAgent
+from backend.agents.recruiter_sim import RecruiterSimulatorAgent
+from backend.agents.resume_understanding import ResumeUnderstandingAgent
+from backend.agents.sectioner_agent import SectionerAgent
+from backend.agents.rewriter import RewriterAgent
 from engine.ats_scorer import score_resume
 from engine.percentile import get_percentile
 from validators import ResumeUnderstandingValidator, RewriterValidator
@@ -33,7 +33,7 @@ class Orchestrator:
 
     def _build_merged_resume_sections(self, resume_und: dict, resume_text: str):
         """Merge A1 and Sectioner sections; keep richer section payload."""
-        from schemas.common import SectionText
+        from backend.schemas.common import SectionText
 
         a1_raw = resume_und.get("resume_sections", {})
         a1_sections = {
@@ -75,7 +75,7 @@ class Orchestrator:
 
     def _extract_a1_sections(self, resume_und: dict) -> Dict[str, Any]:
         """Extract resume sections available directly in A1 output."""
-        from schemas.common import SectionText
+        from backend.schemas.common import SectionText
         a1_raw = resume_und.get("resume_sections", {})
         return {
             k: SectionText(**v) if isinstance(v, dict) else v
@@ -188,7 +188,7 @@ class Orchestrator:
                 })
 
         if isinstance(resume_sections, dict):
-            from schemas.common import SectionText
+            from backend.schemas.common import SectionText
             resume_sections = {
                 k: SectionText(**v) if isinstance(v, dict) else v
                 for k, v in resume_sections.items()
@@ -228,7 +228,7 @@ class Orchestrator:
                     )
                     gap_result = fut_gap.result()
                     try:
-                        from schemas.common import SectionText
+                        from backend.schemas.common import SectionText
                         sectioner_raw = fut_sectioner.result() or {}
                         sectioner_sections = {
                             k: SectionText(**v) if isinstance(v, dict) else v

@@ -17,9 +17,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
+from backend.agents.jd_fetcher import JDFetcherAgent
 from engine.resume_builder import build_final_docx
 from orchestrator import Orchestrator
 from parser import parse_resume
+from backend.schemas.jd_fetch_schema import FetchJDRequest, FetchJDResponse
 
 
 logger = logging.getLogger(__name__)
@@ -188,6 +190,7 @@ def run_pipeline_task(
             "result": result,
         })
     except Exception as exc:
+        logger.exception("Analysis failed for job %s", job_id)
         job_store[job_id]["status"] = "error"
         job_store[job_id]["error"] = str(exc)
         job_store[job_id]["progress"].append({
@@ -195,6 +198,7 @@ def run_pipeline_task(
             "label": str(exc),
             "pct": 100,
             "status": "error",
+            "error": str(exc),
         })
     finally:
         if temp_path and os.path.exists(temp_path):
@@ -288,6 +292,21 @@ def gap_close(req: GapCloseRequest) -> dict:
     job["result"] = {**(job.get("result") or {}), **result}
     _persist_job(req.job_id)
     return {"gap": result.get("gap"), "rewrites": result.get("rewrites")}
+
+
+@app.post("/api/fetch-jd", response_model=FetchJDResponse)
+async def fetch_jd(req: FetchJDRequest):
+    """
+    Accepts company + role (and optional direct_url for second-fetch after disambiguation).
+    Returns extracted JD via Serper + GPT-4.1 Mini pipeline.
+    Expected latency: 3-10 seconds.
+    """
+    agent = JDFetcherAgent()
+    return agent.fetch(
+        company=req.company,
+        role=req.role,
+        direct_url=req.direct_url,
+    )
 
 
 @app.get("/api/download/{job_id}")

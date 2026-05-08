@@ -4,13 +4,13 @@ import tempfile
 
 import streamlit as st
 
-from agents.gap_analyzer import GapAnalyzerAgent
-from agents.jd_intelligence import JDIntelligenceAgent
-from agents.recruiter_sim import RecruiterSimulatorAgent
-from agents.resume_understanding import ResumeUnderstandingAgent
-from agents.rewriter import RewriterAgent
-from agents.sectioner_agent import SectionerAgent
-from schemas.common import SectionText, SubEntry
+from backend.agents.gap_analyzer import GapAnalyzerAgent
+from backend.agents.jd_intelligence import JDIntelligenceAgent
+from backend.agents.recruiter_sim import RecruiterSimulatorAgent
+from backend.agents.resume_understanding import ResumeUnderstandingAgent
+from backend.agents.rewriter import RewriterAgent
+from backend.agents.sectioner_agent import SectionerAgent
+from backend.schemas.common import SectionText, SubEntry
 from engine.ats_scorer import score_resume
 from engine.resume_builder import build_final_docx
 from orchestrator import Orchestrator
