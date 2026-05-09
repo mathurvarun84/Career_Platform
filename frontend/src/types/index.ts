@@ -172,6 +172,16 @@ export interface GapCloseResponse {
   docx_id: string;
 }
 
+export interface FetchJDResult {
+  status: "found" | "not_found" | "multiple" | "error";
+  jd_text: string | null;
+  source_url: string | null;
+  company: string;
+  role: string;
+  alternatives?: Array<{ title: string; level: string; url?: string }>;
+  error_message?: string;
+}
+
 export type RewriteStyle = "balanced" | "aggressive" | "top_1_percent";
 
 export type TabId = "overview" | "fixes" | "recruiter" | "gap";

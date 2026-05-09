@@ -297,16 +297,17 @@ def gap_close(req: GapCloseRequest) -> dict:
 @app.post("/api/fetch-jd", response_model=FetchJDResponse)
 async def fetch_jd(req: FetchJDRequest):
     """
-    Accepts company + role (and optional direct_url for second-fetch after disambiguation).
-    Returns extracted JD via Serper + GPT-4.1 Mini pipeline.
-    Expected latency: 3-10 seconds.
+    Accepts company name and role title.
+    Returns extracted JD text via LLM + web search.
+    Expected latency: 3-8 seconds.
     """
     agent = JDFetcherAgent()
-    return agent.fetch(
+    result = agent.fetch(
         company=req.company,
         role=req.role,
         direct_url=req.direct_url,
     )
+    return FetchJDResponse(**result.model_dump())
 
 
 @app.get("/api/download/{job_id}")

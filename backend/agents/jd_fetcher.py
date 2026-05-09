@@ -1,226 +1,876 @@
-"""JDFetcherAgent - Fetches JDs via Serper and GPT-4.1 Mini."""
+"""
+JD Auto-Fetch Agent (v2 — ATS-aware pipeline).
+
+Pipeline
+--------
+    User Input
+        |
+        v
+    Serper Search   (5 ATS-first query variants, India-region)
+        |
+        v
+    ATS URL Classifier  (greenhouse / lever / workday / generic)
+        |
+        v
+    Provider-Specific Extractor
+        - Greenhouse / Lever -> deterministic HTML parse via BeautifulSoup
+        - Workday / Generic  -> Jina AI Reader -> Claude Haiku extraction
+        |
+        v
+    Confidence score (heuristic, 0.0..1.0)
+        - >= 0.55 -> return found
+        - <  0.55 -> rescue with Haiku + aggressive prompt + best partial text
+        |
+        v
+    JDFetchResult
+
+Design notes
+------------
+- Stops at the first extraction whose confidence >= 0.55. Otherwise it keeps
+  the highest-scoring partial across all queries and tries one rescue pass.
+- URLs are deduplicated across queries by normalized form.
+- Per-URL failures are logged and skipped — the agent NEVER raises out of
+  fetch(). Top-level errors collapse to status="error".
+- Every LLM call is logged with a "[LLM]" prefix so cost can be audited via
+  `grep "\[LLM\]" logs.txt`.
+"""
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
-from typing import Any
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Literal, Optional
+from urllib.parse import urlparse
 
-import requests
+import httpx
+from anthropic import Anthropic
 from bs4 import BeautifulSoup
-from openai import OpenAI
+from pydantic import BaseModel
 
-from backend.schemas.jd_fetch_schema import FetchJDResponse
-from backend.services.serper_client import SearchResult, SerperClient
+from backend.agents.ats_classifier import ATSProvider, classify_url
 
-SYSTEM_PROMPT = """You are a job description extraction specialist for an Indian job market platform.
-Your sole task is to analyze web search results and extract or reconstruct a clean,
-complete job description.
 
-You respond ONLY with valid JSON. No markdown, no preamble, no explanation."""
+logger = logging.getLogger("jd_fetcher")
 
-SEARCH_USER_PROMPT_TEMPLATE = """Company: {company}
-Role: {role}
 
-Web search results:
-{formatted_results}
+def _configure_jd_fetcher_logging() -> None:
+    """Attach a dedicated file handler once so JD fetch audit logs persist."""
+    logs_dir = Path(__file__).resolve().parents[1] / "logs"
+    log_path = logs_dir / "jd_fetcher.log"
 
----
+    try:
+        logs_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return
 
-EXTRACTION TASK:
+    for handler in logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            existing_path = getattr(handler, "baseFilename", "")
+            if existing_path == str(log_path):
+                return
 
-Step 1 - Filter: Identify which results are genuine job postings.
-REJECT these: blog posts, news articles, recruiter spam, results >12 months old (if date visible).
-ACCEPT these: official company careers pages, LinkedIn job postings, Naukri/Indeed listings.
+    file_handler = logging.FileHandler(log_path, encoding="utf-8")
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s [%(name)s] %(message)s")
+    )
+    logger.addHandler(file_handler)
+    logger.setLevel(logging.INFO)
+    logger.propagate = True
 
-Step 2 - Extract from the best accepted result(s). Include ALL of the following if present:
-  - Job title and level (e.g. SDE-1, SDE-2, L4, Senior)
-  - Role summary / overview (2-4 sentences)
-  - Key responsibilities (bulleted)
-  - Required qualifications: education, years of experience, must-have skills
-  - Preferred / nice-to-have qualifications
-  - Tech stack and tools (explicit and implied)
-  - Team or product context
 
-Step 3 - Disambiguation: If you find multiple DISTINCT seniority levels of the same role
-(e.g. SDE-1 AND SDE-2 AND SDE-3 as separate listings), return status "multiple" with
-each variant listed. Do NOT merge them. Do NOT split a single JD artificially.
+_configure_jd_fetcher_logging()
 
-Step 4 - If no genuine JD found after filtering, return status "not_found".
 
-Respond with ONLY this JSON (no markdown fences, no extra text):
-{{
-  "status": "found" | "not_found" | "multiple",
-  "jd_text": "<complete reconstructed JD text, preserve all bullet points and structure, or null>",
-  "source_url": "<canonical URL of best source, or null>",
-  "alternatives": [
-    {{"title": "Senior Software Engineer (SDE-2)", "level": "3–6 years", "url": "https://..."}}
-  ]
-}}
+# --------------------------------------------------------------------------- #
+# Constants
+# --------------------------------------------------------------------------- #
+SERPER_URL = "https://google.serper.dev/search"
+JINA_READER_BASE = "https://r.jina.ai/"
+HAIKU_MODEL = "claude-haiku-4-5-20251001"
 
-If status is "found", jd_text must be non-null and at least 200 characters.
-If status is "multiple", jd_text must be null and alternatives must have 2+ items.
-If status is "not_found", jd_text must be null."""
+USER_AGENT = "Mozilla/5.0 (compatible; JobBot/2.0)"
 
-DIRECT_URL_PROMPT_TEMPLATE = """Company: {company}
-Role: {role}
+SERPER_TIMEOUT_SECONDS = 8.0
+SCRAPE_TIMEOUT_SECONDS = 15.0
+JINA_TIMEOUT_SECONDS = 15.0
 
-Raw page content from: {url}
+SERPER_NUM_RESULTS = 5
+RESULTS_PER_QUERY = 3
+CONFIDENCE_THRESHOLD = 0.55
 
----
+# Cap text fed into Haiku to keep token cost predictable.
+MAX_TEXT_CHARS = 8000
+HAIKU_MAX_TOKENS = 1500
+HAIKU_RESCUE_MAX_TOKENS = 2000
 
-{raw_content}
+STRIPPED_TAGS = ("script", "style", "nav", "footer", "header", "noscript")
 
----
 
-EXTRACTION TASK:
-Extract the complete job description from this page content.
-Include: job title, level, summary, responsibilities, requirements, tech stack, team context.
+# Aggregator/listing hosts whose URLs do NOT identify the employer (so we
+# defer to the LLM-extracted employer field for these).
+_AGGREGATOR_HOSTS = (
+    "linkedin.com",
+    "indeed.com",
+    "naukri.com",
+    "glassdoor.",
+    "instahyre.com",
+    "shine.com",
+    "uplers.com",
+    "hubmub.com",
+    "x.com",
+    "twitter.com",
+    "instagram.com",
+    "facebook.com",
+    "ycombinator.com",
+    "wellfound.com",
+    "angel.co",
+    "monster.com",
+)
 
-Respond with ONLY this JSON:
+
+def _extract_url_employer(url: str) -> str:
+    """Pull the employer slug out of a known-ATS URL, or "" when undeterminable.
+
+    For ATS hosts the URL is authoritative — `moengage.hire.trakstar.com` is
+    MoEngage's ATS, full stop. We use that to reject wrong-employer URLs before
+    spending Jina + Haiku tokens on them.
+    """
+    if not url:
+        return ""
+    try:
+        parsed = urlparse(url.lower())
+    except Exception:
+        return ""
+    host = parsed.netloc
+    path_parts = [p for p in parsed.path.split("/") if p]
+    if not host:
+        return ""
+
+    if "boards.greenhouse.io" in host:
+        return path_parts[0] if path_parts else ""
+    if host.endswith(".greenhouse.io"):
+        return host.split(".")[0]
+    if host == "jobs.lever.co":
+        return path_parts[0] if path_parts else ""
+    if host.endswith(".lever.co"):
+        return host.split(".")[0]
+    if "myworkdayjobs.com" in host:
+        return host.split(".")[0]
+    if host.endswith(".trakstar.com"):
+        return host.split(".")[0]
+    if host.endswith(".workable.com"):
+        return host.split(".")[0]
+    if host.endswith(".bamboohr.com"):
+        return host.split(".")[0]
+    if host.endswith(".smartrecruiters.com"):
+        return host.split(".")[0]
+    if host.endswith(".ashbyhq.com"):
+        return host.split(".")[0]
+
+    # Aggregators don't identify the employer in the URL.
+    if any(agg in host for agg in _AGGREGATOR_HOSTS):
+        return ""
+
+    return ""
+
+
+def _employer_matches(candidate_employer: str, target_company: str) -> bool:
+    """Return True if `candidate_employer` plausibly belongs to `target_company`.
+
+    Used both for URL-host slugs (deterministic) and LLM-extracted employer
+    names (fuzzy). Empty candidate_employer means "unknown" and yields True so
+    we don't reject on missing data.
+    """
+    if not candidate_employer or not target_company.strip():
+        return True
+
+    target = target_company.strip().lower()
+    if target == "other (type manually)":
+        return True
+
+    employer_compact = re.sub(r"[\s\-_/.,]+", "", candidate_employer.lower())
+    target_compact = re.sub(r"[\s\-_/.,]+", "", target)
+    if not employer_compact or not target_compact:
+        return True
+
+    if employer_compact in target_compact or target_compact in employer_compact:
+        return True
+
+    target_tokens = [t for t in re.split(r"[\s\-_/.,()]+", target) if len(t) >= 3]
+    if any(token in employer_compact for token in target_tokens):
+        return True
+
+    employer_tokens = [
+        t for t in re.split(r"[\s\-_/.,()]+", candidate_employer.lower()) if len(t) >= 3
+    ]
+    return any(token in target_compact for token in employer_tokens)
+
+
+# --------------------------------------------------------------------------- #
+# Public types
+# --------------------------------------------------------------------------- #
+class JDFetchResult(BaseModel):
+    """Wire contract with /api/fetch-jd and the frontend. Do not rename."""
+
+    status: Literal["found", "not_found", "error"]
+    jd_text: Optional[str] = None
+    source_url: Optional[str] = None
+    company: str
+    role: str
+    error_message: Optional[str] = None
+
+
+@dataclass
+class _Candidate:
+    """One extraction attempt — its text, source URL, score and method label."""
+
+    url: str
+    text: str
+    score: float
+    method: str  # greenhouse_parse | lever_parse | jina_reader | rescue
+
+
+# --------------------------------------------------------------------------- #
+# Prompts
+# --------------------------------------------------------------------------- #
+HAIKU_EXTRACT_PROMPT = """You extract job descriptions from web page content.
+
+Target company: {company}
+Target role: {role}
+Source URL: {source_url}
+
+--- PAGE CONTENT ---
+{page_text}
+--- END PAGE CONTENT ---
+
+INSTRUCTIONS
+- The "employer" field MUST be the EXACT name of the company that is hiring
+  for this posting, as it appears on the page (often near the title, in the
+  header, or in the URL). It is NOT necessarily the target company above.
+  If the page mentions multiple companies (e.g. customer logos, "we work with X"),
+  the employer is the one that owns the posting, not the ones being mentioned.
+- If the employer on the page is clearly different from the target company,
+  still fill "employer" honestly — the caller will reject the mismatch.
+- If the page has ANY job-related content for this company/role, set status to "found".
+- Extract partial JDs when possible. Do NOT return "not_found" unless the page is
+  clearly irrelevant (a news article, a generic team landing page with no role,
+  a 404, a login wall).
+- Reconstruct a clean, well-formatted job description in jd_text including
+  overview, responsibilities, requirements and tech stack when present.
+
+Respond with ONLY this JSON. No markdown fences. No preamble. No commentary.
 {{
   "status": "found" | "not_found",
-  "jd_text": "<complete extracted JD text or null>",
-  "source_url": "{url}",
-  "alternatives": null
+  "employer": "<exact name of the company that owns this posting>",
+  "job_title": "...",
+  "responsibilities": ["..."],
+  "requirements": ["..."],
+  "tech_stack": ["..."],
+  "jd_text": "full clean JD text reconstructed from page"
 }}"""
 
 
-class JDFetcherAgent:
-    def __init__(self):
-        self.openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-        self.serper = SerperClient()
-        self.model = "gpt-4.1-mini"
+HAIKU_RESCUE_PROMPT = """You are extracting a job description from low-quality
+or incomplete page content. Be aggressive — extract whatever job-related content
+exists, even if fragmentary.
 
-    def fetch(self, company: str, role: str, direct_url: str | None = None) -> FetchJDResponse:
+Target company: {company}
+Target role: {role}
+Source URL: {source_url}
+
+--- PAGE CONTENT ---
+{page_text}
+--- END PAGE CONTENT ---
+
+RULES
+- The "employer" field MUST be the EXACT name of the company that owns the
+  posting, as shown on the page. If it's clearly different from the target
+  company above, still fill it honestly — the caller will reject the mismatch.
+- Do NOT return "not_found" unless this page has ZERO job content.
+- Stitch together fragments. Infer structure from headings, bullets and lists.
+- Even if only partial info is present (e.g., responsibilities but no
+  requirements), still set status to "found" and put everything you can
+  extract into jd_text.
+- Output a coherent jd_text even from messy input.
+
+Respond with ONLY this JSON. No markdown fences. No preamble. No commentary.
+{{
+  "status": "found" | "not_found",
+  "employer": "<exact name of the company that owns this posting>",
+  "job_title": "...",
+  "responsibilities": ["..."],
+  "requirements": ["..."],
+  "tech_stack": ["..."],
+  "jd_text": "full reconstructed JD text"
+}}"""
+
+
+# --------------------------------------------------------------------------- #
+# Agent
+# --------------------------------------------------------------------------- #
+class JDFetcherAgent:
+    """Fetch a job description for a given (company, role) using the
+    Serper -> ATS-classify -> provider-extract -> Haiku-rescue pipeline."""
+
+    def __init__(self) -> None:
+        self.serper_api_key = os.getenv("SERPER_API_KEY")
+        self.jina_api_key = os.getenv("JINA_API_KEY")  # optional, lifts rate limits
+        anthropic_key = os.getenv("ANTHROPIC_API_KEY")
+        self.anthropic = Anthropic(api_key=anthropic_key) if anthropic_key else None
+        self.model = HAIKU_MODEL
+
+    # ------------------------------------------------------------------ #
+    # Public entry point
+    # ------------------------------------------------------------------ #
+    def fetch(
+        self,
+        company: str,
+        role: str,
+        direct_url: str | None = None,
+    ) -> JDFetchResult:
+        """Main entry point. Returns a JDFetchResult and never raises."""
         try:
-            if direct_url:
-                raw_content = self._fetch_url_content(direct_url)
-                return self._call_gpt_extraction(
+            if self.anthropic is None:
+                return JDFetchResult(
+                    status="error",
                     company=company,
                     role=role,
-                    raw_content=raw_content,
-                    direct_url=direct_url,
+                    error_message="ANTHROPIC_API_KEY not configured",
                 )
 
-            queries = self._build_queries(company=company, role=role)
-            search_results = self.serper.search_multi(queries=queries, num_results_each=4)
-            return self._call_gpt_extraction(
-                company=company,
-                role=role,
-                search_results=search_results,
-            )
-        except Exception as exc:
-            return FetchJDResponse(
+            if direct_url:
+                return self._fetch_single_url(direct_url, company, role)
+
+            if not self.serper_api_key:
+                return JDFetchResult(
+                    status="error",
+                    company=company,
+                    role=role,
+                    error_message="SERPER_API_KEY not configured",
+                )
+
+            return self._fetch_via_search(company, role)
+
+        except Exception as exc:  # noqa: BLE001 - top-level safety net
+            logger.exception("fetch failed company=%r role=%r", company, role)
+            return JDFetchResult(
                 status="error",
                 company=company,
                 role=role,
                 error_message=str(exc),
             )
 
-    def _build_queries(self, company: str, role: str) -> list[str]:
+    # ------------------------------------------------------------------ #
+    # Direct URL path (used by /api/fetch-jd when caller supplies a URL)
+    # ------------------------------------------------------------------ #
+    def _fetch_single_url(self, url: str, company: str, role: str) -> JDFetchResult:
+        provider = classify_url(url)
+        logger.info("direct_url url=%s provider=%s", url, provider.value)
+
+        candidate = self._extract_for_url(url, provider, company, role)
+
+        if candidate is None or not candidate.text:
+            logger.info("status=not_found (direct_url, no text extracted) url=%s", url)
+            return JDFetchResult(
+                status="not_found",
+                company=company,
+                role=role,
+                source_url=url,
+            )
+
+        logger.info(
+            "confidence url=%s score=%.2f method=%s",
+            candidate.url, candidate.score, candidate.method,
+        )
+
+        if candidate.score >= CONFIDENCE_THRESHOLD:
+            logger.info("status=found url=%s score=%.2f", url, candidate.score)
+            return JDFetchResult(
+                status="found",
+                jd_text=candidate.text,
+                source_url=url,
+                company=company,
+                role=role,
+            )
+
+        rescued = self._rescue(candidate, company, role)
+        if rescued is not None and rescued.score >= CONFIDENCE_THRESHOLD:
+            logger.info("status=found (via rescue) url=%s score=%.2f", url, rescued.score)
+            return JDFetchResult(
+                status="found",
+                jd_text=rescued.text,
+                source_url=url,
+                company=company,
+                role=role,
+            )
+
+        logger.info("status=not_found (rescue insufficient) url=%s", url)
+        return JDFetchResult(
+            status="not_found",
+            company=company,
+            role=role,
+            source_url=url,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Search path
+    # ------------------------------------------------------------------ #
+    def _fetch_via_search(self, company: str, role: str) -> JDFetchResult:
+        queries = self._build_queries(company, role)
+        seen_urls: set[str] = set()
+        best: _Candidate | None = None
+
+        for query in queries:
+            try:
+                organic = self._serper_search(query)
+            except Exception as exc:  # noqa: BLE001 - tolerate per-query failure
+                logger.warning("serper query failed query=%r err=%s", query, exc)
+                continue
+
+            logger.info("serper query=%r results=%d", query, len(organic))
+
+            for item in organic[:RESULTS_PER_QUERY]:
+                url = (item.get("link") or "").strip()
+                if not url:
+                    continue
+                normalized = url.rstrip("/").lower()
+                if normalized in seen_urls:
+                    continue
+                seen_urls.add(normalized)
+
+                provider = classify_url(url)
+                logger.info("processing url=%s provider=%s", url, provider.value)
+
+                candidate = self._extract_for_url(url, provider, company, role)
+                if candidate is None or not candidate.text:
+                    continue
+
+                logger.info(
+                    "confidence url=%s score=%.2f method=%s",
+                    candidate.url, candidate.score, candidate.method,
+                )
+
+                if candidate.score >= CONFIDENCE_THRESHOLD:
+                    logger.info(
+                        "status=found url=%s score=%.2f method=%s",
+                        candidate.url, candidate.score, candidate.method,
+                    )
+                    return JDFetchResult(
+                        status="found",
+                        jd_text=candidate.text,
+                        source_url=candidate.url,
+                        company=company,
+                        role=role,
+                    )
+
+                if best is None or candidate.score > best.score:
+                    best = candidate
+
+        # All extractions came back below threshold (or empty) — try rescue.
+        if best is not None and best.text:
+            rescued = self._rescue(best, company, role)
+            if rescued is not None and rescued.score >= CONFIDENCE_THRESHOLD:
+                logger.info(
+                    "status=found (via rescue) url=%s score=%.2f",
+                    best.url, rescued.score,
+                )
+                return JDFetchResult(
+                    status="found",
+                    jd_text=rescued.text,
+                    source_url=best.url,
+                    company=company,
+                    role=role,
+                )
+
+        logger.info(
+            "status=not_found (best_score=%.2f)",
+            best.score if best else 0.0,
+        )
+        return JDFetchResult(
+            status="not_found",
+            company=company,
+            role=role,
+            source_url=best.url if best else None,
+        )
+
+    # ------------------------------------------------------------------ #
+    # Per-URL extraction dispatcher
+    # ------------------------------------------------------------------ #
+    def _extract_for_url(
+        self,
+        url: str,
+        provider: ATSProvider,
+        company: str,
+        role: str,
+    ) -> _Candidate | None:
+        # Cheap pre-flight guard: the URL host alone tells us the employer for
+        # ATS-hosted postings (greenhouse/lever/workday/trakstar/...). If it
+        # disagrees with the requested company, drop it before spending any
+        # Jina + Haiku tokens on extraction.
+        url_employer = _extract_url_employer(url)
+        if url_employer and not _employer_matches(url_employer, company):
+            logger.info(
+                "rejecting url=%s reason=url_employer_mismatch url_employer=%r company=%r",
+                url, url_employer, company,
+            )
+            return None
+
+        try:
+            if provider == ATSProvider.GREENHOUSE:
+                text = self._parse_greenhouse(url)
+                method = "greenhouse_parse"
+            elif provider == ATSProvider.LEVER:
+                text = self._parse_lever(url)
+                method = "lever_parse"
+            else:
+                # WORKDAY and GENERIC both go through Jina + Haiku — Workday's
+                # JSON endpoints are session-token dependent and unreliable.
+                markdown = self._fetch_jina(url)
+                if not markdown:
+                    return None
+                text = self._haiku_extract(markdown, company, role, url)
+                method = "jina_reader"
+        except Exception as exc:  # noqa: BLE001 - tolerate per-URL failure
+            logger.warning("extraction failed url=%s err=%s", url, exc)
+            return None
+
+        if not text or not text.strip():
+            return None
+
+        score = self._compute_confidence(text, company, role)
+        return _Candidate(url=url, text=text, score=score, method=method)
+
+    # ------------------------------------------------------------------ #
+    # Greenhouse / Lever deterministic parsers
+    # ------------------------------------------------------------------ #
+    def _parse_greenhouse(self, url: str) -> str:
+        html = self._fetch_html(url)
+        if not html:
+            return ""
+        soup = self._soup(html)
+        if soup is None:
+            return ""
+
+        for tag in soup(list(STRIPPED_TAGS)):
+            tag.decompose()
+
+        container = (
+            soup.select_one("div#app_body")
+            or soup.select_one("div.content")
+            or soup.find("article")
+        )
+        if container is None:
+            logger.debug("greenhouse: no known container url=%s", url)
+            return ""
+
+        title_el = soup.select_one("h1.app-title") or soup.find("h1")
+        title = title_el.get_text(strip=True) if title_el else ""
+
+        body_text = container.get_text(separator="\n", strip=True)
+
+        location_el = soup.select_one(".location") or soup.select_one(".app-location")
+        location = location_el.get_text(strip=True) if location_el else ""
+
+        parts = [p for p in (title, location, body_text) if p]
+        return "\n\n".join(parts)[:MAX_TEXT_CHARS]
+
+    def _parse_lever(self, url: str) -> str:
+        html = self._fetch_html(url)
+        if not html:
+            return ""
+        soup = self._soup(html)
+        if soup is None:
+            return ""
+
+        for tag in soup(list(STRIPPED_TAGS)):
+            tag.decompose()
+
+        container = (
+            soup.select_one("div.content")
+            or soup.select_one('div[data-qa="job-description"]')
+            or soup.find("main")
+        )
+        if container is None:
+            logger.debug("lever: no known container url=%s", url)
+            return ""
+
+        title_el = soup.select_one("h2.posting-headline") or soup.find("h2")
+        title = title_el.get_text(strip=True) if title_el else ""
+
+        categories_el = soup.select_one(".posting-categories") or soup.select_one(".posting-category")
+        categories = categories_el.get_text(separator=" | ", strip=True) if categories_el else ""
+
+        body_text = container.get_text(separator="\n", strip=True)
+
+        parts = [p for p in (title, categories, body_text) if p]
+        return "\n\n".join(parts)[:MAX_TEXT_CHARS]
+
+    @staticmethod
+    def _soup(html: str) -> BeautifulSoup | None:
+        try:
+            return BeautifulSoup(html, "lxml")
+        except Exception:
+            try:
+                return BeautifulSoup(html, "html.parser")
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("BeautifulSoup parse failed err=%s", exc)
+                return None
+
+    # ------------------------------------------------------------------ #
+    # HTTP fetch helpers
+    # ------------------------------------------------------------------ #
+    def _fetch_html(self, url: str) -> str:
+        try:
+            with httpx.Client(
+                timeout=SCRAPE_TIMEOUT_SECONDS,
+                follow_redirects=True,
+                headers={"User-Agent": USER_AGENT},
+            ) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                return response.text
+        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+            logger.warning("html fetch failed url=%s err=%s", url, exc)
+            return ""
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("html fetch unexpected error url=%s err=%s", url, exc)
+            return ""
+
+    def _fetch_jina(self, url: str) -> str:
+        """Fetch a URL through https://r.jina.ai/ which returns clean markdown."""
+        jina_url = f"{JINA_READER_BASE}{url}"
+        headers = {"User-Agent": USER_AGENT}
+        if self.jina_api_key:
+            headers["Authorization"] = f"Bearer {self.jina_api_key}"
+        try:
+            with httpx.Client(
+                timeout=JINA_TIMEOUT_SECONDS,
+                follow_redirects=True,
+                headers=headers,
+            ) as client:
+                response = client.get(jina_url)
+                response.raise_for_status()
+                return response.text[:MAX_TEXT_CHARS]
+        except (httpx.HTTPError, httpx.TimeoutException) as exc:
+            logger.warning("jina fetch failed url=%s err=%s", url, exc)
+            return ""
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("jina fetch unexpected error url=%s err=%s", url, exc)
+            return ""
+
+    # ------------------------------------------------------------------ #
+    # Serper
+    # ------------------------------------------------------------------ #
+    def _serper_search(self, query: str) -> list[dict[str, Any]]:
+        headers = {
+            "X-API-KEY": self.serper_api_key or "",
+            "Content-Type": "application/json",
+        }
+        body = {"q": query, "gl": "in", "num": SERPER_NUM_RESULTS}
+        with httpx.Client(timeout=SERPER_TIMEOUT_SECONDS) as client:
+            response = client.post(SERPER_URL, headers=headers, json=body)
+            response.raise_for_status()
+            payload = response.json()
+        organic = payload.get("organic") or []
+        return organic if isinstance(organic, list) else []
+
+    # ------------------------------------------------------------------ #
+    # Query building (ATS-first)
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _build_queries(company: str, role: str) -> list[str]:
         company_clean = company.strip()
         role_clean = role.strip()
         if company_clean.lower() == "other (type manually)":
             company_clean = role_clean.split("/")[0].strip() or "India"
 
         return [
-            f'{company_clean} {role_clean} careers India site:{company_clean.split()[0].lower()}.com jobs',
-            f'"{company_clean}" "{role_clean}" LinkedIn Jobs India',
-            f'"{company_clean}" "{role_clean}" Naukri Indeed India',
+            f'site:jobs.lever.co "{company_clean}" "{role_clean}"',
+            f'site:boards.greenhouse.io "{company_clean}" "{role_clean}"',
+            f'site:myworkdayjobs.com "{company_clean}" "{role_clean}"',
+            f'"{company_clean}" careers "{role_clean}" -recruiter -blog',
+            f'"{company_clean}" "{role_clean}" hiring',
         ]
 
-    def _fetch_url_content(self, url: str) -> str:
-        try:
-            resp = requests.get(
-                url,
-                timeout=8,
-                headers={"User-Agent": "Mozilla/5.0 JD-Fetcher"},
-            )
-            resp.raise_for_status()
-        except requests.RequestException as exc:
-            raise RuntimeError(f"URL fetch failure: {exc}") from exc
-
-        soup = BeautifulSoup(resp.text, "lxml")
-        text = soup.get_text(separator="\n", strip=True)
-        return text[:8000]
-
-    def _format_results(self, results: list[SearchResult]) -> str:
-        lines: list[str] = []
-        for i, result in enumerate(results, 1):
-            lines.append(f"[{i}] Title: {result.title}")
-            lines.append(f"    URL: {result.url}")
-            lines.append(f"    Snippet: {result.snippet}")
-            lines.append("")
-        return "\n".join(lines)
-
-    def _call_gpt_extraction(
+    # ------------------------------------------------------------------ #
+    # Haiku extraction + rescue
+    # ------------------------------------------------------------------ #
+    def _haiku_extract(
         self,
+        page_text: str,
         company: str,
         role: str,
-        search_results: list[SearchResult] | None = None,
-        raw_content: str | None = None,
-        direct_url: str | None = None,
-    ) -> FetchJDResponse:
-        if search_results is None and raw_content is None:
-            raise ValueError("Either search_results or raw_content must be provided")
-
-        if raw_content is not None:
-            prompt = DIRECT_URL_PROMPT_TEMPLATE.format(
-                company=company,
-                role=role,
-                url=direct_url or "",
-                raw_content=raw_content,
-            )
-        else:
-            prompt = SEARCH_USER_PROMPT_TEMPLATE.format(
-                company=company,
-                role=role,
-                formatted_results=self._format_results(search_results or []),
-            )
-
-        completion = self.openai_client.chat.completions.create(
-            model=self.model,
-            max_tokens=2000,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
+        url: str,
+    ) -> str:
+        if not page_text or self.anthropic is None:
+            return ""
+        logger.info(
+            "[LLM] model=%s reason=generic_extraction url=%s",
+            HAIKU_MODEL, url,
         )
-        raw = completion.choices[0].message.content or ""
-        return self._parse_gpt_response(raw=raw, company=company, role=role)
+        prompt = HAIKU_EXTRACT_PROMPT.format(
+            company=company,
+            role=role,
+            source_url=url,
+            page_text=page_text[:MAX_TEXT_CHARS],
+        )
+        return self._call_haiku(
+            prompt, max_tokens=HAIKU_MAX_TOKENS, url=url, target_company=company,
+        )
 
-    def _parse_gpt_response(self, raw: str, company: str, role: str) -> FetchJDResponse:
+    def _rescue(
+        self,
+        candidate: _Candidate,
+        company: str,
+        role: str,
+    ) -> _Candidate | None:
+        if self.anthropic is None or not candidate.text:
+            return None
+
+        logger.info(
+            "[LLM] model=%s reason=rescue_path confidence=%.2f",
+            HAIKU_MODEL, candidate.score,
+        )
+        logger.info("rescue triggered url=%s best_score=%.2f", candidate.url, candidate.score)
+
+        prompt = HAIKU_RESCUE_PROMPT.format(
+            company=company,
+            role=role,
+            source_url=candidate.url,
+            page_text=candidate.text[:MAX_TEXT_CHARS],
+        )
+        rescued_text = self._call_haiku(
+            prompt,
+            max_tokens=HAIKU_RESCUE_MAX_TOKENS,
+            url=candidate.url,
+            target_company=company,
+        )
+        if not rescued_text:
+            return None
+
+        score = self._compute_confidence(rescued_text, company, role)
+        logger.info("rescue confidence=%.2f url=%s", score, candidate.url)
+        return _Candidate(
+            url=candidate.url,
+            text=rescued_text,
+            score=score,
+            method="rescue",
+        )
+
+    def _call_haiku(
+        self,
+        prompt: str,
+        max_tokens: int,
+        url: str,
+        target_company: str,
+    ) -> str:
+        """Invoke Claude Haiku and return the parsed jd_text, or "" on failure.
+
+        Cross-checks the LLM-extracted "employer" field against `target_company`
+        and rejects the candidate (returns "") on mismatch — this catches the
+        aggregator-page case where the URL host doesn't identify the employer
+        but the LLM can read it off the page (e.g. a LinkedIn listing that
+        actually surfaces a MoEngage JD when the user asked for Flipkart).
+        """
+        if self.anthropic is None:
+            return ""
+        try:
+            message = self.anthropic.messages.create(
+                model=self.model,
+                max_tokens=max_tokens,
+                temperature=0,
+                messages=[{"role": "user", "content": prompt}],
+            )
+        except Exception as exc:  # noqa: BLE001 - tolerate API failure per URL
+            logger.warning("haiku call failed url=%s err=%s", url, exc)
+            return ""
+
+        raw = "".join(
+            getattr(block, "text", "")
+            for block in message.content
+            if getattr(block, "type", None) == "text"
+        ).strip()
+
+        parsed = self._parse_haiku_json(raw)
+        if not parsed:
+            logger.warning("haiku json parse failed url=%s", url)
+            return ""
+
+        if parsed.get("status") != "found":
+            return ""
+
+        parsed_employer = (parsed.get("employer") or "").strip()
+        if parsed_employer and not _employer_matches(parsed_employer, target_company):
+            logger.info(
+                "rejecting url=%s reason=llm_employer_mismatch parsed_employer=%r company=%r",
+                url, parsed_employer, target_company,
+            )
+            return ""
+
+        return (parsed.get("jd_text") or "").strip()
+
+    @staticmethod
+    def _parse_haiku_json(raw: str) -> Optional[dict[str, Any]]:
+        if not raw:
+            return None
         text = raw.strip()
-        fenced_match = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, flags=re.DOTALL)
-        if fenced_match:
-            text = fenced_match.group(1).strip()
+        fenced = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, flags=re.DOTALL)
+        if fenced:
+            text = fenced.group(1).strip()
 
         try:
-            parsed: dict[str, Any] = json.loads(text)
-            return FetchJDResponse(
-                status=parsed.get("status", "error"),
-                jd_text=parsed.get("jd_text"),
-                source_url=parsed.get("source_url"),
-                company=company,
-                role=role,
-                alternatives=parsed.get("alternatives"),
-                error_message=parsed.get("error_message"),
-            )
-        except Exception:
-            if len(text) > 300:
-                return FetchJDResponse(
-                    status="found",
-                    jd_text=text,
-                    source_url=None,
-                    company=company,
-                    role=role,
-                    alternatives=None,
-                )
-            return FetchJDResponse(
-                status="error",
-                company=company,
-                role=role,
-                error_message="Unable to parse GPT response as valid JD JSON",
-            )
+            data = json.loads(text)
+        except (json.JSONDecodeError, ValueError):
+            try:
+                start = text.index("{")
+                end = text.rindex("}") + 1
+                data = json.loads(text[start:end])
+            except (ValueError, json.JSONDecodeError):
+                return None
+
+        return data if isinstance(data, dict) else None
+
+    # ------------------------------------------------------------------ #
+    # Confidence scoring
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _compute_confidence(jd_text: str, company: str, role: str) -> float:
+        """Heuristic confidence in [0.0, 1.0] for a candidate JD text."""
+        if not jd_text:
+            return 0.0
+
+        text_lower = jd_text.lower()
+        score = 0.0
+
+        if len(jd_text) > 300:
+            score += 0.25
+        if len(jd_text) > 800:
+            score += 0.15
+
+        section_keywords = (
+            "responsibilities",
+            "requirements",
+            "qualifications",
+            "what you'll do",
+        )
+        if any(kw in text_lower for kw in section_keywords):
+            score += 0.25
+
+        role_words = [
+            w for w in re.split(r"[\s/\-_,()]+", role.lower())
+            if len(w) >= 3 and not w.isdigit()
+        ]
+        if role_words:
+            matched = sum(1 for w in role_words if w in text_lower)
+            score += 0.20 * (matched / len(role_words))
+
+        company_clean = company.strip().lower()
+        if company_clean and company_clean in text_lower:
+            score += 0.15
+
+        return min(score, 1.0)
