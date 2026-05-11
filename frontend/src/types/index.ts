@@ -67,6 +67,8 @@ export interface SimResult {
   consensus_strengths: string[];
   consensus_weaknesses: string[];
   most_critical_fix: string;
+  probing_persona: string | null;
+  probing_dimension: string | null;
 }
 
 export interface SectionRewrite {
@@ -176,6 +178,8 @@ export interface FetchJDResult {
   status: "found" | "not_found" | "multiple" | "error";
   jd_text: string | null;
   source_url: string | null;
+  fetched_at: string | null;
+  is_cached: boolean;
   company: string;
   role: string;
   alternatives?: Array<{ title: string; level: string; url?: string }>;

@@ -42,6 +42,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Optional
 from urllib.parse import urlparse
@@ -49,12 +50,17 @@ from urllib.parse import urlparse
 import httpx
 from anthropic import Anthropic
 from bs4 import BeautifulSoup
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.agents.ats_classifier import ATSProvider, classify_url
 
 
 logger = logging.getLogger("jd_fetcher")
+
+
+def _utc_now_iso() -> str:
+    """Return an API-friendly UTC timestamp."""
+    return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _configure_jd_fetcher_logging() -> None:
@@ -217,9 +223,11 @@ def _employer_matches(candidate_employer: str, target_company: str) -> bool:
 class JDFetchResult(BaseModel):
     """Wire contract with /api/fetch-jd and the frontend. Do not rename."""
 
-    status: Literal["found", "not_found", "error"]
+    status: Literal["found", "not_found", "multiple", "error"]
     jd_text: Optional[str] = None
     source_url: Optional[str] = None
+    fetched_at: str = Field(default_factory=_utc_now_iso)
+    is_cached: bool = False
     company: str
     role: str
     error_message: Optional[str] = None

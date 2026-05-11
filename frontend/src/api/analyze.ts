@@ -58,6 +58,12 @@ const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
 
   const rawGap = (raw.gap as Record<string, unknown> | null | undefined) ?? null;
   const rawRewrites = raw.rewrites as Record<string, unknown> | null | undefined;
+  const rawSim =
+    (raw.sim as Record<string, unknown> | null | undefined) ??
+    (raw.sim_result as Record<string, unknown> | null | undefined) ??
+    (raw.recruiter_sim as Record<string, unknown> | null | undefined) ??
+    (raw.recruiter_simulation as Record<string, unknown> | null | undefined) ??
+    null;
 
   const isPriorityFix = (item: unknown): item is PriorityFix =>
     typeof item === "object" &&
@@ -162,6 +168,10 @@ const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
       rawRewrites && typeof rawRewrites === "object" && "rewrites" in rawRewrites
         ? ((rawRewrites.rewrites as Record<string, unknown>) ?? null)
         : ((rawRewrites as Record<string, unknown> | null) ?? null),
+    sim:
+      rawSim && typeof rawSim === "object" && "sim" in rawSim
+        ? ((rawSim.sim as AnalysisResult["sim"]) ?? null)
+        : ((rawSim as AnalysisResult["sim"]) ?? null),
   } as AnalysisResult;
 
   return normalized;

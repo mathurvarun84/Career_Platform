@@ -292,6 +292,7 @@ class Orchestrator:
                         "resume_text": resume_text,
                         "resume_sections": resume_sections,
                         "jd_intelligence": jd_intel or {},
+                        "ats_result": ats_result,
                     },
                 )
 

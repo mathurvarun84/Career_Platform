@@ -92,6 +92,35 @@ FINTECH_SIGNALS = {"razorpay", "phonepe", "paytm", "zepto", "upi", "payments",
 ENTERPRISE_SIGNALS = {"tcs", "infosys", "wipro", "hcl", "cognizant", "accenture",
                       "capgemini", "tech mahindra", "mphasis", "hexaware"}
 
+DIMENSION_LABELS = {
+    "keyword_match": "keyword and tech stack coverage",
+    "formatting": "resume formatting and structure",
+    "readability": "sentence clarity and readability",
+    "impact_metrics": "quantified impact and metrics",
+}
+
+DIMENSION_BENCHMARKS = {
+    "keyword_match": 20,
+    "formatting": 21,
+    "readability": 19,
+    "impact_metrics": 18,
+}
+
+# Maps weakest dimension -> the persona name that should probe it.
+# All four persona names are keys in PERSONA_PROMPTS (always present).
+PROBING_PERSONA_MAP = {
+    "keyword_match": "High-Volume Agency Recruiter",
+    "formatting": "High-Volume Agency Recruiter",
+    "readability": "Senior IC Evaluator",
+    "impact_metrics": "FAANG Technical Screener",
+}
+
+# Tie-break order when multiple dimensions share the same max gap.
+# impact_metrics first because it is most visible to all recruiter types.
+_WEAKNESS_TIE_PRIORITY = [
+    "impact_metrics", "keyword_match", "formatting", "readability"
+]
+
 
 def _select_conditional_persona(resume_text: str, resume_sections: dict) -> tuple[str, str]:
     """
@@ -112,7 +141,132 @@ def _select_conditional_persona(resume_text: str, resume_sections: dict) -> tupl
     return CONDITIONAL_PERSONAS["default"]
 
 
-def _build_system_prompt(active_personas: dict) -> str:
+def _find_weakest_dimension(
+    ats_breakdown: dict,
+) -> tuple[str | None, int | None, int | None]:
+    """
+    Identify the ATS dimension with the largest gap from its benchmark.
+
+    Returns (dimension_key, user_score, benchmark).
+    Returns (None, None, None) when the candidate meets or exceeds all benchmarks
+    - in that case no weakness injection is needed.
+
+    Tie-breaking: when multiple dimensions share the same max gap, the dimension
+    appearing earliest in _WEAKNESS_TIE_PRIORITY wins.
+    """
+    gaps = {
+        dim: max(0, DIMENSION_BENCHMARKS[dim] - score)
+        for dim, score in ats_breakdown.items()
+        if dim in DIMENSION_BENCHMARKS
+    }
+
+    if not gaps:
+        return None, None, None
+
+    max_gap = max(gaps.values())
+    if max_gap == 0:
+        return None, None, None
+
+    for dim in _WEAKNESS_TIE_PRIORITY:
+        if gaps.get(dim, 0) == max_gap:
+            return dim, ats_breakdown[dim], DIMENSION_BENCHMARKS[dim]
+
+    # Fallback - should not be reached if ats_breakdown keys are correct
+    dim = max(gaps, key=lambda d: gaps[d])
+    return dim, ats_breakdown[dim], DIMENSION_BENCHMARKS[dim]
+
+
+def _extract_missing_evidence(dim_key: str, resume_text: str) -> str:
+    """
+    Return a short, concrete description of what is missing for the given dimension.
+    Pure regex - zero LLM calls. Used inside the weakness injection prompt to give
+    the probing persona something specific to cite.
+    """
+    import re
+    text_lower = resume_text.lower()
+
+    if dim_key == "impact_metrics":
+        number_count = len(re.findall(r"\b\d+[%kKmMbB]?\b", resume_text))
+        if number_count < 3:
+            return "there are fewer than 3 quantified outcomes in the entire resume"
+        return (
+            "impact bullets are vague - no throughput (QPS/TPS), "
+            "cost savings, or INR/scale numbers visible"
+        )
+
+    if dim_key == "keyword_match":
+        weak_openers = re.findall(
+            r"\b(worked on|helped|assisted|participated|involved in|responsible for)\b",
+            text_lower,
+        )
+        if weak_openers:
+            return (
+                f"action verbs are weak - phrases like '{weak_openers[0]}' "
+                f"appear multiple times instead of strong ownership verbs"
+            )
+        return (
+            "tech stack keywords are thin - "
+            "missing core stack terms expected at this seniority level"
+        )
+
+    if dim_key == "formatting":
+        missing = [
+            s for s in ["summary", "skills", "experience", "education"]
+            if s not in text_lower
+        ]
+        if missing:
+            return f"missing standard sections: {', '.join(missing)}"
+        return (
+            "bullet structure is inconsistent - "
+            "mixing full sentences and fragments within the same section"
+        )
+
+    if dim_key == "readability":
+        sentences = re.split(r"[.!?]", resume_text)
+        long_count = sum(1 for s in sentences if len(s.split()) > 30)
+        if long_count > 0:
+            return (
+                f"{long_count} bullet(s) exceed 30 words - "
+                "too dense to parse in a 30-second skim"
+            )
+        return (
+            "sentence complexity is high - "
+            "recruiter has to re-read bullets to extract the actual contribution"
+        )
+
+    return "this dimension is below the benchmark for candidates at this level"
+
+
+def _build_weakness_injection(
+    dim_key: str,
+    user_score: int,
+    benchmark: int,
+    resume_text: str,
+) -> str:
+    """
+    Build the text paragraph that is appended to the probing persona's prompt.
+    Cites the actual score, benchmark, gap, and a concrete missing-evidence hint.
+    """
+    label = DIMENSION_LABELS[dim_key]
+    gap = benchmark - user_score
+    evidence_hint = _extract_missing_evidence(dim_key, resume_text)
+
+    return (
+        f"\n\nWEAKNESS TARGET - PROBING INSTRUCTION:\n"
+        f"Before evaluating anything else, you have already noticed that this resume "
+        f"scores {user_score}/25 on {label} (the benchmark is {benchmark}/25 - "
+        f"a gap of {gap} points). "
+        f"Your first_impression MUST open by calling out this specific gap. "
+        f"Be concrete: {evidence_hint}. "
+        f"Do not soften this observation. "
+        f"If you reject this candidate, your rejection_reason must cite this gap directly."
+    )
+
+
+def _build_system_prompt(
+    active_personas: dict,
+    weakness_injection: dict | None = None,
+) -> str:
     prompt = """You are a recruiter evaluation system simulating 5 different recruiter personas
 assessing an Indian software engineering candidate's resume.
 
@@ -121,7 +275,10 @@ For each persona, evaluate the resume independently using that persona's specifi
 PERSONAS:
 """
     for i, (name, text) in enumerate(active_personas.items(), 1):
-        prompt += f"{i}. {name} - {text}\n\n"
+        persona_text = text
+        if weakness_injection and name == weakness_injection["persona_name"]:
+            persona_text = text + weakness_injection["injection"]
+        prompt += f"{i}. {name} - {persona_text}\n\n"
 
     prompt += """
 EVALUATION RULES:
@@ -186,12 +343,30 @@ class RecruiterSimulatorAgent(BaseAgent):
         Returns:
             Dict with keys: personas, shortlist_rate, consensus_strengths,
             consensus_weaknesses, most_critical_fix, fix_priority.
+            probing_persona: str | None - name of the persona given the weakness injection, or None
+            probing_dimension: str | None - ATS dimension key that was targeted, or None
         """
         resume_text = input_dict.get("resume_text", "")
         resume_sections = input_dict.get("resume_sections", {})
         jd_intelligence = input_dict.get("jd_intelligence")
         conditional_name, conditional_prompt = _select_conditional_persona(resume_text, resume_sections)
         active_personas = {**PERSONA_PROMPTS, conditional_name: conditional_prompt}
+
+        weakness_injection = None
+        probing_dimension = None
+        ats_result = input_dict.get("ats_result")
+        if ats_result and isinstance(ats_result.get("breakdown"), dict):
+            dim_key, user_score, benchmark = _find_weakest_dimension(ats_result["breakdown"])
+            if dim_key is not None:
+                probing_persona = PROBING_PERSONA_MAP[dim_key]
+                injection_text = _build_weakness_injection(
+                    dim_key, user_score, benchmark, resume_text
+                )
+                weakness_injection = {
+                    "persona_name": probing_persona,
+                    "injection": injection_text,
+                }
+                probing_dimension = dim_key
 
         if not resume_text or not isinstance(resume_text, str):
             raise ValueError("RecruiterSimulatorAgent: resume_text must be a non-empty string")
@@ -206,7 +381,7 @@ class RecruiterSimulatorAgent(BaseAgent):
         else:
             user_message += "\n\nNO JOB DESCRIPTION - evaluate against general market."
 
-        system_prompt = _build_system_prompt(active_personas)
+        system_prompt = _build_system_prompt(active_personas, weakness_injection)
         raw_response = self._call_llm(system_prompt, user_message)
         parsed = self._parse_json(raw_response)
 
@@ -229,6 +404,10 @@ class RecruiterSimulatorAgent(BaseAgent):
             )
 
         parsed["fix_priority"] = self._build_fix_priority(parsed["personas"])
+        parsed["probing_persona"] = (
+            weakness_injection["persona_name"] if weakness_injection else None
+        )
+        parsed["probing_dimension"] = probing_dimension
         return parsed
 
     def _format_resume_for_personas(self, resume_text: str, resume_sections: dict) -> str:

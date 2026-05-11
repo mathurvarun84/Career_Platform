@@ -188,6 +188,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             denomColor="#a5b4fc"
             hint={`You can reach ${potentialATS}`}
             deltaBadge={`↗ +${potentialATS - atsScore}`}
+            infoText="ATS Score shows how well your resume passes applicant tracking systems based on keywords, formatting, readability, and impact."
           />
 
           {/* Card 2 — JD Match */}
@@ -203,6 +204,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
                   : "Strong JD alignment"
               }
               deltaBadge={`↗ +${jdGain}`}
+              infoText="JD Match shows how closely your resume aligns with the selected job description requirements."
             />
           )}
 
@@ -214,6 +216,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             denomColor="#a5b4fc"
             hint={pctLabel}
             deltaBadge={pctGain !== null ? `↗ +${pctGain}` : undefined}
+            infoText="Market Percentile compares your composite resume strength against similar candidates at your seniority level."
           />
 
           {/* Card 4 — Shortlist Probability */}
@@ -225,12 +228,14 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
               padding: "24px",
               boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
               position: "relative",
-              overflow: "hidden",
               display: "flex",
               flexDirection: "column",
             }}>
-              <div style={{ fontSize: "12px", fontWeight: 600, color: shortlistColor, marginBottom: "4px" }}>
-                Shortlist Probability
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+                <span style={{ fontSize: "13px", fontWeight: 600, color: "#6b7280" }}>
+                  Shortlist Probability
+                </span>
+                <InfoTooltipButton infoText="Shortlist Probability estimates the chance that recruiters would move your profile to interview review." />
               </div>
               <div>
                 <span style={{ fontSize: "42px", fontWeight: 800, color: shortlistColor, lineHeight: 1 }}>
@@ -567,9 +572,86 @@ interface ScoreCardProps {
   denomColor: string;
   hint: string;
   deltaBadge?: string;
+  infoText?: string;
 }
 
-function ScoreCard({ label, labelColor, score, denomColor, hint, deltaBadge }: ScoreCardProps) {
+function InfoTooltipButton({ infoText }: { infoText: string }) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+
+  return (
+    <div
+      style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+      onMouseEnter={() => setTooltipOpen(true)}
+      onMouseLeave={() => setTooltipOpen(false)}
+    >
+      <button
+        type="button"
+        onClick={(e) => e.preventDefault()}
+        aria-label="Show score info"
+        style={{
+          width: "16px",
+          height: "16px",
+          background: "none",
+          border: "none",
+          padding: 0,
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          lineHeight: 1,
+        }}
+      >
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <circle cx="7" cy="7" r="6.25" stroke="#9ca3af" strokeWidth="1.25" />
+          <text
+            x="7"
+            y="11"
+            textAnchor="middle"
+            fontSize="8.5"
+            fontWeight="700"
+            fill="#9ca3af"
+            fontFamily="inherit"
+          >
+            i
+          </text>
+        </svg>
+      </button>
+      {tooltipOpen && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: "calc(100% + 8px)",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "#111827",
+            color: "#ffffff",
+            fontSize: "12px",
+            fontWeight: 400,
+            lineHeight: 1.5,
+            borderRadius: "8px",
+            padding: "8px 12px",
+            width: "180px",
+            zIndex: 50,
+            boxShadow: "0 4px 12px rgba(0,0,0,0.18)",
+            pointerEvents: "none",
+          }}
+        >
+          {infoText}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ScoreCard({
+  label,
+  labelColor,
+  score,
+  denomColor,
+  hint,
+  deltaBadge,
+  infoText,
+}: ScoreCardProps) {
   return (
     <div style={{
       background: "#ffffff",
@@ -578,12 +660,14 @@ function ScoreCard({ label, labelColor, score, denomColor, hint, deltaBadge }: S
       padding: "24px",
       boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
       position: "relative",
-      overflow: "hidden",
       display: "flex",
       flexDirection: "column",
     }}>
-      <div style={{ fontSize: "12px", fontWeight: 600, color: labelColor, marginBottom: "4px" }}>
-        {label}
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+        <span style={{ fontSize: "13px", fontWeight: 600, color: "#6b7280" }}>
+          {label}
+        </span>
+        {infoText && <InfoTooltipButton infoText={infoText} />}
       </div>
       <div>
         <span style={{ fontSize: "42px", fontWeight: 800, color: labelColor, lineHeight: 1 }}>

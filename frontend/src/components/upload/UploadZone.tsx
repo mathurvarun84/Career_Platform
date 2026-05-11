@@ -16,6 +16,91 @@ const isAcceptedFile = (candidate: File): boolean => {
   return ACCEPTED_EXTENSIONS.some((extension) => lowerName.endsWith(extension));
 };
 
+function formatFetchTime(isoTimestamp: string): string {
+  const fetchedAt = new Date(isoTimestamp);
+  const diffMs = new Date().getTime() - fetchedAt.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+
+  if (Number.isNaN(fetchedAt.getTime())) {
+    return "";
+  }
+  if (diffMin < 1) {
+    return "just now";
+  }
+  if (diffMin < 60) {
+    return `${diffMin} minute${diffMin === 1 ? "" : "s"} ago`;
+  }
+
+  return fetchedAt.toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
+}
+
+function extractDomain(url: string | null): string | null {
+  if (!url) {
+    return null;
+  }
+
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+interface FreshnessPillProps {
+  fetchedAt: string | null;
+  sourceUrl: string | null;
+  isCached: boolean;
+}
+
+function FreshnessPill({ fetchedAt, sourceUrl, isCached }: FreshnessPillProps) {
+  if (!fetchedAt) {
+    return null;
+  }
+
+  const timeLabel = formatFetchTime(fetchedAt);
+  const domainLabel = extractDomain(sourceUrl);
+  const parts = [
+    isCached ? "🗃️ From cache" : "📡 Fetched live",
+    isCached && timeLabel ? `Originally fetched ${timeLabel}` : timeLabel,
+    domainLabel,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const pillStyle = isCached
+    ? {
+        background: "#fffbeb",
+        border: "1px solid #fde68a",
+        color: "#92400e",
+      }
+    : {
+        background: "#f0fdf4",
+        border: "1px solid #bbf7d0",
+        color: "#166534",
+      };
+
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "6px",
+        borderRadius: "6px",
+        padding: "5px 10px",
+        fontSize: "12px",
+        fontWeight: 500,
+        marginTop: "6px",
+        ...pillStyle,
+      }}
+    >
+      {parts}
+    </div>
+  );
+}
+
 export default function UploadZone() {
   const [file, setFile] = useState<File | null>(null);
   const [jdText, setJdText] = useState("");
@@ -33,6 +118,7 @@ export default function UploadZone() {
     "idle" | "loading" | "found" | "not_found" | "multiple" | "error"
   >("idle");
   const [fetchResult, setFetchResult] = useState<FetchJDResult | null>(null);
+  const [jdLoadedFromFetch, setJdLoadedFromFetch] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { isMobile, isTablet } = useWindowSize();
   const jdFetchUrl = `${import.meta.env.VITE_API_URL ?? ""}/api/fetch-jd`;
@@ -171,6 +257,7 @@ export default function UploadZone() {
 
     setFetchStatus("loading");
     setFetchResult(null);
+    setJdLoadedFromFetch(false);
 
     try {
       const response = await fetch(jdFetchUrl, {
@@ -187,10 +274,13 @@ export default function UploadZone() {
       }
     } catch {
       setFetchStatus("error");
+      setJdLoadedFromFetch(false);
       setFetchResult({
         status: "error",
         jd_text: null,
         source_url: null,
+        fetched_at: null,
+        is_cached: false,
         company: requestedCompany,
         role: requestedRole,
         error_message: "Network error. Please try again.",
@@ -629,7 +719,11 @@ export default function UploadZone() {
             >
               <button
                 type="button"
-                onClick={() => setJdTab("paste")}
+                onClick={() => {
+                  setJdTab("paste");
+                  setFetchResult(null);
+                  setJdLoadedFromFetch(false);
+                }}
                 style={{
                   flex: 1,
                   background: jdTab === "paste" ? "#6366f1" : "#ffffff",
@@ -668,7 +762,14 @@ export default function UploadZone() {
               <>
                 <textarea
                   value={jdText}
-                  onChange={(event) => setJdText(event.target.value)}
+                  onChange={(event) => {
+                    const nextText = event.target.value;
+                    setJdText(nextText);
+                    if (!nextText.trim()) {
+                      setFetchResult(null);
+                      setJdLoadedFromFetch(false);
+                    }
+                  }}
                   placeholder="Paste the job description here..."
                   rows={8}
                   style={{
@@ -1080,6 +1181,7 @@ export default function UploadZone() {
                             setJdText(fetchResult.jd_text);
                           }
                           setFetchStatus("found");
+                          setJdLoadedFromFetch(true);
                         }}
                         style={{
                           background: "#16a34a",
@@ -1100,6 +1202,7 @@ export default function UploadZone() {
                         onClick={() => {
                           setFetchStatus("idle");
                           setFetchResult(null);
+                          setJdLoadedFromFetch(false);
                         }}
                         style={{
                           background: "#ffffff",
@@ -1200,6 +1303,7 @@ export default function UploadZone() {
                         onClick={() => {
                           setFetchStatus("idle");
                           setFetchResult(null);
+                          setJdLoadedFromFetch(false);
                         }}
                         style={{
                           background: "#ffffff",
@@ -1217,7 +1321,11 @@ export default function UploadZone() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => setJdTab("paste")}
+                        onClick={() => {
+                          setJdTab("paste");
+                          setFetchResult(null);
+                          setJdLoadedFromFetch(false);
+                        }}
                         style={{
                           background: "#ffffff",
                           color: "#6b7280",
@@ -1257,6 +1365,7 @@ export default function UploadZone() {
                       onClick={() => {
                         setFetchStatus("idle");
                         setFetchResult(null);
+                        setJdLoadedFromFetch(false);
                       }}
                       style={{
                         background: "#ffffff",
@@ -1292,6 +1401,15 @@ export default function UploadZone() {
               }}
             >
               ✓ JD loaded · Ready to analyze
+            </div>
+          )}
+          {jdLoadedFromFetch && fetchResult?.status === "found" && (
+            <div style={{ marginBottom: "8px", textAlign: "center" }}>
+              <FreshnessPill
+                fetchedAt={fetchResult.fetched_at}
+                sourceUrl={fetchResult.source_url}
+                isCached={fetchResult.is_cached}
+              />
             </div>
           )}
           <button

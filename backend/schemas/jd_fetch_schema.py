@@ -27,6 +27,8 @@ class FetchJDResponse(BaseModel):
     status: Literal["found", "not_found", "multiple", "error"]
     jd_text: Optional[str] = None
     source_url: Optional[str] = None
+    fetched_at: Optional[str] = None
+    is_cached: bool = False
     company: str
     role: str
     alternatives: Optional[list[AlternativeRole]] = None

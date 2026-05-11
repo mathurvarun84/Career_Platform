@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { useWindowSize } from "../hooks/useWindowSize";
 import { useResumeStore } from "../store/useResumeStore";
@@ -52,7 +52,92 @@ const getShortlistColor = (
   return { text: "#dc2626", bg: "#fef2f2", border: "#fecaca" };
 };
 
-function PersonaCard({ persona }: { readonly persona: PersonaVerdict }) {
+function LabelWithInfo({
+  label,
+  info,
+  color = "#6b7280",
+}: {
+  readonly label: string;
+  readonly info: string;
+  readonly color?: string;
+}) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+      <span style={{ fontSize: "13px", fontWeight: 600, color }}>{label}</span>
+      <div
+        style={{ position: "relative", display: "inline-flex", alignItems: "center" }}
+        onMouseEnter={() => setTooltipOpen(true)}
+        onMouseLeave={() => setTooltipOpen(false)}
+      >
+        <button
+          type="button"
+          onClick={(e) => e.preventDefault()}
+          aria-label={`Show ${label} info`}
+          style={{
+            width: "16px",
+            height: "16px",
+            background: "none",
+            border: "none",
+            padding: 0,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            lineHeight: 1,
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <circle cx="7" cy="7" r="6.25" stroke="#9ca3af" strokeWidth="1.25" />
+            <text
+              x="7"
+              y="11"
+              textAnchor="middle"
+              fontSize="8.5"
+              fontWeight="700"
+              fill="#9ca3af"
+              fontFamily="inherit"
+            >
+              i
+            </text>
+          </svg>
+        </button>
+        {tooltipOpen && (
+          <div
+            style={{
+              position: "absolute",
+              bottom: "calc(100% + 8px)",
+              left: "50%",
+              transform: "translateX(-50%)",
+              background: "#111827",
+              color: "#ffffff",
+              fontSize: "12px",
+              fontWeight: 400,
+              lineHeight: 1.5,
+              borderRadius: "8px",
+              padding: "8px 12px",
+              width: "180px",
+              zIndex: 50,
+              boxShadow: "0 4px 12px rgba(0,0,0,0.18)",
+              pointerEvents: "none",
+            }}
+          >
+            {info}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PersonaCard({
+  persona,
+  probingPersona,
+}: {
+  readonly persona: PersonaVerdict;
+  readonly probingPersona: string | null;
+}) {
   const badge = getBadgeStyle(persona.persona);
   const isShortlisted = persona.shortlist_decision;
 
@@ -157,6 +242,23 @@ function PersonaCard({ persona }: { readonly persona: PersonaVerdict }) {
       </div>
 
       {/* First impression */}
+      {probingPersona && persona.persona === probingPersona && (
+        <div style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "5px",
+          background: "#fef3c7",
+          border: "1px solid #fbbf24",
+          borderRadius: "6px",
+          padding: "3px 8px",
+          fontSize: "11px",
+          color: "#92400e",
+          fontWeight: 600,
+          marginBottom: "8px",
+        }}>
+          🎯 Targeted your weakest area
+        </div>
+      )}
       <div
         style={{
           fontSize: "13px",
@@ -352,9 +454,10 @@ export default function RecruiterSimulation() {
               boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
             }}
           >
-            <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "8px" }}>
-              Shortlist Rate
-            </div>
+            <LabelWithInfo
+              label="Shortlist Rate"
+              info="Shortlist Rate is the share of simulated recruiter personas that would shortlist your resume."
+            />
             <div
               style={{
                 fontSize: "36px",
@@ -397,9 +500,10 @@ export default function RecruiterSimulation() {
               boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
             }}
           >
-            <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "8px" }}>
-              Avg Fit Score
-            </div>
+            <LabelWithInfo
+              label="Avg Fit Score"
+              info="Avg Fit Score is the average fit rating across all simulated recruiter personas."
+            />
             <div
               style={{
                 fontSize: "36px",
@@ -476,7 +580,11 @@ export default function RecruiterSimulation() {
           }}
         >
           {personas.map((persona) => (
-            <PersonaCard key={persona.persona} persona={persona} />
+            <PersonaCard
+              key={persona.persona}
+              persona={persona}
+              probingPersona={sim.probing_persona}
+            />
           ))}
         </div>
 

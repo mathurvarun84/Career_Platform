@@ -7,6 +7,27 @@ import type {
   HistoryResponse,
 } from "../types/index";
 
+const normalizeRecruiterSim = (payload: AnalysisResult): AnalysisResult => {
+  if (payload.sim) {
+    return payload;
+  }
+
+  const raw = payload as unknown as Record<string, unknown>;
+  const simCandidate =
+    raw.sim_result ??
+    raw.recruiter_sim ??
+    raw.recruiter_simulation ??
+    null;
+  const sim =
+    simCandidate &&
+    typeof simCandidate === "object" &&
+    "sim" in (simCandidate as Record<string, unknown>)
+      ? ((simCandidate as Record<string, unknown>).sim as AnalysisResult["sim"])
+      : (simCandidate as AnalysisResult["sim"]);
+
+  return { ...payload, sim: sim ?? null };
+};
+
 interface FastAPIErrorDetail {
   msg?: string;
 }
@@ -70,7 +91,7 @@ export const getResult = async (jobId: string): Promise<AnalysisResult> => {
   const response = await axiosInstance.get<AnalysisResult>(
     `/api/result/${jobId}`
   );
-  return response.data;
+  return normalizeRecruiterSim(response.data);
 };
 
 export const postGapClose = async (
