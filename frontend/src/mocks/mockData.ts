@@ -24,6 +24,44 @@ export const MOCK_ANALYSIS_RESULT: AnalysisResult = {
       readability: 18,
       impact_metrics: 14,
     },
+    details: [
+      {
+        score: 16,
+        benchmark: 20,
+        gap: 4,
+        gap_reason:
+          "Missing 3 keywords from the JD — add Kubernetes and Kafka in skills plus one project bullet.",
+        label: "Keyword Match",
+        icon: "🔑",
+      },
+      {
+        score: 20,
+        benchmark: 21,
+        gap: 1,
+        gap_reason:
+          "Minor formatting issue: section spacing is inconsistent between experience and certifications.",
+        label: "Formatting",
+        icon: "📐",
+      },
+      {
+        score: 18,
+        benchmark: 19,
+        gap: 1,
+        gap_reason:
+          "Some sentences are too long — aim for under 25 words per bullet.",
+        label: "Readability",
+        icon: "📖",
+      },
+      {
+        score: 14,
+        benchmark: 18,
+        gap: 4,
+        gap_reason:
+          "Add 2–3 more impact numbers: percentages, throughput (QPS/TPS), or business outcomes.",
+        label: "Impact & Metrics",
+        icon: "📊",
+      },
+    ],
     ats_issues: [
       "Most experience bullets describe responsibilities but miss quantified outcomes.",
       "Core backend and DevOps keywords from senior SDE JDs are not prominent in the skills section.",
@@ -437,6 +475,8 @@ Prepared to operate as a senior-level force multiplier in organizations with a h
     ],
     most_critical_fix:
       "Add quantified impact metrics to core experience bullets so reviewers can clearly assess scale and business outcomes.",
+    probing_persona: null,
+    probing_dimension: null,
   },
   percentile: { score: 62, label: "Top 38%", percentile: 62 },
   positioning: {

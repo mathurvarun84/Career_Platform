@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import type { PriorityFix } from "./types";
+import type { ATSDimensionDetail, PriorityFix } from "./types";
 import DataSourceNotice from "./components/DataSourceNotice";
 import { useWindowSize } from "./hooks/useWindowSize";
 import { useResumeStore } from "./store/useResumeStore";
@@ -17,6 +17,48 @@ interface ActionItem {
   gainType: "ats" | "jd";
   buttonLabel: string;
   targetTab: string;
+}
+
+const detailOrder = ["keyword_match", "formatting", "readability", "impact_metrics"] as const;
+
+const detailFallbackMeta: Record<
+  (typeof detailOrder)[number],
+  { label: string; icon: string; benchmark: number }
+> = {
+  keyword_match: { label: "Keyword Match", icon: "🔑", benchmark: 20 },
+  formatting: { label: "Formatting", icon: "📐", benchmark: 21 },
+  readability: { label: "Readability", icon: "📖", benchmark: 19 },
+  impact_metrics: { label: "Impact & Metrics", icon: "📊", benchmark: 18 },
+};
+
+function getDimensionDetails(
+  details: ATSDimensionDetail[] | undefined,
+  breakdown: {
+    keyword_match: number;
+    formatting: number;
+    readability: number;
+    impact_metrics: number;
+  }
+): ATSDimensionDetail[] {
+  if (details && details.length === 4) {
+    return details;
+  }
+
+  return detailOrder.map((key) => {
+    const score = breakdown[key];
+    const benchmark = detailFallbackMeta[key].benchmark;
+    const gap = Math.max(0, benchmark - score);
+    return {
+      score,
+      benchmark,
+      gap,
+      gap_reason: gap === 0
+        ? "At benchmark for this dimension."
+        : "Below benchmark — apply targeted fixes in this dimension.",
+      label: detailFallbackMeta[key].label,
+      icon: detailFallbackMeta[key].icon,
+    };
+  });
 }
 
 function deriveButtonLabel(text: string): string {
@@ -50,6 +92,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const hasPositioning = Boolean(analysisResult.positioning);
 
   const bd = analysisResult.ats.breakdown;
+  const atsDetails = getDimensionDetails(analysisResult.ats.details, bd);
   const atsScore = analysisResult.ats.score;
   const potentialGain =
     bd.impact_metrics < 12 ? 15 :
@@ -490,46 +533,113 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             ATS Analysis Breakdown
           </div>
 
-          {[
-            { label: "Keyword Match", value: bd.keyword_match },
-            { label: "Formatting & Structure", value: bd.formatting },
-            { label: "Readability & Clarity", value: bd.readability },
-            { label: "Impact & Achievements", value: bd.impact_metrics },
-          ].map(({ label, value }) => {
-            const getColor = (v: number) =>
-              v >= 18 ? "#16a34a" : v >= 12 ? "#6366f1" : "#dc2626";
-            const color = getColor(value);
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
+              gap: "12px",
+            }}
+          >
+            {atsDetails.map((detail) => {
+            const scorePercent = Math.round((detail.score / 25) * 100);
+            const benchmarkPercent = (detail.benchmark / 25) * 100;
+            const barColor =
+              detail.gap === 0 ? "#16a34a" : detail.gap > 3 ? "#ef4444" : "#6366f1";
+
+            const badgeStyle =
+              detail.gap === 0
+                ? {
+                    background: "#dcfce7",
+                    border: "1px solid #86efac",
+                    color: "#166534",
+                  }
+                : detail.gap > 3
+                  ? {
+                      background: "#fee2e2",
+                      border: "1px solid #fca5a5",
+                      color: "#991b1b",
+                    }
+                  : {
+                      background: "#fef3c7",
+                      border: "1px solid #fbbf24",
+                      color: "#92400e",
+                    };
+
+            const statusIcon = detail.gap === 0 ? "✓" : detail.gap > 3 ? "✗" : "⚠";
             return (
-              <div key={label} style={{
-                display: "flex", alignItems: "center", gap: "12px", marginBottom: "10px",
-              }}>
-                <div style={{
-                  flex: "0 0 170px", fontSize: "12px", fontWeight: 600, color: "#374151",
-                }}>
-                  {label}
+              <div
+                key={detail.label}
+                style={{
+                  background: "#ffffff",
+                  border: "1.5px solid #e5e7eb",
+                  borderRadius: "10px",
+                  padding: "18px 20px",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    marginBottom: "12px",
+                  }}
+                >
+                  <div style={{ fontSize: "14px", fontWeight: 700, color: "#111827" }}>
+                    {detail.icon} {detail.label}
+                  </div>
+                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#374151" }}>
+                    {detail.score}/25
+                  </div>
                 </div>
-                <div style={{
-                  flex: 1, height: "8px", background: "#f3f4f6",
-                  borderRadius: "999px", overflow: "hidden",
-                }}>
-                  <div style={{
-                    height: "100%",
-                    width: barsAnimated ? `${Math.round((value / 25) * 100)}%` : "0%",
-                    background: color,
-                    borderRadius: "999px",
-                    transition: "width 0.6s cubic-bezier(0.4, 0, 0.2, 1)",
-                  }} />
+
+                <div style={{ position: "relative", height: "8px", background: "#f3f4f6", borderRadius: "4px" }}>
+                  <div
+                    style={{
+                      width: barsAnimated ? `${scorePercent}%` : "0%",
+                      height: "100%",
+                      background: barColor,
+                      borderRadius: "4px",
+                      transition: "width 0.6s ease",
+                    }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: `${benchmarkPercent}%`,
+                      top: "-3px",
+                      width: "2px",
+                      height: "14px",
+                      background: "#d97706",
+                      borderRadius: "1px",
+                    }}
+                  />
                 </div>
-                <div style={{
-                  flex: "0 0 36px", textAlign: "right",
-                  fontSize: "12px", fontWeight: 700,
-                  color,
-                }}>
-                  {value}/25
+
+                <div
+                  style={{
+                    fontSize: "11px",
+                    color: "#6b7280",
+                    marginTop: "4px",
+                    marginBottom: "12px",
+                  }}
+                >
+                  Benchmark: {detail.benchmark}/25
+                </div>
+
+                <div
+                  style={{
+                    borderRadius: "6px",
+                    padding: "6px 10px",
+                    fontSize: "12px",
+                    ...badgeStyle,
+                  }}
+                >
+                  {statusIcon} {detail.gap_reason}
                 </div>
               </div>
             );
           })}
+          </div>
 
           {analysisResult.ats.ats_issues.length > 0 && (
             <div style={{ marginTop: "16px" }}>

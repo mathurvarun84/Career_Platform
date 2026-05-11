@@ -164,16 +164,19 @@ class BaseAgent(ABC):
         """
         Attempt to repair JSON truncated mid-stream by the LLM.
         Closes unterminated strings, arrays, and objects.
+
+        Handles the common LLM truncation pattern of "key": "value...EOF where
+        the unterminated string is dropped along with its dangling key/colon
+        and any trailing comma on the previous sibling.
+
         Returns dict on success, None if unrecoverable.
         """
-        # Track state as we walk the text
         in_string = False
         escape = False
-        depth = 0  # brace/bracket nesting
-        stack: list[str] = []  # '{' or '['
+        stack: list[str] = []
         cut_pos = len(text)
 
-        for i, ch in enumerate(text):
+        for ch in text:
             if escape:
                 escape = False
                 continue
@@ -186,26 +189,23 @@ class BaseAgent(ABC):
             if in_string:
                 continue
             if ch in ("{", "["):
-                depth += 1
                 stack.append(ch)
             elif ch in ("}", "]"):
                 if stack:
                     stack.pop()
-                    depth -= 1
 
-        # If still inside a string, truncate to last clean position
         if in_string:
-            # Find the last position before the unterminated string started
-            # Walk backwards from end to find the opening quote of the unterminated string
             last_quote = text.rfind('"', 0, cut_pos)
             if last_quote >= 0:
-                # Count quotes to see if this one is the opener or closer
                 quote_count = text.count('"', 0, last_quote + 1)
                 if quote_count % 2 == 1:
-                    # Odd = opening quote of unterminated string, drop it
                     text = text[:last_quote]
 
-        # Close remaining open brackets/braces
+        text = self._strip_dangling_key(text)
+        text = text.rstrip()
+        if text.endswith(","):
+            text = text[:-1]
+
         closers = {"{": "}", "[": "]"}
         while stack:
             text += closers.get(stack.pop(), "")
@@ -214,6 +214,27 @@ class BaseAgent(ABC):
             return json.loads(text)
         except Exception:
             return None
+
+    def _strip_dangling_key(self, text: str) -> str:
+        """
+        Remove a trailing `"key":` (and the comma preceding it) when there is no
+        value yet. This is the common shape after `_repair_truncated_json` drops
+        an unterminated string value.
+
+        Example input:  '... "name": "Alice", "bio":  '
+        Returns:        '... "name": "Alice"'
+        """
+        stripped = text.rstrip()
+        if not stripped.endswith(":"):
+            colon_match = re.search(r':\s*$', stripped)
+            if not colon_match:
+                return text
+
+        key_match = re.search(r',?\s*"[^"\\]*"\s*:\s*$', stripped)
+        if not key_match:
+            return text
+
+        return stripped[: key_match.start()]
 
     def validate_output(self, output: dict, required_keys: list[str]) -> None:
         missing = [k for k in required_keys if k not in output]

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { useWindowSize } from "../hooks/useWindowSize";
 import { useResumeStore } from "../store/useResumeStore";

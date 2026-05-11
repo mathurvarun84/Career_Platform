@@ -51,6 +51,29 @@ _IMPACT_RE = re.compile(
     re.IGNORECASE,
 )
 
+BENCHMARKS = {
+    "keyword_match": 20,
+    "formatting": 21,
+    "readability": 19,
+    "impact_metrics": 18,
+}
+
+DIMENSION_META = {
+    "keyword_match": {"label": "Keyword Match", "icon": "🔑"},
+    "formatting": {"label": "Formatting", "icon": "📐"},
+    "readability": {"label": "Readability", "icon": "📖"},
+    "impact_metrics": {"label": "Impact & Metrics", "icon": "📊"},
+}
+
+_DIMENSION_ORDER = ["keyword_match", "formatting", "readability", "impact_metrics"]
+_STOPWORDS = {
+    "and", "the", "for", "with", "from", "that", "this", "you", "your", "our", "into",
+    "across", "using", "used", "build", "built", "have", "has", "had", "were", "was",
+    "are", "is", "will", "can", "should", "must", "team", "teams", "role", "work",
+    "years", "year", "experience", "job", "resume", "candidate", "skills", "skill",
+    "requirements", "required", "preferred", "plus", "strong", "ability", "knowledge",
+}
+
 
 def score_resume(resume_text: str, jd_text: str | None = None) -> dict:
     """
@@ -83,7 +106,140 @@ def score_resume(resume_text: str, jd_text: str | None = None) -> dict:
     }
     total = sum(breakdown.values())
     issues = _collect_issues(resume_text, breakdown)
-    return {"score": total, "breakdown": breakdown, "ats_issues": issues}
+    details = generate_dimension_details(breakdown, resume_text, jd_text, issues)
+    return {"score": total, "breakdown": breakdown, "ats_issues": issues, "details": details}
+
+
+def generate_dimension_details(
+    breakdown: dict,
+    resume_text: str,
+    jd_text: str | None = None,
+    ats_issues: list[str] | None = None,
+) -> list[dict]:
+    """
+    Generate per-dimension detail objects with benchmark and gap explanation.
+
+    The function is deterministic and does not make network or LLM calls.
+    """
+    details = []
+    issues = ats_issues or _collect_issues(resume_text, breakdown)
+    for dim in _DIMENSION_ORDER:
+        score = int(breakdown.get(dim, 0) or 0)
+        benchmark = BENCHMARKS[dim]
+        gap = max(0, benchmark - score)
+        reason = _gap_reason(dim, score, gap, resume_text, jd_text, issues)
+        details.append(
+            {
+                "score": score,
+                "benchmark": benchmark,
+                "gap": gap,
+                "gap_reason": reason,
+                "label": DIMENSION_META[dim]["label"],
+                "icon": DIMENSION_META[dim]["icon"],
+            }
+        )
+    return details
+
+
+def _gap_reason(
+    dim: str,
+    score: int,
+    gap: int,
+    resume_text: str,
+    jd_text: str | None,
+    ats_issues: list[str],
+) -> str:
+    """
+    Build a one-line deterministic explanation for the dimension gap.
+    """
+    _ = score  # score kept explicit for future branching expansion
+    text_lower = resume_text.lower()
+    words = set(re.findall(r"\b\w+\b", text_lower))
+
+    if dim == "keyword_match":
+        if gap == 0:
+            return "Strong keyword coverage — action verbs and tech stack well-represented."
+        if jd_text:
+            missing = _extract_missing_jd_keywords(text_lower, jd_text)
+            if gap <= 5:
+                if missing:
+                    top_two = ", ".join(missing[:2])
+                    return f"Missing {len(missing)} keywords from the JD — add {top_two}."
+                return "Good keyword coverage. Add more role-specific terms from the JD in experience bullets."
+            if len(missing) >= 2:
+                return (
+                    f"Keyword gap is high — JD requires {missing[0]}, {missing[1]} not found in resume."
+                )
+            if len(missing) == 1:
+                return f"Keyword gap is high — JD requires {missing[0]} and related role terms not found in resume."
+            return "Keyword gap is high — core JD language is not consistently reflected in your bullets."
+        if gap <= 5:
+            return "Good keyword coverage. Add a JD to find role-specific gaps."
+        verb_hits = len(ACTION_VERBS & words)
+        if verb_hits < 5:
+            return "Low action verb density — use stronger openers like 'Led', 'Architected', 'Shipped'."
+        return "Keyword coverage needs improvement — add clearer domain terms in summary and skills."
+
+    if dim == "formatting":
+        if gap == 0:
+            return "Clean structure — sections, bullets, and length are well-formatted."
+        formatting_issue = next((issue for issue in ats_issues if _is_formatting_issue(issue)), "")
+        if gap <= 3:
+            if formatting_issue:
+                return f"Minor formatting issue: {formatting_issue}."
+            return "Minor formatting issue: align section headers, bullet styles, and spacing."
+        return "Multiple formatting issues detected: missing standard sections or inconsistent bullets."
+
+    if dim == "readability":
+        if gap == 0:
+            return "Sentence complexity is appropriate for a technical resume."
+        if gap <= 5:
+            return "Some sentences are too long — aim for under 25 words per bullet."
+        return "High sentence complexity is hurting scannability — shorten bullets, cut filler phrases."
+
+    if dim == "impact_metrics":
+        if gap == 0:
+            return "Good quantification — numbers and scale metrics are present."
+        if gap <= 4:
+            return "Add 2–3 more impact numbers: percentages, throughput (QPS/TPS), or business outcomes."
+        return "Resume lacks quantified impact — every experience bullet should have at least one number."
+
+    return "Gap explanation unavailable for this dimension."
+
+
+def _extract_missing_jd_keywords(resume_text_lower: str, jd_text: str) -> list[str]:
+    jd_lower = jd_text.lower()
+    resume_words = set(re.findall(r"\b\w+\b", resume_text_lower))
+    jd_words = re.findall(r"\b\w+\b", jd_lower)
+
+    phrases: list[str] = []
+    for kw in sorted(TECH_KEYWORDS, key=len, reverse=True):
+        if (" " in kw or "/" in kw) and kw in jd_lower and kw not in resume_text_lower:
+            phrases.append(kw)
+
+    token_counts: dict[str, int] = {}
+    for token in jd_words:
+        if token in _STOPWORDS or len(token) < 3:
+            continue
+        if token in resume_words:
+            continue
+        token_counts[token] = token_counts.get(token, 0) + 1
+
+    ranked_tokens = sorted(token_counts.items(), key=lambda item: (-item[1], item[0]))
+    for token, _ in ranked_tokens:
+        if token not in phrases:
+            phrases.append(token)
+        if len(phrases) >= 5:
+            break
+    return phrases[:5]
+
+
+def _is_formatting_issue(issue: str) -> bool:
+    issue_lower = issue.lower()
+    formatting_terms = (
+        "section", "header", "bullet", "format", "spacing", "short", "long", "page", "length"
+    )
+    return any(term in issue_lower for term in formatting_terms)
 
 
 def _score_keyword_match(resume_text: str, jd_text: str | None) -> int:

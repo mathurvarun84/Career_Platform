@@ -291,28 +291,41 @@ EVALUATION RULES:
   61-80: good fit with addressable gaps, 81-100: strong match
 - Return personas array in the same order as the numbered list above
 
+LENGTH LIMITS (HARD - do not exceed):
+- first_impression: under 25 words
+- each noticed item: under 12 words
+- each ignored item: under 12 words
+- rejection_reason: under 20 words (empty "" when shortlisted)
+- flip_condition: under 18 words (empty "" when shortlisted)
+- each consensus_strengths item: under 14 words
+- each consensus_weaknesses item: under 14 words
+- most_critical_fix: under 20 words
+- noticed: 2-3 items max | ignored: 1-2 items max
+- consensus_strengths: 2-4 items | consensus_weaknesses: 2-4 items
+
 RESPONSE FORMAT - return ONLY this JSON, no markdown, no preamble:
 
 {
   "personas": [
     {
       "persona": "exact persona name from the numbered list above",
-      "first_impression": "1-2 sentence first reaction from this persona's perspective",
-      "noticed": ["specific positive signals this persona values - at least 2"],
-      "ignored": ["specific things this persona discounted - at least 1"],
-      "rejection_reason": "primary reason for rejection, or empty string if shortlisted",
+      "first_impression": "under 25 words",
+      "noticed": ["2-3 short items, each under 12 words"],
+      "ignored": ["1-2 short items, each under 12 words"],
+      "rejection_reason": "under 20 words, or empty string if shortlisted",
       "shortlist_decision": true or false,
       "fit_score": 0-100 integer representing fit against THIS persona's criteria,
-      "flip_condition": "ONE specific actionable change that would flip this persona to shortlist. Empty string if already shortlisted."
+      "flip_condition": "under 18 words; empty string if already shortlisted"
     }
   ],
   "shortlist_rate": 0.0,
   "consensus_strengths": ["only signals praised by 3 or more personas"],
   "consensus_weaknesses": ["only issues flagged by 3 or more personas"],
-  "most_critical_fix": "single highest-priority improvement derived from the most common flip_conditions above"
+  "most_critical_fix": "single highest-priority improvement under 20 words"
 }
 
-The personas array must have exactly 5 entries in the same order as the numbered list."""
+The personas array must have exactly 5 entries in the same order as the numbered list.
+Be terse - the JSON must fit within strict token budgets. Cut adjectives, no preamble."""
     return prompt
 
 
@@ -326,11 +339,16 @@ class RecruiterSimulatorAgent(BaseAgent):
 
     def __init__(self):
         """
-        Initialize Agent 5 with claude-haiku-4-5-20251001, 4000 max tokens, Anthropic provider.
+        Initialize Agent 5 with claude-haiku-4-5-20251001, 6000 max tokens, Anthropic provider.
 
         Agent 5 is the only agent that uses Anthropic - all others use OpenAI.
+
+        max_tokens bumped from 4000 to 6000: 5 detailed personas with 7 fields each
+        plus consensus arrays were exceeding the previous ceiling, causing mid-string
+        truncation and unrecoverable JSON. 6000 gives ~50% headroom while staying
+        well within claude-haiku-4-5's output capacity.
         """
-        super().__init__(model="claude-haiku-4-5-20251001", max_tokens=4000, provider="anthropic")
+        super().__init__(model="claude-haiku-4-5-20251001", max_tokens=6000, provider="anthropic")
 
     def run(self, input_dict: dict) -> dict:
         """

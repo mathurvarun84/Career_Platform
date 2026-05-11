@@ -5,9 +5,19 @@ export interface ATSBreakdown {
   impact_metrics: number;
 }
 
+export interface ATSDimensionDetail {
+  score: number;
+  benchmark: number;
+  gap: number;
+  gap_reason: string;
+  label: string;
+  icon: string;
+}
+
 export interface ATSResult {
   score: number;
   breakdown: ATSBreakdown;
+  details: ATSDimensionDetail[];
   ats_issues: string[];
 }
 

@@ -3,7 +3,13 @@ import { useState } from "react";
 import { getResumeDownloadUrl } from "../api/client";
 import { useWindowSize } from "../hooks/useWindowSize";
 import { useResumeStore } from "../store/useResumeStore";
-import type { ATSResult, GapResult, PriorityFix, RewriteStyle } from "../types";
+import type {
+  ATSDimensionDetail,
+  ATSResult,
+  GapResult,
+  PriorityFix,
+  RewriteStyle,
+} from "../types";
 import DataSourceNotice from "./DataSourceNotice";
 
 type PriorityLevel = "critical" | "high" | "medium" | "low";
@@ -204,6 +210,75 @@ const extractImprovementBullets = (instruction: string): string[] => {
   }
 
   return parts.slice(0, 3);
+};
+
+type DimensionKey = "keyword_match" | "formatting" | "readability" | "impact_metrics";
+
+const dimensionIndexMap: Record<DimensionKey, number> = {
+  keyword_match: 0,
+  formatting: 1,
+  readability: 2,
+  impact_metrics: 3,
+};
+
+const fallbackDimensionMeta: Record<
+  DimensionKey,
+  { label: string; icon: string; benchmark: number }
+> = {
+  keyword_match: { label: "Keyword Match", icon: "🔑", benchmark: 20 },
+  formatting: { label: "Formatting", icon: "📐", benchmark: 21 },
+  readability: { label: "Readability", icon: "📖", benchmark: 19 },
+  impact_metrics: { label: "Impact & Metrics", icon: "📊", benchmark: 18 },
+};
+
+const mapSectionToDimension = (section: string): DimensionKey | null => {
+  const lower = section.toLowerCase();
+  if (
+    lower.includes("keyword") ||
+    lower.includes("skill") ||
+    lower.includes("tech")
+  ) {
+    return "keyword_match";
+  }
+  if (
+    lower.includes("format") ||
+    lower.includes("bullet") ||
+    lower.includes("structure")
+  ) {
+    return "formatting";
+  }
+  if (
+    lower.includes("impact") ||
+    lower.includes("metric") ||
+    lower.includes("number") ||
+    lower.includes("quantif")
+  ) {
+    return "impact_metrics";
+  }
+  return null;
+};
+
+const getDimensionDetail = (
+  ats: ATSResult,
+  dimension: DimensionKey
+): ATSDimensionDetail => {
+  const detailIdx = dimensionIndexMap[dimension];
+  const details = ats.details ?? [];
+  const detail = details[detailIdx];
+  if (detail) {
+    return detail;
+  }
+
+  const score = ats.breakdown[dimension];
+  const benchmark = fallbackDimensionMeta[dimension].benchmark;
+  return {
+    score,
+    benchmark,
+    gap: Math.max(0, benchmark - score),
+    gap_reason: "Below benchmark for this dimension.",
+    label: fallbackDimensionMeta[dimension].label,
+    icon: fallbackDimensionMeta[dimension].icon,
+  };
 };
 
 export default function ActionableFixes() {
@@ -571,6 +646,10 @@ export default function ActionableFixes() {
             const isApplied = appliedFixes.has(key);
             const scoreGain = scoreGainByPriority[fix.priority];
             const improvements = extractImprovementBullets(fix.rewriteInstruction);
+            const relevantDimension = mapSectionToDimension(fix.sectionName);
+            const detail = relevantDimension
+              ? getDimensionDetail(analysisResult.ats, relevantDimension)
+              : null;
             const afterAccentColor = {
               balanced: "#6366f1",
               aggressive: "#d97706",
@@ -616,41 +695,69 @@ export default function ActionableFixes() {
                   <div
                     style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1 }}
                   >
-                    <div
-                      style={{
-                        borderRadius: "999px",
-                        padding: "3px 10px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        background: priorityColors[fix.priority].bg,
-                        color: priorityColors[fix.priority].text,
-                        border: `1px solid ${priorityColors[fix.priority].border}`,
-                        textTransform: "capitalize",
-                      }}
-                    >
-                      {fix.priority}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "15px",
-                        fontWeight: 700,
-                        color: "#111827",
-                      }}
-                    >
-                      {toTitleCase(fix.sectionName)}
-                      {fix.gapReason ? ` — ${fix.gapReason}` : ""}
-                    </div>
-                    <div
-                      style={{
-                        background: "#dcfce7",
-                        color: "#16a34a",
-                        borderRadius: "999px",
-                        padding: "3px 10px",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                      }}
-                    >
-                      +{scoreGain} pts ATS
+                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", flex: 1 }}>
+                      {detail && (
+                        <div
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            background: "#f5f0ff",
+                            border: "1px solid #e9d5ff",
+                            borderRadius: "6px",
+                            padding: "4px 10px",
+                            fontSize: "11px",
+                            color: "#7c3aed",
+                            marginBottom: "2px",
+                            width: "fit-content",
+                          }}
+                        >
+                          {detail.icon} {detail.label}: {detail.score}/25
+                          {detail.gap > 0 && (
+                            <span style={{ color: "#d97706", fontWeight: 600 }}>
+                              · {detail.gap} below benchmark
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                        <div
+                          style={{
+                            borderRadius: "999px",
+                            padding: "3px 10px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            background: priorityColors[fix.priority].bg,
+                            color: priorityColors[fix.priority].text,
+                            border: `1px solid ${priorityColors[fix.priority].border}`,
+                            textTransform: "capitalize",
+                          }}
+                        >
+                          {fix.priority}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: "15px",
+                            fontWeight: 700,
+                            color: "#111827",
+                          }}
+                        >
+                          {toTitleCase(fix.sectionName)}
+                          {fix.gapReason ? ` — ${fix.gapReason}` : ""}
+                        </div>
+                        <div
+                          style={{
+                            background: "#dcfce7",
+                            color: "#16a34a",
+                            borderRadius: "999px",
+                            padding: "3px 10px",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                          }}
+                        >
+                          +{scoreGain} pts ATS
+                        </div>
+                      </div>
                     </div>
                   </div>
 
