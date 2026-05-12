@@ -1,12 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 
-import { analyzeResume } from "../../api/analyze";
 import { TOP_COMPANIES, TOP_ROLES_BY_GROUP } from "../../constants/jdFetchData";
 import type { FetchJDResult } from "../../types";
 import { useWindowSize } from "../../hooks/useWindowSize";
 import { useResumeStore } from "../../store/useResumeStore";
-import { hydrateWithFallback } from "../../utils/analysisFallback";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
@@ -101,7 +99,11 @@ function FreshnessPill({ fetchedAt, sourceUrl, isCached }: FreshnessPillProps) {
   );
 }
 
-export default function UploadZone() {
+interface UploadZoneProps {
+  onBeginAnalysis: (file: File, jdText: string) => void;
+}
+
+export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
   const [file, setFile] = useState<File | null>(null);
   const [jdText, setJdText] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -128,34 +130,15 @@ export default function UploadZone() {
     "Calculating market position...",
   ];
 
-  const setJobId = useResumeStore((state) => state.setJobId);
   const setAnalysisResult = useResumeStore((state) => state.setAnalysisResult);
   const setFallbackInfo = useResumeStore((state) => state.setFallbackInfo);
-  const setActiveTab = useResumeStore((state) => state.setActiveTab);
   const setIsAnalyzing = useResumeStore((state) => state.setIsAnalyzing);
   const setIsLoading = useResumeStore((state) => state.setIsLoading);
+  const setIsFullAnalysisReady = useResumeStore(
+    (state) => state.setIsFullAnalysisReady
+  );
   const setAnalysisError = useResumeStore((state) => state.setAnalysisError);
   const setCurrentProgress = useResumeStore((state) => state.setCurrentProgress);
-  const mergePartialResult = useResumeStore((state) => state.mergePartialResult);
-
-  useEffect(() => {
-    if (!isSubmitting) {
-      return;
-    }
-
-    const progressTimer = window.setInterval(() => {
-      setSubmitProgress((prev) => Math.min(90, prev + 3));
-    }, 270);
-    const copyTimer = window.setInterval(() => {
-      setLoadingStepIndex((prev) => (prev + 1) % loadingSteps.length);
-    }, 3000);
-
-    return () => {
-      window.clearInterval(progressTimer);
-      window.clearInterval(copyTimer);
-    };
-  }, [isSubmitting]);
-
   const validateAndSetFile = (candidate: File | null): void => {
     setSubmitError(null);
     if (!candidate) {
@@ -192,7 +175,7 @@ export default function UploadZone() {
     validateAndSetFile(event.dataTransfer.files[0] ?? null);
   };
 
-  const handleSubmit = async (): Promise<void> => {
+  const handleSubmit = (): void => {
     setSubmitError(null);
     setAnalysisError(null);
     setCurrentProgress(null);
@@ -203,42 +186,14 @@ export default function UploadZone() {
       return;
     }
 
-    try {
-      setIsSubmitting(true);
-      setSubmitProgress(0);
-      setLoadingStepIndex(0);
-      setIsLoading(true);
-      const result = await analyzeResume(file, jdText, {
-        onJobCreated: (jobId) => {
-          setJobId(jobId);
-          setIsAnalyzing(true);
-        },
-        onProgress: (progress) => {
-          setCurrentProgress(progress);
-        },
-        onPartial: (partial) => {
-          mergePartialResult(partial);
-        },
-      });
-      const hydrated = hydrateWithFallback(result);
-      setSubmitProgress(100);
-      setAnalysisResult(hydrated.analysis);
-      setFallbackInfo(hydrated.debugByTab);
-      setJobId(hydrated.analysis.job_id);
-      setIsAnalyzing(false);
-      setActiveTab("overview");
-    } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unable to start analysis.";
-      setSubmitError(message);
-      setAnalysisError(message);
-    } finally {
-      window.setTimeout(() => {
-        setIsSubmitting(false);
-        setSubmitProgress(0);
-      }, 400);
-      setIsLoading(false);
-    }
+    setIsSubmitting(true);
+    setSubmitProgress(0);
+    setLoadingStepIndex(0);
+    setIsFullAnalysisReady(false);
+    setAnalysisResult(null);
+    setIsLoading(true);
+    setIsAnalyzing(true);
+    onBeginAnalysis(file, jdText);
   };
 
   const effectiveCompany = company === "other" ? customCompany : company;

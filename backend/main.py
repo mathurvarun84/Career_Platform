@@ -10,9 +10,11 @@ import time
 import uuid
 import hashlib
 from pathlib import Path
-from typing import Any, Dict
+import queue
+import threading
+from typing import Any, Dict, Generator
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
@@ -135,103 +137,130 @@ def _json_event(payload: dict) -> str:
     return f"data: {json.dumps(payload, default=str)}\n\n"
 
 
-def run_pipeline_task(
-    job_id: str,
+def _analyze_event_stream(
     temp_path: str,
     jd_text: str,
     run_sim: bool,
     resume_hash: str,
     jd_hash: str,
-) -> None:
-    """Run the full pipeline in a background task and update job_store."""
-    try:
-        resume_text = parse_resume(temp_path)
-        job_store[job_id]["resume_text"] = resume_text
+) -> Generator[str, None, None]:
+    """Worker thread pushes SSE payloads; main generator yields JSON lines."""
 
-        def progress_cb(event: dict) -> None:
-            event = {**event, "status": "running"}
-            job_store[job_id]["progress"].append(event)
+    q: queue.Queue = queue.Queue()
+    job_id = str(uuid.uuid4())
 
-        def partial_result_cb(partial: dict) -> None:
-            if not isinstance(partial, dict):
-                return
-            current = job_store[job_id].get("result") or {}
-            merged = {**current, **partial}
-            job_store[job_id]["result"] = merged
-            job_store[job_id]["progress"].append({
+    def worker() -> None:
+        try:
+            job_store[job_id] = {
                 "status": "running",
-                "type": "partial",
-                "partial_result": partial,
-            })
+                "progress": [],
+                "result": None,
+                "error": None,
+                "resume_text": "",
+            }
+            resume_text = parse_resume(temp_path)
+            job_store[job_id]["resume_text"] = resume_text
+            q.put(
+                {
+                    "action": "yield",
+                    "data": {
+                        "event": "step_complete",
+                        "step": 0,
+                        "label": "Resume parsed",
+                    },
+                }
+            )
 
-        cache_key = f"{resume_hash}:{jd_hash or 'none'}"
-        cached_stage_data = stage_cache.get(cache_key)
+            cache_key = f"{resume_hash}:{jd_hash or 'none'}"
+            cached_stage_data = stage_cache.get(cache_key)
 
-        def stage_cache_cb(stage_data: dict) -> None:
-            stage_cache[cache_key] = stage_data
-            _persist_stage_cache(stage_cache)
+            def stage_cache_cb(stage_data: dict) -> None:
+                stage_cache[cache_key] = stage_data
+                _persist_stage_cache(stage_cache)
 
-        result = Orchestrator(user_id=job_id).run_full_evaluation(
-            resume_text=resume_text,
-            jd_text=jd_text,
-            run_sim=run_sim,
-            progress_cb=progress_cb,
-            partial_result_cb=partial_result_cb,
-            cached_stage_data=cached_stage_data,
-            stage_cache_cb=stage_cache_cb,
-        )
-        job_store[job_id]["result"] = result
-        job_store[job_id]["status"] = "complete"
-        job_store[job_id]["progress"].append({
-            "step": 4,
-            "label": "Analysis complete",
-            "pct": 100,
-            "status": "complete",
-            "result": result,
-        })
-    except Exception as exc:
-        logger.exception("Analysis failed for job %s", job_id)
-        job_store[job_id]["status"] = "error"
-        job_store[job_id]["error"] = str(exc)
-        job_store[job_id]["progress"].append({
-            "step": 0,
-            "label": str(exc),
-            "pct": 100,
-            "status": "error",
-            "error": str(exc),
-        })
-    finally:
-        if temp_path and os.path.exists(temp_path):
-            os.unlink(temp_path)
-        _persist_job(job_id)
+            def sse_step_cb(step: int, label: str) -> None:
+                q.put(
+                    {
+                        "action": "yield",
+                        "data": {
+                            "event": "step_complete",
+                            "step": step,
+                            "label": label,
+                        },
+                    }
+                )
+
+            orch = Orchestrator(user_id=job_id)
+            result = orch.run_full_evaluation(
+                resume_text=resume_text,
+                jd_text=jd_text,
+                run_sim=run_sim,
+                progress_cb=lambda _e: None,
+                partial_result_cb=None,
+                cached_stage_data=cached_stage_data,
+                stage_cache_cb=stage_cache_cb,
+                sse_step_cb=sse_step_cb,
+            )
+            merged = dict(result)
+            merged["job_id"] = job_id
+            job_store[job_id]["result"] = merged
+            job_store[job_id]["status"] = "complete"
+            q.put({"action": "yield", "data": {"event": "analysis_complete", "result": merged}})
+            q.put({"action": "stop"})
+        except Exception as exc:
+            logger.exception("Streaming analysis failed for job %s", job_id)
+            if job_id in job_store:
+                job_store[job_id]["status"] = "error"
+                job_store[job_id]["error"] = str(exc)
+            q.put(
+                {
+                    "action": "yield",
+                    "data": {"event": "error", "message": str(exc)},
+                }
+            )
+            q.put({"action": "stop"})
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+            _persist_job(job_id)
+
+    threading.Thread(target=worker, daemon=True).start()
+    while True:
+        item = q.get()
+        if item["action"] == "yield":
+            yield _json_event(item["data"])
+        elif item["action"] == "stop":
+            break
 
 
 @app.post("/api/analyze")
 async def analyze(
-    background_tasks: BackgroundTasks,
     resume: UploadFile = File(...),
     jd_text: str = Form(""),
     run_sim: bool = Form(False),
-) -> dict:
-    """Accept a resume upload and start analysis."""
+) -> StreamingResponse:
+    """Stream analysis progress as SSE; final payload includes full result JSON."""
     suffix = os.path.splitext(resume.filename or "resume.txt")[1] or ".txt"
     resume_bytes = await resume.read()
     fd, temp_path = tempfile.mkstemp(suffix=suffix)
     with os.fdopen(fd, "wb") as tmp:
         tmp.write(resume_bytes)
 
-    job_id = str(uuid.uuid4())
-    job_store[job_id] = {
-        "status": "running",
-        "progress": [{"step": 1, "label": "Queued", "pct": 1, "status": "running"}],
-        "result": None,
-        "error": None,
-        "resume_text": "",
-    }
     resume_hash = hashlib.sha256(resume_bytes).hexdigest()
     jd_hash = hashlib.sha256((jd_text or "").encode("utf-8")).hexdigest() if jd_text else ""
-    background_tasks.add_task(run_pipeline_task, job_id, temp_path, jd_text, run_sim, resume_hash, jd_hash)
-    return {"job_id": job_id}
+
+    return StreamingResponse(
+        _analyze_event_stream(temp_path, jd_text, run_sim, resume_hash, jd_hash),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/api/stream/{job_id}")

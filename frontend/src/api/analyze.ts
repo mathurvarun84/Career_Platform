@@ -1,14 +1,4 @@
-import axios, { AxiosError } from "axios";
-
 import type { AnalysisResult, PriorityFix, SSEProgressEvent } from "../types";
-
-interface FastAPIErrorDetail {
-  msg?: string;
-}
-
-interface FastAPIErrorResponse {
-  detail?: string | FastAPIErrorDetail | FastAPIErrorDetail[];
-}
 
 interface ResultEnvelope {
   status?: string;
@@ -46,7 +36,7 @@ const extractKeywords = (text: string): string[] =>
     )
   );
 
-const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
+export const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
   const maybeEnvelope = payload as ResultEnvelope;
   const raw =
     maybeEnvelope &&
@@ -177,56 +167,10 @@ const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
   return normalized;
 };
 
-const getErrorMessage = (error: AxiosError<FastAPIErrorResponse>): string => {
-  const detail = error.response?.data?.detail;
-
-  if (typeof detail === "string") {
-    return detail;
-  }
-  if (Array.isArray(detail)) {
-    return detail.map((item) => item.msg).filter(Boolean).join(", ");
-  }
-  if (detail?.msg) {
-    return detail.msg;
-  }
-  if (error.code === "ECONNABORTED") {
-    return "Request timed out. Please try again.";
-  }
-  if (error.message === "Network Error") {
-    return `Network Error: cannot reach API at ${API_BASE_URL}. Start backend server and verify VITE_API_URL.`;
-  }
-  return error.response?.statusText || error.message;
-};
-
-const waitForAnalysisCompletion = async (
-  jobId: string,
-  callbacks?: AnalyzeCallbacks
-): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const source = new EventSource(`${API_BASE_URL}/api/stream/${jobId}`);
-
-    source.onmessage = (event: MessageEvent<string>) => {
-      const payload = JSON.parse(event.data) as SSEProgressEvent;
-      callbacks?.onProgress?.(payload);
-      if (payload.type === "partial" && payload.partial_result) {
-        callbacks?.onPartial?.(payload.partial_result);
-      }
-      if (payload.status === "complete") {
-        source.close();
-        resolve();
-      }
-      if (payload.status === "error") {
-        source.close();
-        reject(new Error(payload.error ?? payload.label ?? "Analysis failed on server."));
-      }
-    };
-
-    source.onerror = () => {
-      source.close();
-      reject(new Error("Connection lost while tracking analysis progress."));
-    };
-  });
-
+/**
+ * Legacy path: POST /api/analyze returned JSON job_id + separate SSE stream.
+ * Backend now streams from POST /api/analyze directly — prefer AnalysisProgress fetch reader.
+ */
 export async function analyzeResume(
   file: File,
   jdText?: string,
@@ -237,34 +181,83 @@ export async function analyzeResume(
   formData.append("jd_text", jdText ?? "");
   formData.append("run_sim", "true");
 
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+
   try {
-    const analyzeResponse = await axios.post<{ job_id: string }>(
-      `${API_BASE_URL}/api/analyze`,
-      formData,
-      { timeout: ANALYZE_TIMEOUT_MS }
-    );
+    const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+      method: "POST",
+      body: formData,
+      signal: controller.signal,
+    });
 
-    const jobId = analyzeResponse.data.job_id;
-    callbacks?.onJobCreated?.(jobId);
-    await waitForAnalysisCompletion(jobId, callbacks);
-
-    const resultResponse = await axios.get<unknown>(
-      `${API_BASE_URL}/api/result/${jobId}`,
-      { timeout: ANALYZE_TIMEOUT_MS }
-    );
-    const normalized = normalizeAnalysisResult(resultResponse.data);
-    return { ...normalized, job_id: jobId };
-  } catch (error) {
-    if (axios.isAxiosError(error)) {
-      const message = getErrorMessage(error);
-      if (error.response?.status === 422) {
-        throw new Error(`Validation failed: ${message}`);
-      }
-      if (error.response?.status === 500) {
-        throw new Error(`Server error: ${message}`);
-      }
-      throw new Error(message);
+    if (!response.ok || !response.body) {
+      const text = await response.text();
+      throw new Error(text || `Analyze failed (${response.status})`);
     }
-    throw error;
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let finalResult: AnalysisResult | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+      let sep: number;
+      while ((sep = buffer.indexOf("\n\n")) >= 0) {
+        const rawBlock = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        for (const line of rawBlock.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith("data:")) {
+            continue;
+          }
+          const jsonStr = trimmed.replace(/^data:\s*/, "").trim();
+          if (!jsonStr) {
+            continue;
+          }
+          const payload = JSON.parse(jsonStr) as Record<string, unknown>;
+          if (payload.event === "step_complete" && typeof payload.step === "number") {
+            callbacks?.onProgress?.({
+              status: "running",
+              step: (payload.step as number) + 1,
+              label: typeof payload.label === "string" ? payload.label : "",
+              pct: 10,
+            });
+          }
+          if (payload.event === "analysis_complete" && payload.result) {
+            finalResult = normalizeAnalysisResult(payload.result);
+            const jid =
+              typeof finalResult.job_id === "string" ? finalResult.job_id : "";
+            if (jid) {
+              callbacks?.onJobCreated?.(jid);
+            }
+          }
+          if (payload.event === "error") {
+            throw new Error(
+              typeof payload.message === "string"
+                ? payload.message
+                : "Analysis failed on server."
+            );
+          }
+        }
+      }
+    }
+
+    if (!finalResult) {
+      throw new Error("Stream ended without analysis result.");
+    }
+    return finalResult;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(String(error));
+  } finally {
+    window.clearTimeout(timeoutId);
   }
 }

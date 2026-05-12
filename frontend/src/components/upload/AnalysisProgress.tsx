@@ -1,104 +1,692 @@
-import { useEffect } from "react";
+import type { CSSProperties, ReactElement } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-import { useSSE } from "../../hooks/useSSE";
-import { useResumeStore } from "../../store/useResumeStore";
+import { normalizeAnalysisResult } from "../../api/analyze";
+import type { AnalysisResult } from "../../types";
 
-const stepLabels = [
-  "Reading your resume",
-  "Analyzing gaps against JD",
-  "Rewriting changed sections",
-];
+const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const ANALYZE_TIMEOUT_MS = 60_000;
 
-export default function AnalysisProgress() {
-  const jobId = useResumeStore((state) => state.jobId);
-  const isAnalyzing = useResumeStore((state) => state.isAnalyzing);
-  const analysisError = useResumeStore((state) => state.analysisError);
-  const setCurrentProgress = useResumeStore((state) => state.setCurrentProgress);
-  const resetAnalysis = useResumeStore((state) => state.resetAnalysis);
-  const { progress, error } = useSSE(jobId);
-  const pct = Math.max(0, Math.min(100, progress?.pct ?? 0));
-  const currentStep =
-    progress?.status === "complete" ? stepLabels.length + 1 : progress?.step ?? 1;
-  const displayError = error || analysisError;
+const STEP_TARGETS = [20, 45, 72, 88] as const;
+
+const PALETTE = {
+  primary: "#6366f1",
+  text: "#111827",
+  muted: "#6b7280",
+  border: "#e5e7eb",
+  success: "#16a34a",
+  successBg: "#dcfce7",
+  white: "#ffffff",
+  error: "#ef4444",
+  activeBg: "#eef2ff",
+  activeBorder: "#c7d2fe",
+} as const;
+
+const STEPS = [
+  {
+    label: "Parsing your resume",
+    sub: "Extracting sections, skills, and experience",
+  },
+  {
+    label: "Matching against job description",
+    sub: "Aligning keywords, skills, and seniority signals",
+  },
+  {
+    label: "Scoring & benchmarking",
+    sub: "Calculating ATS score and percentile rank",
+  },
+  {
+    label: "Generating insights",
+    sub: "Preparing your personalised recommendations",
+  },
+] as const;
+
+const INSIGHTS = [
+  {
+    title: "Resume structure",
+    body: "Sections, headings, and skill signals recruiters skim first.",
+  },
+  {
+    title: "JD fit & keywords",
+    body: "Overlap between your bullets and the role’s must-have language.",
+  },
+  {
+    title: "ATS & percentile",
+    body: "Formatting and impact cues versus similar profiles in our benchmark.",
+  },
+  {
+    title: "Recommendations",
+    body: "Prioritised fixes and positioning tailored to this posting.",
+  },
+] as const;
+
+const TIP_COPY =
+  "RIP scores four dimensions separately—keyword coverage is only one part of what lands interviews.";
+
+export interface AnalysisProgressProps {
+  resumeFile: File;
+  jdText: string;
+  onComplete: (result: AnalysisResult) => void;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}
+
+/** Max bar % for cosmetic crawl before next milestone (or 98 before final packet). */
+function computeCrawlCap(completed: Set<number>, awaitingFinal: boolean): number {
+  if (awaitingFinal) {
+    return 98;
+  }
+  for (let i = 0; i < 4; i++) {
+    if (!completed.has(i)) {
+      return STEP_TARGETS[i] - 2;
+    }
+  }
+  return 98;
+}
+
+type InsightBadge = "pending" | "scanning" | "done";
+
+function badgeStyles(kind: InsightBadge): CSSProperties {
+  if (kind === "done") {
+    return {
+      background: PALETTE.successBg,
+      color: PALETTE.success,
+      border: `1px solid ${PALETTE.success}`,
+    };
+  }
+  if (kind === "scanning") {
+    return {
+      background: PALETTE.activeBg,
+      color: PALETTE.primary,
+      border: `1px solid ${PALETTE.primary}`,
+    };
+  }
+  return {
+    background: "#f3f4f6",
+    color: PALETTE.muted,
+    border: `1px solid ${PALETTE.border}`,
+  };
+}
+
+function badgeLabel(kind: InsightBadge): string {
+  if (kind === "done") {
+    return "Done";
+  }
+  if (kind === "scanning") {
+    return "Scanning";
+  }
+  return "Pending";
+}
+
+function parseAndDispatchSseBuffer(
+  buffer: string,
+  onLine: (obj: Record<string, unknown>) => void
+): string {
+  let rest = buffer;
+  let sep: number;
+  while ((sep = rest.indexOf("\n\n")) >= 0) {
+    const block = rest.slice(0, sep);
+    rest = rest.slice(sep + 2);
+    for (const line of block.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("data:")) {
+        continue;
+      }
+      const jsonStr = trimmed.replace(/^data:\s*/, "").trim();
+      if (!jsonStr) {
+        continue;
+      }
+      try {
+        onLine(JSON.parse(jsonStr) as Record<string, unknown>);
+      } catch {
+        /* ignore malformed chunk */
+      }
+    }
+  }
+  return rest;
+}
+
+export default function AnalysisProgress({
+  resumeFile,
+  jdText,
+  onComplete,
+}: AnalysisProgressProps): ReactElement {
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [barPct, setBarPct] = useState(0);
+  const [analysisFinal, setAnalysisFinal] = useState(false);
+  const [awaitingFinalPacket, setAwaitingFinalPacket] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [runKey, setRunKey] = useState(0);
+
+  const onCompleteRef = useRef(onComplete);
+  const completedRef = useRef(completedSteps);
+  completedRef.current = completedSteps;
+  const awaitingFinalRef = useRef(false);
+  awaitingFinalRef.current = awaitingFinalPacket;
 
   useEffect(() => {
-    setCurrentProgress(progress);
-  }, [progress, setCurrentProgress]);
+    onCompleteRef.current = onComplete;
+  }, [onComplete]);
 
-  if (!isAnalyzing) {
-    return null;
+  useEffect(() => {
+    if (analysisFinal || errorMessage) {
+      return;
+    }
+    const id = window.setInterval(() => {
+      setBarPct((prev) => {
+        const cap = computeCrawlCap(completedRef.current, awaitingFinalRef.current);
+        const next = prev + 0.3;
+        return clamp(next, 0, cap);
+      });
+    }, 800);
+    return () => window.clearInterval(id);
+  }, [analysisFinal, errorMessage, completedSteps, awaitingFinalPacket]);
+
+  useEffect(() => {
+    let aborted = false;
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+
+    const applyStepComplete = (step: number): void => {
+      if (step === 3) {
+        setBarPct((prev) => Math.max(prev, 88));
+        return;
+      }
+      setCompletedSteps((prev) => {
+        const next = new Set(prev);
+        next.add(step);
+        return next;
+      });
+      setBarPct((prev) => {
+        const target =
+          step >= 0 && step < STEP_TARGETS.length ? STEP_TARGETS[step] : prev;
+        return clamp(Math.max(prev, target), 0, 100);
+      });
+    };
+
+    async function runStream(): Promise<void> {
+      const formData = new FormData();
+      formData.append("resume", resumeFile);
+      formData.append("jd_text", jdText);
+      formData.append("run_sim", "true");
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/analyze`, {
+          method: "POST",
+          body: formData,
+          signal: controller.signal,
+        });
+
+        if (!response.ok || !response.body) {
+          const text = await response.text();
+          throw new Error(text || `Server returned ${response.status}`);
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (!aborted) {
+          const { done, value } = await reader.read();
+          if (done) {
+            break;
+          }
+          buffer += decoder.decode(value, { stream: true });
+          buffer = parseAndDispatchSseBuffer(buffer, (payload) => {
+            if (aborted) {
+              return;
+            }
+            const ev = payload.event;
+            if (ev === "step_complete" && typeof payload.step === "number") {
+              const s = payload.step as number;
+              if (s === 3) {
+                setAwaitingFinalPacket(true);
+              }
+              applyStepComplete(s);
+            }
+            if (ev === "analysis_complete" && payload.result) {
+              const all = new Set([0, 1, 2, 3]);
+              setCompletedSteps(all);
+              setBarPct(100);
+              setAnalysisFinal(true);
+              setAwaitingFinalPacket(false);
+              const raw = payload.result as unknown;
+              onCompleteRef.current(normalizeAnalysisResult(raw));
+            }
+            if (ev === "error") {
+              throw new Error(
+                typeof payload.message === "string"
+                  ? payload.message
+                  : "Analysis failed on server."
+              );
+            }
+          });
+        }
+      } catch (err) {
+        if (aborted || (err instanceof DOMException && err.name === "AbortError")) {
+          return;
+        }
+        const msg =
+          err instanceof Error ? err.message : "Unable to complete analysis.";
+        setErrorMessage(msg);
+      } finally {
+        window.clearTimeout(timeoutId);
+      }
+    }
+
+    void runStream();
+
+    return () => {
+      aborted = true;
+      controller.abort();
+    };
+  }, [resumeFile, jdText, runKey]);
+
+  const handleRetry = useCallback((): void => {
+    setErrorMessage(null);
+    setCompletedSteps(new Set());
+    setBarPct(0);
+    setAnalysisFinal(false);
+    setAwaitingFinalPacket(false);
+    setRunKey((k) => k + 1);
+  }, []);
+
+  const activeStepIndex = ((): number => {
+    if (analysisFinal) {
+      return -1;
+    }
+    for (let i = 0; i < 4; i++) {
+      if (!completedSteps.has(i)) {
+        return i;
+      }
+    }
+    return awaitingFinalPacket ? 3 : -1;
+  })();
+
+  function stepRowComplete(index: number): boolean {
+    return completedSteps.has(index);
   }
 
+  function stepRowActive(index: number): boolean {
+    if (analysisFinal || activeStepIndex < 0) {
+      return false;
+    }
+    return index === activeStepIndex && !completedSteps.has(index);
+  }
+
+  function stepRowPending(index: number): boolean {
+    if (analysisFinal || activeStepIndex < 0) {
+      return false;
+    }
+    return !completedSteps.has(index) && index > activeStepIndex;
+  }
+
+  const insightBadge = (index: number): InsightBadge => {
+    if (completedSteps.has(index)) {
+      return "done";
+    }
+    if (activeStepIndex >= 0 && index === activeStepIndex) {
+      return "scanning";
+    }
+    return "pending";
+  };
+
+  const showTip = completedSteps.has(1);
+
   return (
-    <section className="mx-auto max-w-[640px] bg-white px-6 pt-4 pb-10">
-      <div className="mb-5 h-1.5 w-full rounded-full bg-[#f0ecff]">
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        flex: 1,
+        width: "100%",
+        minHeight: 0,
+        maxWidth: "1120px",
+        margin: "0 auto",
+        paddingLeft: "24px",
+        paddingRight: "24px",
+        paddingTop: "28px",
+        paddingBottom: "40px",
+        background: PALETTE.white,
+      }}
+    >
+      <style>{`
+        @keyframes ripProgressSpin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
+
+      {errorMessage ? (
         <div
-          className="h-1.5 rounded-full bg-[#6c47ff] transition-all duration-500"
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-
-      <div>
-        {stepLabels.map((label, index) => {
-          const stepNumber = index + 1;
-          const isComplete = stepNumber < currentStep;
-          const isActive = stepNumber === currentStep;
-
-          return (
-            <div key={label} className="mb-4">
-              <div className="flex items-center gap-3">
-                <div
-                  className={[
-                    "flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold",
-                    isComplete ? "bg-green-500 text-white" : "",
-                    isActive ? "animate-pulse bg-[#6c47ff] text-white" : "",
-                    !isComplete && !isActive ? "bg-gray-100 text-gray-400" : "",
-                  ].join(" ")}
-                >
-                  {isComplete ? "✓" : stepNumber}
-                </div>
-                <span
-                  className={[
-                    "text-[14px]",
-                    isComplete ? "text-gray-400 line-through" : "",
-                    isActive ? "font-semibold text-[#1a1a2e]" : "",
-                    !isComplete && !isActive ? "text-gray-400" : "",
-                  ].join(" ")}
-                >
-                  {label}
-                </span>
-              </div>
-              {isActive && progress?.label ? (
-                <p className="ml-10 mt-0.5 text-[12px] italic text-[#6c47ff]">
-                  {progress.label}
-                </p>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-
-      {progress?.status === "complete" ? (
-        <p className="mt-8 text-center text-[14px] font-semibold text-green-600">
-          ✓ Complete
-        </p>
-      ) : null}
-
-      {displayError ? (
-        <div className="mt-8 rounded-lg border border-red-200 bg-red-50 p-4 text-center">
-          <p className="mb-3 text-[14px] font-semibold text-red-700">
-            Analysis failed. Please try again.
-          </p>
-          <p className="mb-4 text-[12px] text-red-600">{displayError}</p>
+          style={{
+            border: `1px solid ${PALETTE.error}`,
+            background: "#fef2f2",
+            borderRadius: "12px",
+            paddingTop: "16px",
+            paddingBottom: "16px",
+            paddingLeft: "18px",
+            paddingRight: "18px",
+            marginBottom: "20px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "14px",
+              fontWeight: 700,
+              color: PALETTE.error,
+              marginBottom: "8px",
+            }}
+          >
+            Something went wrong
+          </div>
+          <div
+            style={{
+              fontSize: "13px",
+              color: PALETTE.text,
+              marginBottom: "14px",
+              lineHeight: 1.5,
+            }}
+          >
+            {errorMessage}
+          </div>
           <button
             type="button"
-            className="rounded-lg bg-red-600 px-4 py-2 text-[13px] font-semibold text-white"
-            onClick={resetAnalysis}
+            onClick={handleRetry}
+            style={{
+              fontSize: "13px",
+              fontWeight: 700,
+              color: PALETTE.white,
+              background: PALETTE.primary,
+              border: "none",
+              borderRadius: "10px",
+              paddingTop: "10px",
+              paddingBottom: "10px",
+              paddingLeft: "18px",
+              paddingRight: "18px",
+              cursor: "pointer",
+              boxShadow: "0 3px 0 #4338ca",
+            }}
           >
-            Retry
+            Try again
           </button>
         </div>
       ) : null}
-    </section>
+
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          flexWrap: "wrap",
+          alignItems: "flex-start",
+        }}
+      >
+        <div
+          style={{
+            flex: "1 1 320px",
+            minWidth: "280px",
+            paddingRight: "24px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "13px",
+              fontWeight: 700,
+              color: PALETTE.muted,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: "12px",
+            }}
+          >
+            Analysis progress
+          </div>
+
+          <div
+            style={{
+              height: "8px",
+              width: "100%",
+              borderRadius: "999px",
+              background: PALETTE.border,
+              overflow: "hidden",
+              marginBottom: "10px",
+            }}
+          >
+            <div
+              style={{
+                height: "100%",
+                width: `${barPct}%`,
+                borderRadius: "999px",
+                background: `linear-gradient(90deg, ${PALETTE.primary}, #4f46e5)`,
+              }}
+            />
+          </div>
+
+          <div
+            style={{
+              fontSize: "13px",
+              color: PALETTE.muted,
+              marginBottom: "20px",
+            }}
+          >
+            Live progress from the server — steps advance when each agent finishes.
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {STEPS.map((step, index) => {
+              const isComplete = stepRowComplete(index);
+              const isActive = stepRowActive(index);
+              const isPending = stepRowPending(index);
+
+              const rowStyle: CSSProperties = {
+                display: "flex",
+                flexDirection: "row",
+                alignItems: "flex-start",
+                borderRadius: "12px",
+                opacity: isPending ? 0.55 : 1,
+                background: isActive ? PALETTE.activeBg : PALETTE.white,
+                border: isActive
+                  ? `0.5px solid ${PALETTE.activeBorder}`
+                  : `1px solid ${PALETTE.border}`,
+                paddingTop: "14px",
+                paddingBottom: "14px",
+                paddingLeft: "14px",
+                paddingRight: "14px",
+                marginBottom: index < STEPS.length - 1 ? "12px" : "0",
+              };
+
+              return (
+                <div key={step.label} style={rowStyle}>
+                  <div
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      marginRight: "12px",
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      borderRadius: "999px",
+                      background: isComplete ? PALETTE.successBg : PALETTE.white,
+                      border: `1px solid ${isComplete ? PALETTE.success : PALETTE.border}`,
+                    }}
+                  >
+                    {isComplete ? (
+                      <span
+                        style={{
+                          color: PALETTE.success,
+                          fontSize: "18px",
+                          fontWeight: 700,
+                          lineHeight: 1,
+                        }}
+                        aria-hidden
+                      >
+                        ✓
+                      </span>
+                    ) : isActive ? (
+                      <div
+                        aria-hidden
+                        style={{
+                          width: "18px",
+                          height: "18px",
+                          borderRadius: "50%",
+                          border: `2px solid ${PALETTE.primary}`,
+                          borderTopColor: "transparent",
+                          animation: "ripProgressSpin 0.8s linear infinite",
+                        }}
+                      />
+                    ) : (
+                      <div
+                        aria-hidden
+                        style={{
+                          width: "18px",
+                          height: "18px",
+                          borderRadius: "50%",
+                          border: `1px solid ${PALETTE.border}`,
+                          background: "#f9fafb",
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: "15px",
+                        fontWeight: 700,
+                        color: PALETTE.text,
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {step.label}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "12px",
+                        color: PALETTE.muted,
+                        marginTop: "4px",
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {step.sub}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div
+          style={{
+            width: "280px",
+            flex: "0 0 280px",
+            minWidth: "260px",
+          }}
+        >
+          <div
+            style={{
+              fontSize: "13px",
+              fontWeight: 700,
+              color: PALETTE.muted,
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+              marginBottom: "12px",
+            }}
+          >
+            What we&apos;re checking
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {INSIGHTS.map((insight, index) => {
+              const kind = insightBadge(index);
+              return (
+                <div
+                  key={insight.title}
+                  style={{
+                    border: `1px solid ${PALETTE.border}`,
+                    borderRadius: "12px",
+                    paddingTop: "12px",
+                    paddingBottom: "12px",
+                    paddingLeft: "12px",
+                    paddingRight: "12px",
+                    marginBottom: "10px",
+                    background: PALETTE.white,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "14px",
+                        fontWeight: 700,
+                        color: PALETTE.text,
+                      }}
+                    >
+                      {insight.title}
+                    </div>
+                    <span
+                      style={{
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.04em",
+                        borderRadius: "999px",
+                        paddingLeft: "8px",
+                        paddingRight: "8px",
+                        paddingTop: "3px",
+                        paddingBottom: "3px",
+                        ...badgeStyles(kind),
+                      }}
+                    >
+                      {badgeLabel(kind)}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: "12px", color: PALETTE.muted, lineHeight: 1.5 }}>
+                    {insight.body}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {showTip ? (
+            <div
+              style={{
+                marginTop: "8px",
+                borderRadius: "12px",
+                border: `1px dashed ${PALETTE.primary}`,
+                background: PALETTE.activeBg,
+                paddingTop: "12px",
+                paddingBottom: "12px",
+                paddingLeft: "14px",
+                paddingRight: "14px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: PALETTE.primary,
+                  marginBottom: "6px",
+                }}
+              >
+                Did you know?
+              </div>
+              <div style={{ fontSize: "12px", color: PALETTE.text, lineHeight: 1.55 }}>
+                {TIP_COPY}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -11,6 +11,8 @@ import type {
 interface ResumeStoreState {
   jobId: string | null;
   analysisResult: AnalysisResult | null;
+  /** True only after full analyze pipeline returns hydrated output (not partial SSE merges). */
+  isFullAnalysisReady: boolean;
   selectedStyle: RewriteStyle;
   acceptedSections: Record<string, RewriteStyle>;
   activeTab: TabId;
@@ -23,6 +25,7 @@ interface ResumeStoreState {
   userId: string;
   setJobId: (jobId: string | null) => void;
   setAnalysisResult: (analysisResult: AnalysisResult | null) => void;
+  setIsFullAnalysisReady: (ready: boolean) => void;
   mergePartialResult: (partial: Partial<AnalysisResult>) => void;
   setSelectedStyle: (style: RewriteStyle) => void;
   acceptSection: (section: string, style: RewriteStyle) => void;
@@ -51,6 +54,7 @@ const getOrCreateUserId = (): string => {
 export const useResumeStore = create<ResumeStoreState>((set) => ({
   jobId: null,
   analysisResult: null,
+  isFullAnalysisReady: false,
   selectedStyle: "balanced",
   acceptedSections: {},
   activeTab: "overview",
@@ -64,6 +68,7 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
 
   setJobId: (jobId) => set({ jobId }),
   setAnalysisResult: (analysisResult) => set({ analysisResult }),
+  setIsFullAnalysisReady: (ready) => set({ isFullAnalysisReady: ready }),
   mergePartialResult: (partial) =>
     set((state) => {
       const normalizedPartial: Partial<AnalysisResult> = {
@@ -127,6 +132,7 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
     set({
       jobId: null,
       analysisResult: null,
+      isFullAnalysisReady: false,
       acceptedSections: {},
       isAnalyzing: false,
       isLoading: false,

@@ -8,7 +8,7 @@ import logging
 import tempfile
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from backend.agents.gap_analyzer import GapAnalyzerAgent
 from backend.agents.jd_intelligence import JDIntelligenceAgent
@@ -145,6 +145,7 @@ class Orchestrator:
         partial_result_cb: Optional[callable] = None,
         cached_stage_data: Optional[Dict[str, Any]] = None,
         stage_cache_cb: Optional[callable] = None,
+        sse_step_cb: Optional[Callable[[int, str], None]] = None,
     ) -> Dict[str, Any]:
         uid = user_id or self.user_id or "anonymous"
         if progress_cb: progress_cb({"step":1,"label":"Reading your resume...","pct":10})
@@ -249,8 +250,12 @@ class Orchestrator:
                     except Exception as exc:
                         logging.warning("Sectioner merge skipped: %s", exc)
             if progress_cb: progress_cb({"step":2,"label":"Gap analysis complete","pct":65})
+            if sse_step_cb:
+                sse_step_cb(1, "JD matched")
         else:
             gap_result = self._infer_strengths_from_resume(resume_und)
+            if sse_step_cb:
+                sse_step_cb(1, "JD matched")
         if partial_result_cb:
             partial_result_cb({"gap": gap_result, "resume": resume_und})
 
@@ -338,6 +343,9 @@ class Orchestrator:
         except Exception as exc:
             logging.warning("Percentile calculation failed: %s. Returning null.", exc)
 
+        if sse_step_cb:
+            sse_step_cb(2, "Scores calculated")
+
         from engine.career_positioning import get_positioning_statement
         positioning = None
         try:
@@ -357,6 +365,9 @@ class Orchestrator:
             logging.warning("Career positioning failed: %s", e)
         if partial_result_cb:
             partial_result_cb({"percentile": percentile, "positioning": positioning})
+
+        if sse_step_cb:
+            sse_step_cb(3, "Insights ready")
 
         return {
             "ats": ats_result,
