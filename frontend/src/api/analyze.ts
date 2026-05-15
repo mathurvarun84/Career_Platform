@@ -174,7 +174,8 @@ export const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
 export async function analyzeResume(
   file: File,
   jdText?: string,
-  callbacks?: AnalyzeCallbacks
+  callbacks?: AnalyzeCallbacks,
+  accessToken?: string | null
 ): Promise<AnalysisResult> {
   const formData = new FormData();
   formData.append("resume", file);
@@ -184,12 +185,33 @@ export async function analyzeResume(
   const controller = new AbortController();
   const timeoutId = window.setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
 
+  const headers: Record<string, string> = {};
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
+
   try {
     const response = await fetch(`${API_BASE_URL}/api/analyze`, {
       method: "POST",
+      headers,
       body: formData,
       signal: controller.signal,
     });
+
+    if (response.status === 402) {
+      let detail: Record<string, unknown> = { code: "LIMIT_REACHED" };
+      try {
+        const text = await response.text();
+        const parsed = JSON.parse(text) as Record<string, unknown>;
+        detail = typeof parsed.detail === "object" && parsed.detail ? (parsed.detail as Record<string, unknown>) : detail;
+      } catch {
+        /* fallback to default detail */
+      }
+      const error = new Error("Monthly limit reached") as Error & { status?: number; detail?: Record<string, unknown> };
+      error.status = 402;
+      error.detail = detail;
+      throw error;
+    }
 
     if (!response.ok || !response.body) {
       const text = await response.text();

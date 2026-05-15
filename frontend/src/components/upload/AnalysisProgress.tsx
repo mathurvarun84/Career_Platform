@@ -2,10 +2,15 @@ import type { CSSProperties, ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { normalizeAnalysisResult } from "../../api/analyze";
+import UpgradeModal from "../auth/UpgradeModal";
+import { supabase } from "../../lib/supabase";
+import { useAuthStore } from "../../store/authStore";
 import type { AnalysisResult } from "../../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 const ANALYZE_TIMEOUT_MS = 60_000;
+/** Use access token as-is while it has this many seconds left; avoid refresh (user / Supabase limits). */
+const MIN_ACCESS_TOKEN_VALID_SEC_BEFORE_REFRESH = 120;
 
 const STEP_TARGETS = [20, 45, 72, 88] as const;
 
@@ -62,6 +67,114 @@ const INSIGHTS = [
 
 const TIP_COPY =
   "RIP scores four dimensions separately—keyword coverage is only one part of what lands interviews.";
+
+/** Supabase `AuthError`-shaped object without importing the full type graph here. */
+interface AuthLikeError {
+  readonly message?: string;
+  readonly code?: string;
+}
+
+function refreshFailureMeansReLogin(err: AuthLikeError | null | undefined): boolean {
+  if (!err) {
+    return false;
+  }
+  const code = String(err.code || "").toLowerCase();
+  const msg = String(err.message || "").toLowerCase();
+  if (code === "refresh_token_not_found") {
+    return true;
+  }
+  if (code === "invalid_grant") {
+    return true;
+  }
+  if (msg.includes("refresh_token_not_found")) {
+    return true;
+  }
+  if (msg.includes("invalid refresh token")) {
+    return true;
+  }
+  if (msg.includes("auth session missing")) {
+    return true;
+  }
+  return false;
+}
+
+/** Seconds until JWT exp, or null if unknown (client-side only, no verify). */
+function accessTokenSecondsToExpiry(accessToken: string): number | null {
+  try {
+    const parts = accessToken.split(".");
+    if (parts.length < 2) {
+      return null;
+    }
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(b64 + pad)) as { exp?: number };
+    if (typeof payload.exp !== "number") {
+      return null;
+    }
+    return payload.exp - Math.floor(Date.now() / 1000);
+  } catch {
+    return null;
+  }
+}
+
+function sessionAccessTokenTtlSec(session: {
+  expires_at?: number;
+  access_token: string;
+}): number | null {
+  if (typeof session.expires_at === "number") {
+    return session.expires_at - Math.floor(Date.now() / 1000);
+  }
+  return accessTokenSecondsToExpiry(session.access_token);
+}
+
+/**
+ * Prefer existing access token while it has enough TTL (no refresh). Refresh only
+ * when expiry is known and within MIN_ACCESS_TOKEN_VALID_SEC_BEFORE_REFRESH.
+ */
+async function resolveAccessTokenForAnalyze(): Promise<string> {
+  const setSession = useAuthStore.getState().setSession;
+
+  const { data: withSession, error: getError } =
+    await supabase.auth.getSession();
+  if (getError) {
+    throw new Error(getError.message);
+  }
+
+  const session = withSession.session;
+  if (!session?.access_token) {
+    throw new Error("Sign in to run analysis.");
+  }
+
+  const ttl = sessionAccessTokenTtlSec(session);
+  const mustRefresh =
+    ttl !== null && ttl < MIN_ACCESS_TOKEN_VALID_SEC_BEFORE_REFRESH;
+
+  if (!mustRefresh) {
+    setSession(session);
+    return session.access_token;
+  }
+
+  const { data: refreshed, error: refreshError } =
+    await supabase.auth.refreshSession();
+
+  if (!refreshError && refreshed.session?.access_token) {
+    setSession(refreshed.session);
+    return refreshed.session.access_token;
+  }
+
+  if (ttl > 0) {
+    setSession(session);
+    return session.access_token;
+  }
+
+  if (refreshError && refreshFailureMeansReLogin(refreshError)) {
+    throw new Error("Session expired. Please sign in again.");
+  }
+  if (refreshError?.message) {
+    throw new Error(refreshError.message);
+  }
+  throw new Error("Session expired. Please sign in again.");
+}
 
 export interface AnalysisProgressProps {
   resumeFile: File;
@@ -159,6 +272,8 @@ export default function AnalysisProgress({
   const [awaitingFinalPacket, setAwaitingFinalPacket] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [runKey, setRunKey] = useState(0);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeData, setUpgradeData] = useState<{ uploadsThisMonth: number; limit: number } | null>(null);
 
   const onCompleteRef = useRef(onComplete);
   const completedRef = useRef(completedSteps);
@@ -212,9 +327,16 @@ export default function AnalysisProgress({
       formData.append("jd_text", jdText);
       formData.append("run_sim", "true");
 
+      let gotFinalPacket = false;
+
       try {
+        const bearer = await resolveAccessTokenForAnalyze();
+        const headers: Record<string, string> = {
+          Authorization: `Bearer ${bearer}`,
+        };
         const response = await fetch(`${API_BASE_URL}/api/analyze`, {
           method: "POST",
+          headers,
           body: formData,
           signal: controller.signal,
         });
@@ -252,6 +374,7 @@ export default function AnalysisProgress({
               setBarPct(100);
               setAnalysisFinal(true);
               setAwaitingFinalPacket(false);
+              gotFinalPacket = true;
               const raw = payload.result as unknown;
               onCompleteRef.current(normalizeAnalysisResult(raw));
             }
@@ -264,13 +387,38 @@ export default function AnalysisProgress({
             }
           });
         }
+
+        // If the server stream ended without sending the final packet, avoid
+        // leaving the user on a "spinning" UI with no next action.
+        if (!aborted && !gotFinalPacket) {
+          setErrorMessage("Stream ended before analysis completed. Try again.");
+        }
       } catch (err) {
-        if (aborted || (err instanceof DOMException && err.name === "AbortError")) {
+        if (aborted) {
           return;
         }
-        const msg =
-          err instanceof Error ? err.message : "Unable to complete analysis.";
-        setErrorMessage(msg);
+
+        if (err instanceof DOMException && err.name === "AbortError") {
+          setErrorMessage(
+            "Analysis timed out. The server took too long to respond. Try again."
+          );
+          return;
+        }
+
+        const isUpgradeError = err instanceof Error && (err as Error & { status?: number }).status === 402;
+        if (isUpgradeError) {
+          const errWithDetail = err as Error & { detail?: Record<string, unknown> };
+          const detail = errWithDetail.detail || {};
+          setUpgradeData({
+            uploadsThisMonth: (detail.uploads_this_month as number) || 1,
+            limit: (detail.limit as number) || 2,
+          });
+          setUpgradeModalOpen(true);
+        } else {
+          const msg =
+            err instanceof Error ? err.message : "Unable to complete analysis.";
+          setErrorMessage(msg);
+        }
       } finally {
         window.clearTimeout(timeoutId);
       }
@@ -687,6 +835,14 @@ export default function AnalysisProgress({
           ) : null}
         </div>
       </div>
+
+      {upgradeModalOpen && upgradeData && (
+        <UpgradeModal
+          uploadsThisMonth={upgradeData.uploadsThisMonth}
+          limit={upgradeData.limit}
+          onClose={() => setUpgradeModalOpen(false)}
+        />
+      )}
     </div>
   );
 }

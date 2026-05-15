@@ -377,4 +377,5 @@ class Orchestrator:
             "sim": sim_result,
             "percentile": percentile,
             "positioning": positioning,
+            "jd_intelligence": jd_intel,
         }

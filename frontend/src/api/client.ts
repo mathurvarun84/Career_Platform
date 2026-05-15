@@ -78,11 +78,17 @@ axiosInstance.interceptors.response.use(
 );
 
 export const postAnalyze = async (
-  formData: FormData
+  formData: FormData,
+  accessToken?: string | null
 ): Promise<{ job_id: string }> => {
+  const headers: Record<string, string> = {};
+  if (accessToken) {
+    headers.Authorization = `Bearer ${accessToken}`;
+  }
   const response = await axiosInstance.post<{ job_id: string }>(
     "/api/analyze",
-    formData
+    formData,
+    { headers }
   );
   return response.data;
 };
@@ -115,6 +121,37 @@ export const getResumeDownloadUrl = (
   `${API_BASE_URL}/api/download/${encodeURIComponent(jobId)}?${new URLSearchParams({
     style,
   }).toString()}`;
+
+export const downloadResumeReport = async (
+  jobId: string,
+  style: string = "balanced"
+): Promise<void> => {
+  const downloadUrl = getResumeDownloadUrl(jobId, style);
+  const response = await fetch(downloadUrl);
+
+  if (!response.ok) {
+    let detail = `Download failed (${response.status}).`;
+    try {
+      const data = (await response.json()) as { detail?: string | unknown };
+      if (typeof data.detail === "string") {
+        detail = data.detail;
+      }
+    } catch {
+      /* non-JSON body */
+    }
+    throw new Error(
+      `${detail} Try analyzing your resume again if the server was restarted.`
+    );
+  }
+
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "resume.docx";
+  link.click();
+  URL.revokeObjectURL(url);
+};
 
 export const getHistory = async (userId: string): Promise<HistoryResponse> => {
   const response = await axiosInstance.get<HistoryResponse>("/api/history", {

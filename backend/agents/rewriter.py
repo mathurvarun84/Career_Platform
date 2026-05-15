@@ -270,69 +270,81 @@ class RewriterAgent(BaseAgent):
 
         return self._rewrite_monolithic(section, original_content, gap)
 
-    def _pair_sub_changes_to_entries(
+    def _build_sub_change_map(
         self,
-        section_text: SectionText,
         sub_changes: list,
-    ) -> tuple[dict[int, dict], list[dict]]:
+        section_text: SectionText | None,
+    ) -> dict[int, dict]:
         """
-        Pair each gap-analysis sub_change to at most one SubEntry index.
+        Maps each sub_change to the integer index of its matching sub_entry.
 
-        Prevents fuzzy label overlap (e.g. two roles at the same company) from
-        incorrectly marking multiple distinct entries as "already processed",
-        which dropped unchanged entries from the stitched section text.
-
-        Args:
-            section_text: Sectioner output with ordered ``sub_entries``.
-            sub_changes: Agent 3 sub-location dicts (each may reference ``sub_label``).
-
-        Returns:
-            Tuple of (index → enriched sub dict with ``original_text`` from the
-            paired entry, orphaned sub dicts that matched no entry).
+        Priority:
+          1. If sub_change carries ``entry_index`` (int) and in bounds, use directly.
+          2. Otherwise try fuzzy label match against ``section_text.sub_entries``.
+          3. Unmatched sub_changes are discarded and logged.
         """
-        n = len(section_text.sub_entries)
-        used: set[int] = set()
-        paired: dict[int, dict] = {}
-        orphans: list[dict] = []
+        if not section_text or not section_text.sub_entries:
+            return {}
 
-        for sub in sub_changes:
-            sub_label = str(sub.get("sub_label", "") or "")
-            best_i: int | None = None
-            best_rank = -1
-            for i in range(n):
-                if i in used:
-                    continue
-                entry_label = section_text.sub_entries[i].label
-                if not self._labels_match(entry_label, sub_label):
-                    continue
-                rank = 0
-                if entry_label == sub_label:
-                    rank = 100
-                elif (
-                    sub_label.lower() in entry_label.lower()
-                    or entry_label.lower() in sub_label.lower()
-                ):
-                    rank = 50
-                else:
-                    rank = 10
-                if rank > best_rank:
-                    best_rank = rank
-                    best_i = i
+        mapped: dict[int, dict] = {}
+        used_indexes: set[int] = set()
 
-            sub_dict = dict(sub)
-            if best_i is not None:
-                used.add(best_i)
-                sub_dict["original_text"] = section_text.sub_entries[best_i].verbatim_text
-                paired[best_i] = sub_dict
-            else:
-                sub_dict["original_text"] = self._resolve_sub_text(section_text, sub_label)
-                orphans.append(sub_dict)
+        for raw_sub in sub_changes:
+            sub = dict(raw_sub)
+            raw_index = sub.get("entry_index")
+            matched_index: int | None = None
+
+            if isinstance(raw_index, int) and 0 <= raw_index < len(section_text.sub_entries):
+                matched_index = raw_index
+            elif isinstance(raw_index, int):
                 logging.warning(
-                    "RewriterAgent: sub_change '%s' matched no SubEntry; treating as orphan",
-                    sub_label or sub.get("sub_id", "unknown"),
+                    "RewriterAgent: sub_change '%s' has out-of-range entry_index=%s",
+                    str(sub.get("sub_label", "") or sub.get("sub_id", "unknown")),
+                    raw_index,
                 )
 
-        return paired, orphans
+            if matched_index is None:
+                sub_label = str(sub.get("sub_label", "") or "")
+                best_i: int | None = None
+                best_rank = -1
+                for i, entry in enumerate(section_text.sub_entries):
+                    if i in used_indexes:
+                        continue
+                    entry_label = entry.label
+                    if not self._labels_match(entry_label, sub_label):
+                        continue
+                    if entry_label == sub_label:
+                        rank = 100
+                    elif (
+                        sub_label.lower() in entry_label.lower()
+                        or entry_label.lower() in sub_label.lower()
+                    ):
+                        rank = 50
+                    else:
+                        rank = 10
+                    if rank > best_rank:
+                        best_rank = rank
+                        best_i = i
+                matched_index = best_i
+
+            if matched_index is None:
+                logging.warning(
+                    "RewriterAgent: sub_change '%s' matched no SubEntry; skipping",
+                    str(sub.get("sub_label", "") or sub.get("sub_id", "unknown")),
+                )
+                continue
+
+            if matched_index in mapped:
+                logging.warning(
+                    "RewriterAgent: duplicate mapping for sub_entry index %d; keeping first",
+                    matched_index,
+                )
+                continue
+
+            mapped[matched_index] = sub
+            used_indexes.add(matched_index)
+
+        return mapped
 
     def _rewrite_with_sub_changes(
         self,
@@ -393,7 +405,10 @@ class RewriterAgent(BaseAgent):
                 continue
 
             entry_rw = self._rewrite_sub_entry(
-                section, sub, gap.get("rewrite_instruction", "")
+                section=section,
+                sub=sub,
+                section_context=gap.get("rewrite_instruction", ""),
+                original_verbatim=original_text,
             )
 
             if section == "experience":
@@ -438,14 +453,14 @@ class RewriterAgent(BaseAgent):
 
         Ensures the merged section has exactly one block per sub-entry for DOCX.
         """
-        paired, orphans = self._pair_sub_changes_to_entries(section_text, sub_changes)
+        sub_change_map = self._build_sub_change_map(sub_changes, section_text)
         stitched_b: list[str] = []
         stitched_a: list[str] = []
         stitched_t: list[str] = []
         ctx = gap.get("rewrite_instruction", "")
 
         for i, entry in enumerate(section_text.sub_entries):
-            sub = paired.get(i)
+            sub = sub_change_map.get(i)
             if sub is None:
                 text = entry.verbatim_text
                 if section == "experience":
@@ -464,9 +479,12 @@ class RewriterAgent(BaseAgent):
                 stitched_t.append(text)
                 continue
 
-            sub_llm = dict(sub)
-            sub_llm["original_text"] = entry.verbatim_text
-            entry_rw = self._rewrite_sub_entry(section, sub_llm, ctx)
+            entry_rw = self._rewrite_sub_entry(
+                section=section,
+                sub=sub,
+                section_context=ctx,
+                original_verbatim=entry.verbatim_text,
+            )
 
             if section == "experience":
                 stitched_b.append(_ensure_experience_markers(
@@ -480,33 +498,26 @@ class RewriterAgent(BaseAgent):
                 stitched_a.append(entry_rw.aggressive)
                 stitched_t.append(entry_rw.top_1_percent)
 
-        for sub in orphans:
-            if not sub.get("needs_change", True):
-                text = sub.get("original_text", "")
-                if section == "experience":
-                    text = _ensure_experience_markers(
-                        text, str(sub.get("sub_label", "") or "Unknown"))
-                stitched_b.append(text)
-                stitched_a.append(text)
-                stitched_t.append(text)
-                continue
-            entry_rw = self._rewrite_sub_entry(section, sub, ctx)
-            label = str(sub.get("sub_label", "") or "Unknown")
-            if section == "experience":
-                stitched_b.append(_ensure_experience_markers(entry_rw.balanced, label))
-                stitched_a.append(_ensure_experience_markers(entry_rw.aggressive, label))
-                stitched_t.append(_ensure_experience_markers(entry_rw.top_1_percent, label))
-            else:
-                stitched_b.append(entry_rw.balanced)
-                stitched_a.append(entry_rw.aggressive)
-                stitched_t.append(entry_rw.top_1_percent)
+        try:
+            assert len(stitched_b) == len(section_text.sub_entries), (
+                f"RewriterAgent: stitched entry count {len(stitched_b)} != "
+                f"sectioner entry count {len(section_text.sub_entries)} for section '{section}'"
+            )
+        except AssertionError as exc:
+            logging.warning("%s", exc)
+            fallback = section_text.full_text or f"[{section} rewrite unavailable]"
+            return SectionRewrite(
+                balanced=fallback,
+                aggressive=fallback,
+                top_1_percent=fallback,
+            ).model_dump()
 
         sep = "\n\n"
         balanced = sep.join(stitched_b) or f"[{section} rewrite unavailable]"
         aggressive = sep.join(stitched_a) or f"[{section} rewrite unavailable]"
         top_1 = sep.join(stitched_t) or f"[{section} rewrite unavailable]"
 
-        if section == "experience" and not orphans:
+        if section == "experience":
             n_markers = balanced.count(COMPANY_HEADER_START)
             n_entries = len(section_text.sub_entries)
             if n_markers != n_entries:
@@ -533,6 +544,7 @@ class RewriterAgent(BaseAgent):
         section: str,
         sub: dict,
         section_context: str,
+        original_verbatim: str = "",
     ) -> SectionRewrite:
         """
         Rewrites a SINGLE resume sub-entry with a focused LLM call.
@@ -547,7 +559,7 @@ class RewriterAgent(BaseAgent):
 
         Fallback: if LLM call fails after retry, returns original verbatim text for all 3 styles.
         """
-        original_text = sub.get("original_text", "")
+        original_text = original_verbatim or sub.get("original_text", "")
         rewrite_hint = sub.get("rewrite_instruction", "")
         missing_kw = sub.get("missing_keywords", [])
 

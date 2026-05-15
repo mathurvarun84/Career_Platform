@@ -7,9 +7,11 @@ const tabs: Array<{ id: TabId; icon: string; label: string }> = [
   { id: "fixes", icon: "✦", label: "Actionable Fixes" },
   { id: "recruiter", icon: "👤", label: "Recruiter View" },
   { id: "gap", icon: "◎", label: "Gap Closer" },
+  { id: "progress", icon: "↗", label: "Progress" },
 ];
 
 const disabledBeforeAnalysis = new Set<TabId>(["fixes", "gap"]);
+const alwaysEnabledTabs = new Set<TabId>(["progress"]);
 
 export default function TabNav() {
   const activeTab = useResumeStore((state) => state.activeTab);
@@ -25,7 +27,11 @@ export default function TabNav() {
   };
 
   const handleTabClick = (tabId: TabId): void => {
-    if (!analysisResult && disabledBeforeAnalysis.has(tabId)) {
+    if (
+      !analysisResult &&
+      disabledBeforeAnalysis.has(tabId) &&
+      !alwaysEnabledTabs.has(tabId)
+    ) {
       return;
     }
 
@@ -52,7 +58,10 @@ export default function TabNav() {
     >
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
-        const isDisabled = !analysisResult && disabledBeforeAnalysis.has(tab.id);
+        const isDisabled =
+          !analysisResult &&
+          disabledBeforeAnalysis.has(tab.id) &&
+          !alwaysEnabledTabs.has(tab.id);
 
         return (
           <button

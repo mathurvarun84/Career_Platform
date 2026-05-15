@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 
+import { downloadResumeReport } from "./api/client";
 import type { ATSDimensionDetail, PriorityFix } from "./types";
 import DataSourceNotice from "./components/DataSourceNotice";
 import { useWindowSize } from "./hooks/useWindowSize";
@@ -76,8 +77,13 @@ function deriveButtonLabel(text: string): string {
 
 export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const analysisResult = useResumeStore((s) => s.analysisResult);
+  const jobId = useResumeStore((s) => s.jobId);
+  const selectedStyle = useResumeStore((s) => s.selectedStyle);
+  const isLoading = useResumeStore((s) => s.isLoading);
   const { isMobile, isTablet } = useWindowSize();
   const [barsAnimated, setBarsAnimated] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isDownloadPressed, setIsDownloadPressed] = useState(false);
   useEffect(() => {
     const t = window.setTimeout(() => setBarsAnimated(true), 100);
     return () => window.clearTimeout(t);
@@ -184,6 +190,24 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
         .filter(Boolean)
         .slice(0, 3)
     : (agencyRecruiter?.noticed ?? []).slice(0, 3);
+  const downloadJobId = jobId ?? analysisResult.job_id;
+  const canDownload = Boolean(downloadJobId) && !isLoading && !isDownloading;
+
+  const handleDownload = async (): Promise<void> => {
+    if (!downloadJobId) {
+      return;
+    }
+
+    setIsDownloading(true);
+    try {
+      await downloadResumeReport(downloadJobId, selectedStyle);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Download failed.";
+      window.alert(message);
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
@@ -211,6 +235,46 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
         </div>
 
         {/* ── SECTION 2: Score Cards Grid ── */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            marginBottom: "20px",
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => void handleDownload()}
+            disabled={!canDownload}
+            onMouseDown={() => {
+              if (canDownload) {
+                setIsDownloadPressed(true);
+              }
+            }}
+            onMouseUp={() => setIsDownloadPressed(false)}
+            onMouseLeave={() => setIsDownloadPressed(false)}
+            style={{
+              background: canDownload ? "#6366f1" : "#f3f4f6",
+              color: canDownload ? "#ffffff" : "#9ca3af",
+              borderRadius: "10px",
+              padding: "10px 20px",
+              fontSize: "13px",
+              fontWeight: 700,
+              border: "none",
+              cursor: canDownload ? "pointer" : "not-allowed",
+              transform: canDownload && isDownloadPressed ? "translateY(3px)" : "translateY(0px)",
+              transition: "transform 0.1s, box-shadow 0.1s",
+              boxShadow: canDownload
+                ? isDownloadPressed
+                  ? "0 1px 0 #4338ca"
+                  : "0 3px 0 #4338ca, 0 5px 12px rgba(99,102,241,0.25)"
+                : "0 3px 0 #d1d5db",
+            }}
+          >
+            {isDownloading ? "Downloading..." : "Download Report"}
+          </button>
+        </div>
+
         <div style={{
           display: "grid",
           gridTemplateColumns: isMobile

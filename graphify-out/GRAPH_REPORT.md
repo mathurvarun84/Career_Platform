@@ -1,13 +1,18 @@
-# Graph Report - resume_platform  (2026-05-03)
+# Graph Report - Career_Platform  (2026-05-15)
 
 ## Corpus Check
-- 58 files · ~44,528 words
+- 100 files · ~76,822 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 525 nodes · 1157 edges · 41 communities detected
-- Extraction: 54% EXTRACTED · 46% INFERRED · 0% AMBIGUOUS · INFERRED: 536 edges (avg confidence: 0.56)
+- 1326 nodes · 1676 edges · 362 communities (69 shown, 293 thin omitted)
+- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 215 edges (avg confidence: 0.67)
 - Token cost: 0 input · 0 output
+
+## Graph Freshness
+- Built from commit: `0cf3e1d7`
+- Run `git rev-parse HEAD` and compare to check if the graph is stale.
+- Run `graphify update .` after code changes (no API cost).
 
 ## Community Hubs (Navigation)
 - [[_COMMUNITY_Community 0|Community 0]]
@@ -26,6 +31,27 @@
 - [[_COMMUNITY_Community 13|Community 13]]
 - [[_COMMUNITY_Community 14|Community 14]]
 - [[_COMMUNITY_Community 15|Community 15]]
+- [[_COMMUNITY_Community 16|Community 16]]
+- [[_COMMUNITY_Community 17|Community 17]]
+- [[_COMMUNITY_Community 18|Community 18]]
+- [[_COMMUNITY_Community 19|Community 19]]
+- [[_COMMUNITY_Community 20|Community 20]]
+- [[_COMMUNITY_Community 21|Community 21]]
+- [[_COMMUNITY_Community 22|Community 22]]
+- [[_COMMUNITY_Community 23|Community 23]]
+- [[_COMMUNITY_Community 24|Community 24]]
+- [[_COMMUNITY_Community 25|Community 25]]
+- [[_COMMUNITY_Community 26|Community 26]]
+- [[_COMMUNITY_Community 27|Community 27]]
+- [[_COMMUNITY_Community 28|Community 28]]
+- [[_COMMUNITY_Community 29|Community 29]]
+- [[_COMMUNITY_Community 30|Community 30]]
+- [[_COMMUNITY_Community 31|Community 31]]
+- [[_COMMUNITY_Community 32|Community 32]]
+- [[_COMMUNITY_Community 33|Community 33]]
+- [[_COMMUNITY_Community 34|Community 34]]
+- [[_COMMUNITY_Community 35|Community 35]]
+- [[_COMMUNITY_Community 36|Community 36]]
 - [[_COMMUNITY_Community 37|Community 37]]
 - [[_COMMUNITY_Community 38|Community 38]]
 - [[_COMMUNITY_Community 39|Community 39]]
@@ -51,267 +77,568 @@
 - [[_COMMUNITY_Community 59|Community 59]]
 - [[_COMMUNITY_Community 60|Community 60]]
 - [[_COMMUNITY_Community 61|Community 61]]
+- [[_COMMUNITY_Community 62|Community 62]]
+- [[_COMMUNITY_Community 63|Community 63]]
+- [[_COMMUNITY_Community 64|Community 64]]
+- [[_COMMUNITY_Community 65|Community 65]]
+- [[_COMMUNITY_Community 67|Community 67]]
+- [[_COMMUNITY_Community 68|Community 68]]
+- [[_COMMUNITY_Community 69|Community 69]]
+- [[_COMMUNITY_Community 70|Community 70]]
+- [[_COMMUNITY_Community 71|Community 71]]
+- [[_COMMUNITY_Community 72|Community 72]]
+- [[_COMMUNITY_Community 75|Community 75]]
+- [[_COMMUNITY_Community 86|Community 86]]
+- [[_COMMUNITY_Community 87|Community 87]]
+- [[_COMMUNITY_Community 88|Community 88]]
+- [[_COMMUNITY_Community 89|Community 89]]
+- [[_COMMUNITY_Community 90|Community 90]]
+- [[_COMMUNITY_Community 91|Community 91]]
+- [[_COMMUNITY_Community 92|Community 92]]
+- [[_COMMUNITY_Community 93|Community 93]]
+- [[_COMMUNITY_Community 94|Community 94]]
+- [[_COMMUNITY_Community 95|Community 95]]
+- [[_COMMUNITY_Community 96|Community 96]]
+- [[_COMMUNITY_Community 97|Community 97]]
+- [[_COMMUNITY_Community 98|Community 98]]
+- [[_COMMUNITY_Community 99|Community 99]]
+- [[_COMMUNITY_Community 100|Community 100]]
+- [[_COMMUNITY_Community 101|Community 101]]
+- [[_COMMUNITY_Community 102|Community 102]]
+- [[_COMMUNITY_Community 103|Community 103]]
+- [[_COMMUNITY_Community 104|Community 104]]
+- [[_COMMUNITY_Community 105|Community 105]]
+- [[_COMMUNITY_Community 106|Community 106]]
+- [[_COMMUNITY_Community 107|Community 107]]
+- [[_COMMUNITY_Community 108|Community 108]]
+- [[_COMMUNITY_Community 109|Community 109]]
+- [[_COMMUNITY_Community 110|Community 110]]
+- [[_COMMUNITY_Community 111|Community 111]]
+- [[_COMMUNITY_Community 112|Community 112]]
+- [[_COMMUNITY_Community 113|Community 113]]
+- [[_COMMUNITY_Community 114|Community 114]]
+- [[_COMMUNITY_Community 115|Community 115]]
+- [[_COMMUNITY_Community 116|Community 116]]
+- [[_COMMUNITY_Community 117|Community 117]]
+- [[_COMMUNITY_Community 118|Community 118]]
+- [[_COMMUNITY_Community 119|Community 119]]
+- [[_COMMUNITY_Community 120|Community 120]]
+- [[_COMMUNITY_Community 121|Community 121]]
+- [[_COMMUNITY_Community 122|Community 122]]
+- [[_COMMUNITY_Community 123|Community 123]]
+- [[_COMMUNITY_Community 124|Community 124]]
+- [[_COMMUNITY_Community 125|Community 125]]
+- [[_COMMUNITY_Community 126|Community 126]]
+- [[_COMMUNITY_Community 127|Community 127]]
+- [[_COMMUNITY_Community 128|Community 128]]
+- [[_COMMUNITY_Community 129|Community 129]]
+- [[_COMMUNITY_Community 130|Community 130]]
+- [[_COMMUNITY_Community 131|Community 131]]
+- [[_COMMUNITY_Community 132|Community 132]]
+- [[_COMMUNITY_Community 133|Community 133]]
+- [[_COMMUNITY_Community 134|Community 134]]
+- [[_COMMUNITY_Community 135|Community 135]]
+- [[_COMMUNITY_Community 136|Community 136]]
+- [[_COMMUNITY_Community 137|Community 137]]
+- [[_COMMUNITY_Community 138|Community 138]]
+- [[_COMMUNITY_Community 139|Community 139]]
+- [[_COMMUNITY_Community 140|Community 140]]
+- [[_COMMUNITY_Community 141|Community 141]]
+- [[_COMMUNITY_Community 142|Community 142]]
+- [[_COMMUNITY_Community 143|Community 143]]
+- [[_COMMUNITY_Community 144|Community 144]]
+- [[_COMMUNITY_Community 145|Community 145]]
+- [[_COMMUNITY_Community 146|Community 146]]
+- [[_COMMUNITY_Community 147|Community 147]]
+- [[_COMMUNITY_Community 148|Community 148]]
+- [[_COMMUNITY_Community 149|Community 149]]
+- [[_COMMUNITY_Community 150|Community 150]]
+- [[_COMMUNITY_Community 151|Community 151]]
+- [[_COMMUNITY_Community 152|Community 152]]
+- [[_COMMUNITY_Community 153|Community 153]]
+- [[_COMMUNITY_Community 154|Community 154]]
+- [[_COMMUNITY_Community 155|Community 155]]
+- [[_COMMUNITY_Community 156|Community 156]]
+- [[_COMMUNITY_Community 157|Community 157]]
+- [[_COMMUNITY_Community 158|Community 158]]
+- [[_COMMUNITY_Community 159|Community 159]]
+- [[_COMMUNITY_Community 160|Community 160]]
+- [[_COMMUNITY_Community 161|Community 161]]
+- [[_COMMUNITY_Community 162|Community 162]]
+- [[_COMMUNITY_Community 163|Community 163]]
+- [[_COMMUNITY_Community 164|Community 164]]
+- [[_COMMUNITY_Community 165|Community 165]]
+- [[_COMMUNITY_Community 166|Community 166]]
+- [[_COMMUNITY_Community 167|Community 167]]
+- [[_COMMUNITY_Community 168|Community 168]]
+- [[_COMMUNITY_Community 169|Community 169]]
+- [[_COMMUNITY_Community 170|Community 170]]
+- [[_COMMUNITY_Community 171|Community 171]]
+- [[_COMMUNITY_Community 172|Community 172]]
+- [[_COMMUNITY_Community 173|Community 173]]
+- [[_COMMUNITY_Community 174|Community 174]]
+- [[_COMMUNITY_Community 175|Community 175]]
+- [[_COMMUNITY_Community 176|Community 176]]
+- [[_COMMUNITY_Community 177|Community 177]]
+- [[_COMMUNITY_Community 178|Community 178]]
+- [[_COMMUNITY_Community 179|Community 179]]
+- [[_COMMUNITY_Community 180|Community 180]]
+- [[_COMMUNITY_Community 181|Community 181]]
+- [[_COMMUNITY_Community 182|Community 182]]
+- [[_COMMUNITY_Community 183|Community 183]]
+- [[_COMMUNITY_Community 184|Community 184]]
+- [[_COMMUNITY_Community 185|Community 185]]
+- [[_COMMUNITY_Community 186|Community 186]]
+- [[_COMMUNITY_Community 187|Community 187]]
+- [[_COMMUNITY_Community 188|Community 188]]
+- [[_COMMUNITY_Community 189|Community 189]]
+- [[_COMMUNITY_Community 190|Community 190]]
+- [[_COMMUNITY_Community 191|Community 191]]
+- [[_COMMUNITY_Community 192|Community 192]]
+- [[_COMMUNITY_Community 193|Community 193]]
+- [[_COMMUNITY_Community 194|Community 194]]
+- [[_COMMUNITY_Community 195|Community 195]]
+- [[_COMMUNITY_Community 196|Community 196]]
+- [[_COMMUNITY_Community 197|Community 197]]
+- [[_COMMUNITY_Community 198|Community 198]]
+- [[_COMMUNITY_Community 199|Community 199]]
+- [[_COMMUNITY_Community 200|Community 200]]
+- [[_COMMUNITY_Community 201|Community 201]]
+- [[_COMMUNITY_Community 202|Community 202]]
+- [[_COMMUNITY_Community 203|Community 203]]
+- [[_COMMUNITY_Community 204|Community 204]]
+- [[_COMMUNITY_Community 205|Community 205]]
+- [[_COMMUNITY_Community 206|Community 206]]
+- [[_COMMUNITY_Community 207|Community 207]]
+- [[_COMMUNITY_Community 208|Community 208]]
+- [[_COMMUNITY_Community 209|Community 209]]
+- [[_COMMUNITY_Community 210|Community 210]]
+- [[_COMMUNITY_Community 211|Community 211]]
+- [[_COMMUNITY_Community 212|Community 212]]
+- [[_COMMUNITY_Community 213|Community 213]]
+- [[_COMMUNITY_Community 214|Community 214]]
+- [[_COMMUNITY_Community 215|Community 215]]
+- [[_COMMUNITY_Community 216|Community 216]]
+- [[_COMMUNITY_Community 217|Community 217]]
+- [[_COMMUNITY_Community 218|Community 218]]
+- [[_COMMUNITY_Community 219|Community 219]]
+- [[_COMMUNITY_Community 220|Community 220]]
+- [[_COMMUNITY_Community 221|Community 221]]
+- [[_COMMUNITY_Community 222|Community 222]]
+- [[_COMMUNITY_Community 223|Community 223]]
+- [[_COMMUNITY_Community 224|Community 224]]
+- [[_COMMUNITY_Community 225|Community 225]]
+- [[_COMMUNITY_Community 226|Community 226]]
+- [[_COMMUNITY_Community 227|Community 227]]
+- [[_COMMUNITY_Community 228|Community 228]]
+- [[_COMMUNITY_Community 229|Community 229]]
+- [[_COMMUNITY_Community 230|Community 230]]
+- [[_COMMUNITY_Community 231|Community 231]]
+- [[_COMMUNITY_Community 232|Community 232]]
+- [[_COMMUNITY_Community 233|Community 233]]
+- [[_COMMUNITY_Community 234|Community 234]]
+- [[_COMMUNITY_Community 235|Community 235]]
+- [[_COMMUNITY_Community 236|Community 236]]
+- [[_COMMUNITY_Community 237|Community 237]]
+- [[_COMMUNITY_Community 238|Community 238]]
+- [[_COMMUNITY_Community 239|Community 239]]
+- [[_COMMUNITY_Community 240|Community 240]]
+- [[_COMMUNITY_Community 241|Community 241]]
+- [[_COMMUNITY_Community 242|Community 242]]
+- [[_COMMUNITY_Community 243|Community 243]]
+- [[_COMMUNITY_Community 244|Community 244]]
+- [[_COMMUNITY_Community 245|Community 245]]
+- [[_COMMUNITY_Community 246|Community 246]]
+- [[_COMMUNITY_Community 247|Community 247]]
+- [[_COMMUNITY_Community 248|Community 248]]
+- [[_COMMUNITY_Community 249|Community 249]]
+- [[_COMMUNITY_Community 250|Community 250]]
+- [[_COMMUNITY_Community 251|Community 251]]
+- [[_COMMUNITY_Community 252|Community 252]]
+- [[_COMMUNITY_Community 253|Community 253]]
+- [[_COMMUNITY_Community 254|Community 254]]
+- [[_COMMUNITY_Community 255|Community 255]]
+- [[_COMMUNITY_Community 256|Community 256]]
+- [[_COMMUNITY_Community 257|Community 257]]
+- [[_COMMUNITY_Community 258|Community 258]]
+- [[_COMMUNITY_Community 259|Community 259]]
+- [[_COMMUNITY_Community 260|Community 260]]
+- [[_COMMUNITY_Community 261|Community 261]]
+- [[_COMMUNITY_Community 262|Community 262]]
+- [[_COMMUNITY_Community 263|Community 263]]
+- [[_COMMUNITY_Community 264|Community 264]]
+- [[_COMMUNITY_Community 265|Community 265]]
+- [[_COMMUNITY_Community 266|Community 266]]
+- [[_COMMUNITY_Community 267|Community 267]]
+- [[_COMMUNITY_Community 268|Community 268]]
+- [[_COMMUNITY_Community 269|Community 269]]
+- [[_COMMUNITY_Community 270|Community 270]]
+- [[_COMMUNITY_Community 271|Community 271]]
+- [[_COMMUNITY_Community 272|Community 272]]
+- [[_COMMUNITY_Community 273|Community 273]]
+- [[_COMMUNITY_Community 274|Community 274]]
+- [[_COMMUNITY_Community 275|Community 275]]
+- [[_COMMUNITY_Community 276|Community 276]]
+- [[_COMMUNITY_Community 277|Community 277]]
+- [[_COMMUNITY_Community 278|Community 278]]
+- [[_COMMUNITY_Community 279|Community 279]]
+- [[_COMMUNITY_Community 280|Community 280]]
+- [[_COMMUNITY_Community 281|Community 281]]
+- [[_COMMUNITY_Community 282|Community 282]]
+- [[_COMMUNITY_Community 283|Community 283]]
+- [[_COMMUNITY_Community 284|Community 284]]
+- [[_COMMUNITY_Community 285|Community 285]]
+- [[_COMMUNITY_Community 286|Community 286]]
+- [[_COMMUNITY_Community 287|Community 287]]
+- [[_COMMUNITY_Community 288|Community 288]]
+- [[_COMMUNITY_Community 289|Community 289]]
+- [[_COMMUNITY_Community 290|Community 290]]
+- [[_COMMUNITY_Community 291|Community 291]]
+- [[_COMMUNITY_Community 292|Community 292]]
+- [[_COMMUNITY_Community 293|Community 293]]
+- [[_COMMUNITY_Community 294|Community 294]]
+- [[_COMMUNITY_Community 295|Community 295]]
+- [[_COMMUNITY_Community 296|Community 296]]
+- [[_COMMUNITY_Community 297|Community 297]]
+- [[_COMMUNITY_Community 298|Community 298]]
+- [[_COMMUNITY_Community 299|Community 299]]
+- [[_COMMUNITY_Community 300|Community 300]]
+- [[_COMMUNITY_Community 301|Community 301]]
+- [[_COMMUNITY_Community 302|Community 302]]
+- [[_COMMUNITY_Community 303|Community 303]]
+- [[_COMMUNITY_Community 304|Community 304]]
+- [[_COMMUNITY_Community 305|Community 305]]
+- [[_COMMUNITY_Community 306|Community 306]]
+- [[_COMMUNITY_Community 307|Community 307]]
+- [[_COMMUNITY_Community 308|Community 308]]
+- [[_COMMUNITY_Community 309|Community 309]]
+- [[_COMMUNITY_Community 310|Community 310]]
+- [[_COMMUNITY_Community 311|Community 311]]
+- [[_COMMUNITY_Community 312|Community 312]]
+- [[_COMMUNITY_Community 313|Community 313]]
+- [[_COMMUNITY_Community 314|Community 314]]
+- [[_COMMUNITY_Community 315|Community 315]]
+- [[_COMMUNITY_Community 316|Community 316]]
+- [[_COMMUNITY_Community 317|Community 317]]
+- [[_COMMUNITY_Community 318|Community 318]]
+- [[_COMMUNITY_Community 319|Community 319]]
+- [[_COMMUNITY_Community 320|Community 320]]
+- [[_COMMUNITY_Community 321|Community 321]]
+- [[_COMMUNITY_Community 322|Community 322]]
+- [[_COMMUNITY_Community 323|Community 323]]
+- [[_COMMUNITY_Community 324|Community 324]]
+- [[_COMMUNITY_Community 325|Community 325]]
+- [[_COMMUNITY_Community 326|Community 326]]
+- [[_COMMUNITY_Community 327|Community 327]]
+- [[_COMMUNITY_Community 328|Community 328]]
+- [[_COMMUNITY_Community 329|Community 329]]
+- [[_COMMUNITY_Community 330|Community 330]]
+- [[_COMMUNITY_Community 331|Community 331]]
+- [[_COMMUNITY_Community 332|Community 332]]
+- [[_COMMUNITY_Community 333|Community 333]]
+- [[_COMMUNITY_Community 334|Community 334]]
+- [[_COMMUNITY_Community 335|Community 335]]
+- [[_COMMUNITY_Community 336|Community 336]]
+- [[_COMMUNITY_Community 337|Community 337]]
+- [[_COMMUNITY_Community 338|Community 338]]
+- [[_COMMUNITY_Community 339|Community 339]]
+- [[_COMMUNITY_Community 340|Community 340]]
+- [[_COMMUNITY_Community 341|Community 341]]
+- [[_COMMUNITY_Community 342|Community 342]]
+- [[_COMMUNITY_Community 343|Community 343]]
+- [[_COMMUNITY_Community 344|Community 344]]
+- [[_COMMUNITY_Community 345|Community 345]]
+- [[_COMMUNITY_Community 346|Community 346]]
+- [[_COMMUNITY_Community 347|Community 347]]
+- [[_COMMUNITY_Community 348|Community 348]]
+- [[_COMMUNITY_Community 349|Community 349]]
+- [[_COMMUNITY_Community 350|Community 350]]
+- [[_COMMUNITY_Community 351|Community 351]]
+- [[_COMMUNITY_Community 352|Community 352]]
+- [[_COMMUNITY_Community 353|Community 353]]
+- [[_COMMUNITY_Community 354|Community 354]]
+- [[_COMMUNITY_Community 355|Community 355]]
+- [[_COMMUNITY_Community 356|Community 356]]
+- [[_COMMUNITY_Community 357|Community 357]]
+- [[_COMMUNITY_Community 358|Community 358]]
+- [[_COMMUNITY_Community 359|Community 359]]
+- [[_COMMUNITY_Community 360|Community 360]]
+- [[_COMMUNITY_Community 361|Community 361]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `SectionText` - 99 edges
-2. `BaseAgent` - 60 edges
-3. `SubEntry` - 45 edges
-4. `RewriterAgent` - 44 edges
-5. `Seniority` - 31 edges
-6. `Orchestrator` - 25 edges
-7. `Validate all 4 agents against CLAUDE.md requirements.` - 25 edges
-8. `RewriterInput` - 21 edges
-9. `GapAnalyzerAgent` - 20 edges
-10. `ResumeUnderstandingAgent` - 20 edges
+1. `JDFetcherAgent` - 26 edges
+2. `SectionText` - 24 edges
+3. `RewriterAgent` - 23 edges
+4. `useResumeStore` - 21 edges
+5. `Generated from: Upload page (pixel-perfect, production approved)` - 20 edges
+6. `TestJDFetcherFetch` - 19 edges
+7. `JDFetchResult` - 18 edges
+8. `Orchestrator` - 17 edges
+9. `BaseAgent` - 17 edges
+10. `GapAnalyzerAgent` - 17 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `Input contract for Agent 4.` --uses--> `RewriteStyle`  [INFERRED]
-  schemas\agent4_schema.py → schemas\common.py
 - `read_upload()` --calls--> `parse_resume()`  [INFERRED]
-  app.py → parser.py
-- `_export_to_docx()` --calls--> `_build_structured_resume()`  [INFERRED]
-  gap_session.py → parser.py
+  app.py → C:/Users/mathu/projects/Github/ResumeEvaluatorTool/resume_platform/parser.py
 - `_export_to_docx()` --calls--> `_build_docx()`  [INFERRED]
-  gap_session.py → engine\resume_builder.py
+  C:/Users/mathu/projects/Github/ResumeEvaluatorTool/resume_platform/gap_session.py → engine/resume_builder.py
 - `Orchestrator` --uses--> `GapAnalyzerAgent`  [INFERRED]
-  orchestrator.py → agents\gap_analyzer.py
+  orchestrator.py → backend/agents/gap_analyzer.py
+- `Orchestrator` --uses--> `JDIntelligenceAgent`  [INFERRED]
+  orchestrator.py → backend/agents/jd_intelligence.py
+- `Orchestrator` --uses--> `RecruiterSimulatorAgent`  [INFERRED]
+  orchestrator.py → backend/agents/recruiter_sim.py
 
-## Communities
+## Hyperedges (group relationships)
+- **Backend Runtime Stack Form** — claude_backend_stack, requirements_python_dependencies, runtime_python_3_11_9 [INFERRED 0.85]
+- **Frontend API Contract Implemented** — claude_api_endpoints_contract, api_contract_analysis_result_schema, readme_fastapi_backend [INFERRED 0.85]
+- **Visual Design Language Participation** — design_system_color_palette, design_system_button_3d_effect, hero_layered_3d_card_illustration [INFERRED 0.75]
+
+## Communities (362 total, 293 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.06
-Nodes (75): A single sub-entry within a resume section (one company role, one degree, one ce, One canonical section of a parsed resume with verbatim text and sub-entries., SectionText, SubEntry, Entry point for Agent 4 — rewrites resume sections based on gap analysis., Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Resolve a section by canonical name, then common aliases. (+67 more)
+Cohesion: 0.05
+Nodes (57): Orchestrator, Orchestrator module for Resume Intelligence Platform V2., Merge A1 and Sectioner sections; keep richer section payload., Convert SectionText mapping to plain dictionaries., Extract resume sections available directly in A1 output., _mock_llm_json(), Verify Agent 4 merges gap-analysis sub_changes with ALL sectioner SubEntries.  R, Validator must append the 4 unchanged entries when A4 returns only 2. (+49 more)
 
 ### Community 1 - "Community 1"
-Cohesion: 0.07
-Nodes (43): ABC, DetailedEvalOutput, GapAnalyzerInput, GapAnalyzerOutput, A single sub-entry within a multi-entry resume section (e.g. one company in Expe, SectionGap, SubLocationChange, BaseAgent (+35 more)
+Cohesion: 0.05
+Nodes (36): AuthGateScreen(), AuthGateTab, INPUT_BASE_STYLE, AuthModal(), AuthModalProps, AuthTab, INPUT_BASE_STYLE, RequireAuth() (+28 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.12
-Nodes (41): Pydantic schemas for Agent 1 — Resume Understanding.  Input: raw resume text (pr, Input contract for Agent 1. resume_text must be pre-cleaned by parser.py., A single seniority-level signal and whether it is present in the resume., Structured representation of a parsed resume.      All fields are required — Age, Seniority-aware resume health — does not require a JD., ResumeHealthOutput, ResumeUnderstandingInput, ResumeUnderstandingOutput (+33 more)
+Cohesion: 0.06
+Nodes (32): ATSProvider, classify_url(), ATS provider classifier.  Detects which Applicant Tracking System (ATS) is hos, Hosting ATS provider for a job posting URL., Classify a job posting URL by its hosting ATS.      Pure string-matching — no, _build_queries(), _Candidate, _compute_confidence() (+24 more)
 
 ### Community 3 - "Community 3"
-Cohesion: 0.1
-Nodes (25): Input contract for Agent 4., RewriterInput, Simple verification test for RewriterAgent improvements.  This test verifies the, Test that __init__ sets the correct model, max_tokens, and provider., Test that the system prompt includes explicit length requirements., Test that the user message includes explicit length instructions., Test that _validate_rewrite_depth method exists and checks content depth., test_content_depth_validation() (+17 more)
+Cohesion: 0.05
+Nodes (42): Agent contract, Anti-hallucination (A4 rewriter — enforced in prompt), API endpoints, ATS scoring (deterministic, 0-100), Backend Stack, Before every Day prompt, verify, Benchmarks (data/benchmarks.json), code:block1 (resume_platform/) (+34 more)
 
 ### Community 4 - "Community 4"
-Cohesion: 0.09
-Nodes (37): _block_already_present(), _coerce_section_dict(), _coerce_sections(), _dedupe_entries(), _detect_sub_entries(), _empty_section(), _extract_all_sections_from_text(), _labels_overlap() (+29 more)
+Cohesion: 0.08
+Nodes (25): _ensure_experience_markers(), RewriterAgent - Agent 4 of the Resume Intelligence Platform.  Surgical sub-loc, Entry point for Agent 4 — rewrites resume sections based on gap analysis., Compute one section rewrite from one section gap., Pair each gap-analysis sub_change to at most one SubEntry index.          Prev, Wraps an experience sub-entry in structural markers for the docx writer.     If, Rewrites a section entry-by-entry using sub_changes from the gap analysis., Stitch sub_changes in the same order as ``section_text.sub_entries``. (+17 more)
 
 ### Community 5 - "Community 5"
-Cohesion: 0.09
-Nodes (29): ActionableChange, ChangeLocation, OverallAssessment, Pydantic schemas for Agent 3 - Gap Analyzer., ExperienceRewrite, ProjectRewrite, Pydantic schemas for Agent 4 — Rewriter.  Input: original resume text, gap analy, Structured rewrite of a single project entry. (+21 more)
+Cohesion: 0.1
+Nodes (36): _block_already_present(), _coerce_section_dict(), _coerce_sections(), _dedupe_entries(), _detect_sub_entries(), _empty_section(), _extract_all_sections_from_text(), _labels_overlap() (+28 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.11
-Nodes (33): _add_contact_line(), _build_docx(), build_final_docx(), build_resume_docx(), _detect_title(), _extract_section_content(), _format_paragraph_runs(), _get_structured_value() (+25 more)
+Cohesion: 0.07
+Nodes (17): ABC, BaseAgent, BaseAgent - Abstract base class for all AI agents in the Resume Intelligence Pla, Return a concise exception string including root cause details., Return True for OpenAI model families that reject max_tokens., Attempt to repair JSON truncated mid-stream by the LLM.         Closes untermin, Remove a trailing `"key":` (and the comma preceding it) when there is no, GapAnalyzerAgent - Agent 3 of the Resume Intelligence Platform.  Compares stru (+9 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.11
-Nodes (25): analyze(), download(), gap_close(), GapCloseRequest, _json_event(), FastAPI backend for Resume Intelligence Platform V2., Stream job progress as Server-Sent Events., Return current job status and result for polling fallback. (+17 more)
+Cohesion: 0.09
+Nodes (34): Skills comma-list and awards should render as list bullets., test_docx_skills_and_awards_render_as_list_items(), _add_contact_line(), _build_docx(), build_final_docx(), build_resume_docx(), _detect_title(), _extract_section_content() (+26 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.17
-Nodes (16): _original(), read_upload(), _build_structured_resume(), _clean_text(), _extract_contact_line(), _extract_section_blocks(), _is_text_meaningful(), _parse_docx() (+8 more)
+Cohesion: 0.1
+Nodes (26): _original(), read_upload(), _add_horizontal_rule(), _edit_section(), _export_to_docx(), Interactive gap-closing helper.  This module is purely terminal-interface and do, Open an editor for the user to modify the provided text.      Parameters     ---, Create a comprehensive r-sum- document with gap analysis metadata.      The stru (+18 more)
 
 ### Community 9 - "Community 9"
-Cohesion: 0.18
-Nodes (13): _add_horizontal_rule(), _edit_section(), _export_to_docx(), Interactive gap-closing helper.  This module is purely terminal-interface and do, Open an editor for the user to modify the provided text.      Parameters     ---, Create a comprehensive r-sum- document with gap analysis metadata.      The stru, Insert a horizontal line using an XML border.      The function mutates the last, Run the interactive gap-closing session.      Parameters     ----------     gap_ (+5 more)
+Cohesion: 0.12
+Nodes (21): DataSourceNotice(), GapCloser(), normalizeFixes(), getBadgeStyle(), getShortlistColor(), PersonaCard(), RecruiterSimulation(), useWindowSize() (+13 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.16
-Nodes (6): postAnalyze(), handleDrop(), handleFileChange(), handleSubmit(), isAcceptedFile(), validateAndSetFile()
+Cohesion: 0.1
+Nodes (16): ActionableFixes(), atsSectionMap, canonicalSections, derivePriority(), dimensionIndexMap, DimensionKey, fallbackDimensionMeta, FilterValue (+8 more)
 
 ### Community 11 - "Community 11"
-Cohesion: 0.21
-Nodes (13): _collect_issues(), _count_syllables(), ATS Scoring Engine — deterministic resume quality scorer.  Scores a resume on fo, Evaluates resume formatting (0-25):       - Checks for standard section headers, Calculates readability score (0-25):       - Uses Flesch-Kincaid formula (ideal:, Measures quantifiable achievements (0-25):       - Detects numbers (40% latency, Calculate the ATS (Applicant Tracking System) score for a resume.        The sco, Calculates keyword match score (0-25):       - Counts action verbs (led, built, (+5 more)
+Cohesion: 0.1
+Nodes (20): code:text (.), code:bash (cp .env.example .env), code:env (OPENAI_API_KEY=...), code:bash (python -m venv .venv), code:bash (source .venv/bin/activate), code:bash (streamlit run app.py), code:bash (uvicorn backend.main:app --reload), code:bash (cd frontend) (+12 more)
 
 ### Community 12 - "Community 12"
+Cohesion: 0.14
+Nodes (15): GapCloseRequest, Gap close request payload., Gap close request payload., Gap close request payload., AlternativeRole, FetchJDRequest, FetchJDResponse, test_tc_e_01_fetch_jd_found() (+7 more)
+
+### Community 13 - "Community 13"
+Cohesion: 0.16
+Nodes (19): _collect_issues(), _count_syllables(), _extract_missing_jd_keywords(), _gap_reason(), generate_dimension_details(), _is_formatting_issue(), ATS Scoring Engine — deterministic resume quality scorer.  Scores a resume on fo, Generate per-dimension detail objects with benchmark and gap explanation.      T (+11 more)
+
+### Community 14 - "Community 14"
+Cohesion: 0.11
+Nodes (16): get_db(), Supabase client singleton for backend persistence., Singleton Supabase client using service_role_key., check_upload_limit(), Upload limit enforcement for free tier., Admin: reset user's monthly upload counter. For testing/support.      Args:, Check if user exceeded monthly limit. Raise 402 if over.      Args:         db:, reset_user_limit() (+8 more)
+
+### Community 15 - "Community 15"
+Cohesion: 0.13
+Nodes (14): JDIntelligenceAgent, Agent 2: Job Description Analyst.      Extracts hiring intent and skill requir, Analyze a job description and extract hiring intent.          Args:, Agent 5 - Recruiter Simulator.      Evaluates a candidate's resume through the, Initialize Agent 5 with claude-haiku-4-5-20251001, 6000 max tokens, Anthropic pr, RecruiterSimulatorAgent, BaseAgent, HiddenSignal (+6 more)
+
+### Community 16 - "Community 16"
+Cohesion: 0.11
+Nodes (19): 11. TAB NAVIGATION (TabNav.tsx — locked), 14. BEFORE/AFTER DIFF CARD PATTERN (Fixes tab), 17. CRITICAL RULES (enforce on every page), 18. ADDING A NEW PAGE — CHECKLIST, 19. HOW TO USE THIS FILE IN CLAUDE CODE, 1. PAGE STRUCTURE (every page follows this), 2. TOPBAR (locked — do not change), 3. COLOR PALETTE (+11 more)
+
+### Community 17 - "Community 17"
+Cohesion: 0.18
+Nodes (17): Enum, CompanyType, Config, GapSeverity, GapType, Shared enums and base types used across all agent schemas.  These define canon, Allow serialization from dicts., Canonical seniority levels used across all agents and benchmarks. (+9 more)
+
+### Community 18 - "Community 18"
+Cohesion: 0.16
+Nodes (15): BaseModel, ActionableChange, ChangeLocation, DetailedEvalOutput, GapAnalyzerInput, GapAnalyzerOutput, OverallAssessment, Pydantic schemas for Agent 3 - Gap Analyzer. (+7 more)
+
+### Community 19 - "Community 19"
+Cohesion: 0.15
+Nodes (13): _build_system_prompt(), _build_weakness_injection(), _extract_missing_evidence(), _find_weakest_dimension(), Agent 5 - Recruiter Simulator.  Simulates 4 fixed recruiter personas plus 1 co, Select the 5th persona based on resume content signals.     Returns (persona_na, Identify the ATS dimension with the largest gap from its benchmark.      Retur, Return a short, concrete description of what is missing for the given dimension. (+5 more)
+
+### Community 20 - "Community 20"
+Cohesion: 0.18
+Nodes (13): Keep schema-bounded LLM lists from failing validation., Agent 1: Resume Parser.      Extracts structured data from raw resume text for, Extract structured data from a resume, including seniority health signals., ResumeUnderstandingAgent, Pydantic schemas for Agent 1 — Resume Understanding.  Input: raw resume text (, Input contract for Agent 1. resume_text must be pre-cleaned by parser.py., A single seniority-level signal and whether it is present in the resume., Structured representation of a parsed resume.      All fields are required — A (+5 more)
+
+### Community 21 - "Community 21"
+Cohesion: 0.13
+Nodes (13): ActionableChange, ATSBreakdown, ATSResult, GapResult, HistoryRun, PercentileResult, PositioningResult, ResumeUnderstanding (+5 more)
+
+### Community 22 - "Community 22"
+Cohesion: 0.15
+Nodes (10): axiosInstance, downloadResumeReport(), FastAPIErrorDetail, FastAPIErrorResponse, getHistory(), getResult(), getResumeDownloadUrl(), normalizeRecruiterSim() (+2 more)
+
+### Community 23 - "Community 23"
+Cohesion: 0.15
+Nodes (9): ActionItem, detailFallbackMeta, detailOrder, EvaluationDashboard(), EvaluationDashboardProps, getDimensionDetails(), ScoreCardProps, useCountUp() (+1 more)
+
+### Community 24 - "Community 24"
+Cohesion: 0.22
+Nodes (13): _decode_supabase_token(), _decode_with_jwks(), _decode_with_legacy_secret(), _fetch_jwks(), _find_jwk(), get_current_user_id(), _get_jwks(), Supabase JWT verification for FastAPI dependencies. (+5 more)
+
+### Community 25 - "Community 25"
+Cohesion: 0.3
+Nodes (12): SerperClient, _mock_response(), test_tc_s_01_search_returns_search_results(), test_tc_s_02_search_raises_on_401(), test_tc_s_03_search_raises_on_429(), test_tc_s_04_search_raises_on_timeout(), test_tc_s_05_search_handles_empty_organic(), test_tc_s_06_search_multi_deduplicates_by_url() (+4 more)
+
+### Community 26 - "Community 26"
+Cohesion: 0.15
+Nodes (9): Exception, Dry-run validation of JDFetcherAgent with fully mocked dependencies. Run: python, run_validation(), _normalize_url(), SerperClient - Thin wrapper around Serper Dev Google Search API., Raised when Serper requests fail., Call Serper and return top organic results., Run multiple searches and deduplicate by normalized URL. (+1 more)
+
+### Community 28 - "Community 28"
+Cohesion: 0.24
+Nodes (6): MOCK_ANALYSIS_RESULT, MOCK_HISTORY, MOCK_SSE_EVENTS, AnalysisResult, HistoryResponse, SSEProgressEvent
+
+### Community 29 - "Community 29"
+Cohesion: 0.21
+Nodes (9): TOP_COMPANIES, TOP_ROLES_BY_GROUP, FetchJDResult, ACCEPTED_EXTENSIONS, extractDomain(), formatFetchTime(), FreshnessPill(), FreshnessPillProps (+1 more)
+
+### Community 30 - "Community 30"
+Cohesion: 0.17
+Nodes (11): ExperienceRewrite, ProjectRewrite, Pydantic schemas for Agent 4 — Rewriter.  Input: original resume text, gap ana, Structured rewrite of a single project entry., Rewritten bullets for a single role., Skills grouped by category for consistent ATS keyword extraction., Complete resume rewrite for one style., All three rewrite styles for the candidate's resume sections.      gap_session (+3 more)
+
+### Community 32 - "Community 32"
+Cohesion: 0.24
+Nodes (8): gap_close(), _persist_job(), FastAPI backend for Resume Intelligence Platform V2., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., _require_job(), _try_restore_job()
+
+### Community 33 - "Community 33"
+Cohesion: 0.22
+Nodes (6): GapAnalyzerAgent, Agent 3 — Gap Analyzer.      Compares structured resume data (from Agent 1) ag, Entry point for Agent 3 — supports two modes.          Args:             inpu, Backfills original_content on SectionGap and original_text on SubLocationChange, Builds a human-readable JD text string from JD analysis dict.          Used as, Looks up verbatim text from a section's sub_entry by sub_label.          Args:
+
+### Community 34 - "Community 34"
 Cohesion: 0.27
 Nodes (10): _ensure_users_dir(), load_session(), Memory layer – per‑user JSON store.  Stores session history, tracks runs, and ke, Return a fresh session scaffold for the given user_id., Load the JSON session file for *user_id*.      Returns an empty scaffold if the, Persist *session_data* for *user_id*.      Args:         user_id: Identifier for, Append *run_result* to the user's session history.      Maintains a maximum of 5, save_session() (+2 more)
 
-### Community 13 - "Community 13"
+### Community 35 - "Community 35"
+Cohesion: 0.18
+Nodes (10): Base URL, Endpoints, GET /api/download/{docx_id}, GET /api/history, GET /api/result/{job_id}, GET /api/stream/{job_id}, POST /api/analyze, POST /api/gap-close (+2 more)
+
+### Community 36 - "Community 36"
+Cohesion: 0.25
+Nodes (5): _agent_with_mocks(), client(), _load_main_module(), Tests for JD Fetcher Agent — JD Auto-Fetch Feature Tests cover: unit, integratio, test_real_fetch_api()
+
+### Community 37 - "Community 37"
+Cohesion: 0.25
+Nodes (3): SearchResult, Tests for prompt construction., TestJDFetcherBuildPrompt
+
+### Community 38 - "Community 38"
+Cohesion: 0.22
+Nodes (9): 6. CARD SYSTEM, Alert / Warning Cards, code:block6 (background: #ffffff), code:block7 (background: #ffffff), code:block8 (background: #ffffff), code:block9 (Left border accent: 4px solid [color]), Feature / Info Cards, Main Container Card (+1 more)
+
+### Community 39 - "Community 39"
+Cohesion: 0.22
+Nodes (9): 9. FORM ELEMENTS, code:block16 (border: 1.5px solid #e5e7eb), code:block17 (border: 2px dashed #d1d5db (default)), code:block18 (display: flex, alignItems: flex-start, gap: 10px), code:block19 (display: flex, alignItems: center, gap: 8px), Drop Zone, Hint Bar, Privacy / Info Box (+1 more)
+
+### Community 40 - "Community 40"
+Cohesion: 0.25
+Nodes (8): _analyze_event_stream(), _json_event(), Serialize one SSE data event., Serialize one SSE data event., Serialize one SSE data event., Worker thread pushes SSE payloads; main generator yields JSON lines., Worker thread pushes SSE payloads; main generator yields JSON lines., Worker thread pushes SSE payloads; main generator yields JSON lines.
+
+### Community 41 - "Community 41"
+Cohesion: 0.25
+Nodes (8): fetch_jd(), Return current job status and result for polling fallback., Accepts company name and role title.     Returns extracted JD text via LLM + we, Return current job status and result for polling fallback., Return current job status and result for polling fallback., Accepts company name and role title.     Returns extracted JD text via LLM + we, Accepts company name and role title.     Returns extracted JD text via LLM + we, result()
+
+### Community 42 - "Community 42"
+Cohesion: 0.25
+Nodes (7): PersonaVerdict, Pydantic schemas for Agent 5 — Recruiter Simulator.  Input: resume text and/or, Shortlist decision and reasoning from a single recruiter persona.      each pe, Input contract for Agent 5., Aggregate recruiter simulation across all 10 personas.      shortlist_rate is, RecruiterSimInput, RecruiterSimOutput
+
+### Community 43 - "Community 43"
+Cohesion: 0.29
+Nodes (5): AnalyzeCallbacks, analyzeResume(), normalizeAnalysisResult(), ResultEnvelope, PriorityFix
+
+### Community 44 - "Community 44"
+Cohesion: 0.25
+Nodes (3): ErrorBoundary, ErrorBoundaryProps, ErrorBoundaryState
+
+### Community 46 - "Community 46"
 Cohesion: 0.57
 Nodes (6): get_company_tier_from_score(), get_positioning_statement(), _load_bands(), _percentile_label(), _rank_rationale(), Career positioning engine — NO LLM. Pure Python + static JSON.
 
-### Community 14 - "Community 14"
+### Community 47 - "Community 47"
+Cohesion: 0.43
+Nodes (6): get_percentile(), _interpolate_percentile(), load_benchmarks(), _percentile_label(), Loads percentile benchmarks from data/benchmarks.json.      Returns:          di, Converts ATS score to percentile rank using benchmarks.      Parameters:
+
+### Community 48 - "Community 48"
+Cohesion: 0.29
+Nodes (7): 7. BUTTON SYSTEM (3D effect — apply everywhere), code:block10 (background: file ? '#6366f1' : '#f3f4f6'), code:block11 (background: #6366f1, color: #ffffff), code:block12 (fontSize: 13px, fontWeight: 700, color: #6366f1), Primary Button (full width, e.g. Analyze Resume), Secondary Button (e.g. TopBar Download Report), Tertiary / Ghost (e.g. Change file link)
+
+### Community 49 - "Community 49"
+Cohesion: 0.29
+Nodes (7): 8. PILL / BADGE SYSTEM, code:block13 (display: flex, alignItems: center, gap: 8px), code:block14 (display: inline-flex, alignItems: center, gap: 7px), code:block15 (borderRadius: 999px, padding: 4px 12px), Demo Mode Badge, Feature Pills (top of page), Status Badge (success/error/warning)
+
+### Community 50 - "Community 50"
 Cohesion: 0.4
 Nodes (5): extract_fingerprint(), Style fingerprint extractor.  Analyzes a user's session history and produces a s, Truncate *text* to *limit* characters without cutting in the middle of a word., Return a concise style fingerprint.      The fingerprint is a single sentence of, _truncate()
 
-### Community 15 - "Community 15"
-Cohesion: 0.5
-Nodes (2): AnalysisProgress(), useSSE()
-
-### Community 37 - "Community 37"
-Cohesion: 1.0
-Nodes (1): Map variant section keys to canonical names.
-
-### Community 38 - "Community 38"
-Cohesion: 1.0
-Nodes (1): Set font color on a docx run via w:color element.
-
-### Community 39 - "Community 39"
-Cohesion: 1.0
-Nodes (1): Build a .docx resume with exact style matching.      Args:         structured_re
-
-### Community 40 - "Community 40"
-Cohesion: 1.0
-Nodes (1): Build a complete download-ready resume docx.
-
-### Community 41 - "Community 41"
-Cohesion: 1.0
-Nodes (1): Alias for build_final_docx (kept for backward compatibility).
-
-### Community 42 - "Community 42"
-Cohesion: 1.0
-Nodes (1): Extract text content for a section from structured resume dict.      Handles lis
-
-### Community 43 - "Community 43"
-Cohesion: 1.0
-Nodes (1): Read a canonical structured section, accepting common aliases.
-
-### Community 44 - "Community 44"
-Cohesion: 1.0
-Nodes (1): Detect internal placeholder strings that should not be rendered.
-
-### Community 45 - "Community 45"
-Cohesion: 1.0
-Nodes (1): Build the .docx document with exact color/font styling.      Args:         candi
-
-### Community 46 - "Community 46"
-Cohesion: 1.0
-Nodes (1): Extract title from contact line if present.
-
-### Community 47 - "Community 47"
-Cohesion: 1.0
-Nodes (1): Add contact text with blue color for links (containing @ or URL-like tokens).
-
-### Community 48 - "Community 48"
-Cohesion: 1.0
-Nodes (1): Render the summary as one paragraph instead of splitting by PDF lines.
-
-### Community 49 - "Community 49"
-Cohesion: 1.0
-Nodes (1): Write flat rewritten experience text with company, role, bullet, and stack style
-
-### Community 50 - "Community 50"
-Cohesion: 1.0
-Nodes (1): Render experience section. Content can be a list of role dicts (verbatim)     or
-
 ### Community 51 - "Community 51"
-Cohesion: 1.0
-Nodes (1): Render a text block (summary, skills, education, etc.).     Handles both string
+Cohesion: 0.33
+Nodes (5): code:js (export default defineConfig([), code:js (// eslint.config.js), Expanding the ESLint configuration, React Compiler, React + TypeScript + Vite
 
 ### Community 52 - "Community 52"
-Cohesion: 1.0
-Nodes (1): Returns list of anomaly descriptions for the skills section.     Checks:     1.
+Cohesion: 0.4
+Nodes (5): Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., stream()
 
 ### Community 53 - "Community 53"
-Cohesion: 1.0
-Nodes (1): Returns anomaly descriptions for summary section.     Checks:     1. full_text n
+Cohesion: 0.4
+Nodes (5): analyze(), Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON.
 
 ### Community 54 - "Community 54"
-Cohesion: 1.0
-Nodes (1): Returns (repaired_full_text, anomalies).     Checks:     1. full_text non-empty
+Cohesion: 0.4
+Nodes (5): download(), Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job.
 
 ### Community 55 - "Community 55"
-Cohesion: 1.0
-Nodes (1): Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count
+Cohesion: 0.5
+Nodes (3): check(), Test script to verify ISSUE 1 and ISSUE 2 fixes for Gap Closer.  ISSUE 1: Verify, Helper to track pass/fail.
 
 ### Community 56 - "Community 56"
-Cohesion: 1.0
-Nodes (1): Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count
+Cohesion: 0.5
+Nodes (4): health(), Explicit health endpoint for Railway and uptime probes., Explicit health endpoint for Railway and uptime probes., Explicit health endpoint for Railway and uptime probes.
 
 ### Community 57 - "Community 57"
-Cohesion: 1.0
-Nodes (1): Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count
+Cohesion: 0.5
+Nodes (4): Basic root endpoint for platform health checks., Basic root endpoint for platform health checks., Basic root endpoint for platform health checks., root()
 
 ### Community 58 - "Community 58"
-Cohesion: 1.0
-Nodes (1): For sections with no sub_entries structure (awards, publications, extracurricula
-
-### Community 59 - "Community 59"
-Cohesion: 1.0
-Nodes (1): Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      Run
-
-### Community 60 - "Community 60"
-Cohesion: 1.0
-Nodes (1): Entry point. Runs all section validators and returns repaired A1 output.
-
-### Community 61 - "Community 61"
-Cohesion: 1.0
-Nodes (1): Rewrites a whole section monolithically (fallback when no sub_changes available)
+Cohesion: 0.5
+Nodes (4): _get_allowed_origins(), Resolve CORS origins from environment with safe localhost defaults., Resolve CORS origins from environment with safe localhost defaults., Resolve CORS origins from environment with safe localhost defaults.
 
 ## Knowledge Gaps
-- **124 isolated node(s):** `Interactive gap-closing helper.  This module is purely terminal-interface and do`, `Insert a horizontal line using an XML border.      The function mutates the last`, `Run the interactive gap-closing session.      Parameters     ----------     gap_`, `Open an editor for the user to modify the provided text.      Parameters     ---`, `Create a comprehensive r-sum- document with gap analysis metadata.      The stru` (+119 more)
+- **405 isolated node(s):** `Interactive gap-closing helper.  This module is purely terminal-interface and do`, `Insert a horizontal line using an XML border.      The function mutates the last`, `Run the interactive gap-closing session.      Parameters     ----------     gap_`, `Open an editor for the user to modify the provided text.      Parameters     ---`, `Create a comprehensive r-sum- document with gap analysis metadata.      The stru` (+400 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **Thin community `Community 15`** (4 nodes): `AnalysisProgress()`, `AnalysisProgress.tsx`, `useSSE.ts`, `useSSE()`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 37`** (1 nodes): `Map variant section keys to canonical names.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 38`** (1 nodes): `Set font color on a docx run via w:color element.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 39`** (1 nodes): `Build a .docx resume with exact style matching.      Args:         structured_re`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 40`** (1 nodes): `Build a complete download-ready resume docx.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 41`** (1 nodes): `Alias for build_final_docx (kept for backward compatibility).`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 42`** (1 nodes): `Extract text content for a section from structured resume dict.      Handles lis`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 43`** (1 nodes): `Read a canonical structured section, accepting common aliases.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 44`** (1 nodes): `Detect internal placeholder strings that should not be rendered.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 45`** (1 nodes): `Build the .docx document with exact color/font styling.      Args:         candi`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 46`** (1 nodes): `Extract title from contact line if present.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 47`** (1 nodes): `Add contact text with blue color for links (containing @ or URL-like tokens).`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 48`** (1 nodes): `Render the summary as one paragraph instead of splitting by PDF lines.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 49`** (1 nodes): `Write flat rewritten experience text with company, role, bullet, and stack style`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 50`** (1 nodes): `Render experience section. Content can be a list of role dicts (verbatim)     or`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 51`** (1 nodes): `Render a text block (summary, skills, education, etc.).     Handles both string`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 52`** (1 nodes): `Returns list of anomaly descriptions for the skills section.     Checks:     1.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 53`** (1 nodes): `Returns anomaly descriptions for summary section.     Checks:     1. full_text n`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 54`** (1 nodes): `Returns (repaired_full_text, anomalies).     Checks:     1. full_text non-empty`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 55`** (1 nodes): `Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 56`** (1 nodes): `Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 57`** (1 nodes): `Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 58`** (1 nodes): `For sections with no sub_entries structure (awards, publications, extracurricula`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 59`** (1 nodes): `Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      Run`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 60`** (1 nodes): `Entry point. Runs all section validators and returns repaired A1 output.`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
-- **Thin community `Community 61`** (1 nodes): `Rewrites a whole section monolithically (fallback when no sub_changes available)`
-  Too small to be a meaningful cluster - may be noise or needs more connections extracted.
+- **293 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `SectionText` connect `Community 0` to `Community 1`, `Community 2`, `Community 3`, `Community 5`, `Community 7`?**
-  _High betweenness centrality (0.218) - this node is a cross-community bridge._
-- **Why does `BaseAgent` connect `Community 1` to `Community 0`, `Community 2`, `Community 3`?**
-  _High betweenness centrality (0.078) - this node is a cross-community bridge._
-- **Why does `RewriterAgent` connect `Community 3` to `Community 0`, `Community 1`, `Community 2`, `Community 7`?**
-  _High betweenness centrality (0.074) - this node is a cross-community bridge._
-- **Are the 96 inferred relationships involving `SectionText` (e.g. with `Orchestrator` and `Orchestrator module for Resume Intelligence Platform V2.`) actually correct?**
-  _`SectionText` has 96 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 52 inferred relationships involving `BaseAgent` (e.g. with `Validate all 4 agents against CLAUDE.md requirements.` and `GapAnalyzerAgent`) actually correct?**
-  _`BaseAgent` has 52 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 42 inferred relationships involving `SubEntry` (e.g. with `Verify Agent 4 merges gap-analysis sub_changes with ALL sectioner SubEntries.  R` and `Minimal valid SectionRewrite JSON for one entry.`) actually correct?**
-  _`SubEntry` has 42 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 30 inferred relationships involving `RewriterAgent` (e.g. with `Orchestrator` and `Orchestrator module for Resume Intelligence Platform V2.`) actually correct?**
-  _`RewriterAgent` has 30 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `downloadResumeReport()` connect `Community 22` to `Community 9`, `Community 2`, `Community 23`?**
+  _High betweenness centrality (0.121) - this node is a cross-community bridge._
+- **Why does `JDFetcherAgent` connect `Community 2` to `Community 36`, `Community 37`, `Community 41`, `Community 12`, `Community 45`, `Community 27`, `Community 31`?**
+  _High betweenness centrality (0.086) - this node is a cross-community bridge._
+- **Why does `JDFetchResult` connect `Community 2` to `Community 37`, `Community 45`, `Community 18`, `Community 27`, `Community 31`?**
+  _High betweenness centrality (0.071) - this node is a cross-community bridge._
+- **Are the 26 inferred relationships involving `str` (e.g. with `_original()` and `_export_to_docx()`) actually correct?**
+  _`str` has 26 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 11 inferred relationships involving `JDFetcherAgent` (e.g. with `GapCloseRequest` and `ATSProvider`) actually correct?**
+  _`JDFetcherAgent` has 11 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 21 inferred relationships involving `SectionText` (e.g. with `Orchestrator` and `GapAnalyzerAgent`) actually correct?**
+  _`SectionText` has 21 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 8 inferred relationships involving `RewriterAgent` (e.g. with `Orchestrator` and `BaseAgent`) actually correct?**
+  _`RewriterAgent` has 8 INFERRED edges - model-reasoned connections that need verification._

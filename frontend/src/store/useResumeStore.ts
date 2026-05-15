@@ -22,6 +22,7 @@ interface ResumeStoreState {
   currentProgress: SSEProgressEvent | null;
   docxId: string | null;
   fallbackInfo: Record<string, string[]>;
+  historyRefreshKey: number;
   userId: string;
   setJobId: (jobId: string | null) => void;
   setAnalysisResult: (analysisResult: AnalysisResult | null) => void;
@@ -36,6 +37,7 @@ interface ResumeStoreState {
   setCurrentProgress: (progress: SSEProgressEvent | null) => void;
   setDocxId: (docxId: string | null) => void;
   setFallbackInfo: (fallbackInfo: Record<string, string[]>) => void;
+  bumpHistoryRefresh: () => void;
   resetAnalysis: () => void;
 }
 
@@ -64,6 +66,7 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
   currentProgress: null,
   docxId: null,
   fallbackInfo: {},
+  historyRefreshKey: 0,
   userId: getOrCreateUserId(),
 
   setJobId: (jobId) => set({ jobId }),
@@ -128,6 +131,8 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
   setCurrentProgress: (currentProgress) => set({ currentProgress }),
   setDocxId: (docxId) => set({ docxId }),
   setFallbackInfo: (fallbackInfo) => set({ fallbackInfo }),
+  bumpHistoryRefresh: () =>
+    set((state) => ({ historyRefreshKey: state.historyRefreshKey + 1 })),
   resetAnalysis: () =>
     set({
       jobId: null,
@@ -140,5 +145,6 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
       currentProgress: null,
       docxId: null,
       fallbackInfo: {},
+      historyRefreshKey: 0,
     }),
 }));

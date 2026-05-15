@@ -14,12 +14,16 @@ import queue
 import threading
 from typing import Any, Dict, Generator
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 
+from backend.auth import get_current_user_id
 from backend.agents.jd_fetcher import JDFetcherAgent
+from backend.db import get_db
+from backend.limit_checker import check_upload_limit, reset_user_limit
+from backend.persistence import save_analysis
 from engine.resume_builder import build_final_docx
 from orchestrator import Orchestrator
 from parser import parse_resume
@@ -139,10 +143,12 @@ def _json_event(payload: dict) -> str:
 
 def _analyze_event_stream(
     temp_path: str,
+    file_name: str,
     jd_text: str,
     run_sim: bool,
     resume_hash: str,
     jd_hash: str,
+    user_id: str,
 ) -> Generator[str, None, None]:
     """Worker thread pushes SSE payloads; main generator yields JSON lines."""
 
@@ -160,6 +166,16 @@ def _analyze_event_stream(
             }
             resume_text = parse_resume(temp_path)
             job_store[job_id]["resume_text"] = resume_text
+
+            # Keep /api/stream compatible progress payloads.
+            job_store[job_id]["progress"].append(
+                {
+                    "status": "running",
+                    "step": 0,
+                    "label": "Resume parsed",
+                    "pct": 20,
+                }
+            )
             q.put(
                 {
                     "action": "yield",
@@ -171,6 +187,23 @@ def _analyze_event_stream(
                 }
             )
 
+            try:
+                db = get_db()
+                check_upload_limit(db, user_id)
+            except HTTPException as exc:
+                q.put(
+                    {
+                        "action": "yield",
+                        "data": {
+                            "event": "error",
+                            "message": exc.detail if isinstance(exc.detail, str) else str(exc.detail),
+                            "status": exc.status_code,
+                        },
+                    }
+                )
+                q.put({"action": "stop"})
+                return
+
             cache_key = f"{resume_hash}:{jd_hash or 'none'}"
             cached_stage_data = stage_cache.get(cache_key)
 
@@ -179,6 +212,14 @@ def _analyze_event_stream(
                 _persist_stage_cache(stage_cache)
 
             def sse_step_cb(step: int, label: str) -> None:
+                job_store[job_id]["progress"].append(
+                    {
+                        "status": "running",
+                        "step": step,
+                        "label": label,
+                        "pct": 20 if step == 0 else 45 if step == 1 else 72 if step == 2 else 88,
+                    }
+                )
                 q.put(
                     {
                         "action": "yield",
@@ -190,7 +231,7 @@ def _analyze_event_stream(
                     }
                 )
 
-            orch = Orchestrator(user_id=job_id)
+            orch = Orchestrator(user_id=user_id)
             result = orch.run_full_evaluation(
                 resume_text=resume_text,
                 jd_text=jd_text,
@@ -205,7 +246,33 @@ def _analyze_event_stream(
             merged["job_id"] = job_id
             job_store[job_id]["result"] = merged
             job_store[job_id]["status"] = "complete"
+
+            job_store[job_id]["progress"].append(
+                {
+                    "status": "complete",
+                    "pct": 100,
+                }
+            )
             q.put({"action": "yield", "data": {"event": "analysis_complete", "result": merged}})
+
+            try:
+                file_size = os.path.getsize(temp_path)
+                target_role = None
+                if jd_text:
+                    jd_intel = result.get("jd_intelligence") or {}
+                    target_role = jd_intel.get("role_title")
+                save_analysis(
+                    user_id=user_id,
+                    file_name=file_name,
+                    file_size=file_size,
+                    jd_text=jd_text,
+                    target_company=None,
+                    target_role=target_role,
+                    result=merged,
+                )
+            except Exception as exc:
+                logger.warning("save_analysis failed (non-blocking): %s", exc)
+
             q.put({"action": "stop"})
         except Exception as exc:
             logger.exception("Streaming analysis failed for job %s", job_id)
@@ -218,6 +285,13 @@ def _analyze_event_stream(
                     "data": {"event": "error", "message": str(exc)},
                 }
             )
+            if job_id in job_store:
+                job_store[job_id]["progress"].append(
+                    {
+                        "status": "error",
+                        "error": str(exc),
+                    }
+                )
             q.put({"action": "stop"})
         finally:
             if temp_path and os.path.exists(temp_path):
@@ -241,8 +315,10 @@ async def analyze(
     resume: UploadFile = File(...),
     jd_text: str = Form(""),
     run_sim: bool = Form(False),
+    user_id: str = Depends(get_current_user_id),
 ) -> StreamingResponse:
     """Stream analysis progress as SSE; final payload includes full result JSON."""
+    print(f"analyze user_id={user_id}", flush=True)
     suffix = os.path.splitext(resume.filename or "resume.txt")[1] or ".txt"
     resume_bytes = await resume.read()
     fd, temp_path = tempfile.mkstemp(suffix=suffix)
@@ -253,7 +329,9 @@ async def analyze(
     jd_hash = hashlib.sha256((jd_text or "").encode("utf-8")).hexdigest() if jd_text else ""
 
     return StreamingResponse(
-        _analyze_event_stream(temp_path, jd_text, run_sim, resume_hash, jd_hash),
+        _analyze_event_stream(
+            temp_path, resume.filename or "resume.txt", jd_text, run_sim, resume_hash, jd_hash, user_id
+        ),
         media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache",
@@ -361,3 +439,16 @@ def download(job_id: str, style: str = "balanced") -> Response:
         media_type="application/octet-stream",
         headers={"Content-Disposition": 'attachment; filename="resume.docx"'},
     )
+
+
+@app.post("/api/reset-limit")
+def reset_limit(user_id: str = None) -> dict:
+    """Admin/dev endpoint: reset user's monthly upload counter. Useful for testing."""
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id required")
+    try:
+        db = get_db()
+        result = reset_user_limit(db, user_id)
+        return {"success": True, "user_id": user_id, "uploads_this_month": 0}
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))

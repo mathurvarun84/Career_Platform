@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 import { EvaluationDashboard } from "./EvaluationDashboard";
@@ -6,9 +6,14 @@ import TopBar from "./components/layout/TopBar";
 import TabNav from "./components/layout/TabNav";
 import ActionableFixes from "./components/ActionableFixes";
 import GapCloser from "./components/GapCloser";
+import ProgressTracking from "./components/ProgressTracking";
 import RecruiterSimulation from "./components/RecruiterSimulation";
+import AuthModal from "./components/auth/AuthModal";
+import RequireAuth from "./components/auth/RequireAuth";
+import ResumeUpload from "./components/ResumeUpload";
 import AnalysisProgress from "./components/upload/AnalysisProgress";
-import UploadZone from "./components/upload/UploadZone";
+import { supabase } from "./lib/supabase";
+import { useAuthStore } from "./store/authStore";
 import { useResumeStore } from "./store/useResumeStore";
 import type { AnalysisResult } from "./types";
 import { hydrateWithFallback } from "./utils/analysisFallback";
@@ -16,11 +21,12 @@ import { hydrateWithFallback } from "./utils/analysisFallback";
 const queryClient = new QueryClient();
 
 function AppShell() {
+  const setSession = useAuthStore((state) => state.setSession);
+  const user = useAuthStore((state) => state.user);
   const analysisResult = useResumeStore((state) => state.analysisResult);
   const isFullAnalysisReady = useResumeStore(
     (state) => state.isFullAnalysisReady
   );
-  const activeTab = useResumeStore((state) => state.activeTab);
   const isLoading = useResumeStore((state) => state.isLoading);
   const isAnalyzing = useResumeStore((state) => state.isAnalyzing);
   const setActiveTab = useResumeStore((state) => state.setActiveTab);
@@ -32,11 +38,34 @@ function AppShell() {
   const setIsFullAnalysisReady = useResumeStore(
     (state) => state.setIsFullAnalysisReady
   );
+  const bumpHistoryRefresh = useResumeStore((state) => state.bumpHistoryRefresh);
+  const activeTab = useResumeStore((state) => state.activeTab);
 
   const [streamInputs, setStreamInputs] = useState<{
     file: File;
     jdText: string;
   } | null>(null);
+  // Keep single AuthModal here so TopBar and RequireAuth share one instance.
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session));
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      console.log("AUTH EVENT:", _event, session?.user?.email);
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      setIsAuthModalOpen(false);
+    }
+  }, [user]);
 
   const handleBeginAnalysis = useCallback(
     (file: File, jdText: string): void => {
@@ -67,6 +96,7 @@ function AppShell() {
       setStreamInputs(null);
       setIsLoading(false);
       setIsAnalyzing(false);
+      bumpHistoryRefresh();
     },
     [
       setAnalysisResult,
@@ -76,21 +106,42 @@ function AppShell() {
       setActiveTab,
       setIsLoading,
       setIsAnalyzing,
+      bumpHistoryRefresh,
     ]
   );
 
   const showDashboard = Boolean(
     analysisResult !== null && isFullAnalysisReady
   );
+  const showProgressStandalone =
+    Boolean(user) && activeTab === "progress" && !showDashboard;
   const showAnalyzingPage =
     Boolean(streamInputs) &&
     (isLoading || isAnalyzing) &&
     !isFullAnalysisReady;
 
+  if (showProgressStandalone) {
+    return (
+      <div className="min-h-screen bg-white">
+        <TopBar
+          onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          onViewProgress={() => setActiveTab("progress")}
+        />
+        <ProgressTracking />
+        {isAuthModalOpen ? (
+          <AuthModal onClose={() => setIsAuthModalOpen(false)} />
+        ) : null}
+      </div>
+    );
+  }
+
   if (showDashboard) {
     return (
       <div className="min-h-screen bg-white">
-        <TopBar />
+        <TopBar
+          onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          onViewProgress={() => setActiveTab("progress")}
+        />
         <TabNav />
         <div className="tab-content">
           <div
@@ -133,7 +184,19 @@ function AppShell() {
           >
             <GapCloser />
           </div>
+          <div
+            role="tabpanel"
+            id="panel-progress"
+            aria-labelledby="tab-progress"
+            className={activeTab === "progress" ? "tab-enter" : undefined}
+            style={{ display: activeTab === "progress" ? "block" : "none" }}
+          >
+            <ProgressTracking />
+          </div>
         </div>
+        {isAuthModalOpen ? (
+          <AuthModal onClose={() => setIsAuthModalOpen(false)} />
+        ) : null}
       </div>
     );
   }
@@ -148,7 +211,10 @@ function AppShell() {
           flexDirection: "column",
         }}
       >
-        <TopBar />
+        <TopBar
+          onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          onViewProgress={() => setActiveTab("progress")}
+        />
         <div
           style={{
             flex: 1,
@@ -163,14 +229,25 @@ function AppShell() {
             onComplete={handleAnalysisComplete}
           />
         </div>
+        {isAuthModalOpen ? (
+          <AuthModal onClose={() => setIsAuthModalOpen(false)} />
+        ) : null}
       </div>
     );
   }
 
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-      <TopBar />
-      <UploadZone onBeginAnalysis={handleBeginAnalysis} />
+      <TopBar
+        onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        onViewProgress={() => setActiveTab("progress")}
+      />
+      <RequireAuth onOpenAuthModal={() => setIsAuthModalOpen(true)}>
+        <ResumeUpload onBeginAnalysis={handleBeginAnalysis} />
+      </RequireAuth>
+      {isAuthModalOpen ? (
+        <AuthModal onClose={() => setIsAuthModalOpen(false)} />
+      ) : null}
     </div>
   );
 }

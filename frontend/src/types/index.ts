@@ -174,6 +174,27 @@ export interface HistoryResponse {
   runs: HistoryRun[];
 }
 
+export interface HistoryEntry {
+  id: string;
+  upload_id: string;
+  user_id: string;
+  file_name: string;
+  target_company: string | null;
+  target_role: string | null;
+  ats_score: number | null;
+  jd_match_score: number | null;
+  shortlist_rate: number | null;
+  percentile: number | null;
+  analyzed_at: string;
+  uploaded_at?: string;
+}
+
+export interface UsageLimits {
+  total_uploads: number;
+  uploads_this_month: number;
+  last_reset_date?: string;
+}
+
 export interface GapCloseRequest {
   job_id: string;
   accepted_sections: Record<string, RewriteStyle>;
@@ -198,4 +219,20 @@ export interface FetchJDResult {
 
 export type RewriteStyle = "balanced" | "aggressive" | "top_1_percent";
 
-export type TabId = "overview" | "fixes" | "recruiter" | "gap";
+export type TabId = "overview" | "fixes" | "recruiter" | "gap" | "progress";
+
+export interface TopBarProps {
+  onOpenAuthModal: () => void;
+  onViewProgress?: () => void;
+}
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  provider: string | null;
+  is_pro: boolean;
+  created_at: string;
+  updated_at: string;
+}

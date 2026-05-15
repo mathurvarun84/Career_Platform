@@ -27,6 +27,12 @@ body {
   animation: tabEnter 0.25s ease forwards;
 }
 
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 *:focus-visible {
   outline: 2px solid #6366f1;
   outline-offset: 2px;
