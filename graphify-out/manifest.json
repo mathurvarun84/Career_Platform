@@ -52,16 +52,16 @@
     "hash": "2e0790a2a913c85c5ddd2fa573e51a07"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\limit_checker.py": {
-    "mtime": 1778780161.2442997,
-    "hash": "7eecb1199a8226cd0523688af9f2017f"
+    "mtime": 1778828732.7768495,
+    "hash": "cbf9b0732ea019ef59e6571113b888f6"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\main.py": {
     "mtime": 1778827672.8153613,
     "hash": "f459ca6f9d344bde42c46f4fed3f8b1e"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\persistence.py": {
-    "mtime": 1778779738.1519792,
-    "hash": "ca2b159ab9d83c2698646319ba5707a5"
+    "mtime": 1778828731.2720585,
+    "hash": "f1ee4d8248aefe73bd5a4df356d245e5"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\ats_classifier.py": {
     "mtime": 1778263191.1497593,
@@ -92,8 +92,8 @@
     "hash": "af362b1dcdbbe2d91896323fa4acc344"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\rewriter.py": {
-    "mtime": 1778225588.2902126,
-    "hash": "9614ca7a8054c3a5bd9c6f7d316b08ad"
+    "mtime": 1778829021.4922395,
+    "hash": "ec1c8d3b6019a5dfb8d803a4e10828b3"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\sectioner_agent.py": {
     "mtime": 1778225592.3441617,
@@ -208,8 +208,8 @@
     "hash": "82556bfa6acee11818ffdf302665c6eb"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\App.tsx": {
-    "mtime": 1778743560.6379087,
-    "hash": "5c1c3307eb05867285b7060066df3a14"
+    "mtime": 1778828723.301326,
+    "hash": "ad6b6e1b7057f88520766fa6a5507691"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\App1.tsx": {
     "mtime": 1777116556.226019,
@@ -248,8 +248,8 @@
     "hash": "b862861937278eea6064f7ef4805e5eb"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\ProgressTracking.tsx": {
-    "mtime": 1778779964.4585712,
-    "hash": "97a0a7b9115d1c0087700909ff72b34c"
+    "mtime": 1778828737.4626791,
+    "hash": "cbed743020bebc4659f759fd9f2e0083"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\RecruiterSimulation.tsx": {
     "mtime": 1778501873.6566732,
@@ -276,12 +276,12 @@
     "hash": "732af08f6e0f16d491d7bbbaf065586f"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\layout\\TabNav.tsx": {
-    "mtime": 1778049993.7652519,
-    "hash": "e9568dbf5a50c769ddb004f2c07b15ae"
+    "mtime": 1778828650.204487,
+    "hash": "b28fd1cda0aa046d6ce765021a1869e3"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\layout\\TopBar.tsx": {
-    "mtime": 1778744415.7846415,
-    "hash": "dcc2741f3331906db7c08ba3381c26b4"
+    "mtime": 1778828718.3440645,
+    "hash": "a71ce4a7cd2dbc5c07bf6da181d29c52"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\upload\\AnalysisProgress.tsx": {
     "mtime": 1778827666.858301,
@@ -316,8 +316,8 @@
     "hash": "449b7067392219e7cfbecd0906aff1f6"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\hooks\\useUserHistory.ts": {
-    "mtime": 1778779940.7006187,
-    "hash": "2148f905ff12de67b0c2363d0dda7f64"
+    "mtime": 1778828664.585112,
+    "hash": "0a4eab85558d6a146e2c13065ec4cf35"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\hooks\\useWindowSize.ts": {
     "mtime": 1778047709.2121136,
@@ -336,12 +336,12 @@
     "hash": "3dd1508527a98fe785f7a418fb98501b"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\store\\useResumeStore.ts": {
-    "mtime": 1778581679.9802244,
-    "hash": "ba602dea809d3ab2a1fe327e06162091"
+    "mtime": 1778828654.2593958,
+    "hash": "316601a3e325d1226d1a421f119c8c02"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\types\\index.ts": {
-    "mtime": 1778779934.1814883,
-    "hash": "6e54a196415ce142ed9ec19c381855b3"
+    "mtime": 1778828713.0139935,
+    "hash": "6df713bfd8b87b8a70cb9a99de7b4bb7"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\utils\\analysisFallback.ts": {
     "mtime": 1778175928.8656049,

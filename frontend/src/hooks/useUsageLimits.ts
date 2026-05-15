@@ -16,6 +16,7 @@ export function useUsageLimits() {
       setLoading(false);
       return;
     }
+    const userId = user.id;
 
     let isMounted = true;
 
@@ -27,7 +28,7 @@ export function useUsageLimits() {
         const { data, error: err } = await supabase
           .from("usage_limits")
           .select("total_uploads, uploads_this_month, last_reset_date")
-          .eq("user_id", user.id)
+          .eq("user_id", userId)
           .single();
 
         if (err && err.code !== "PGRST116") {
