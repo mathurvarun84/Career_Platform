@@ -12,12 +12,12 @@
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\orchestrator.py": {
-    "mtime": 1778779810.0512717,
-    "hash": "2b8f219e8b28bcdfd36d4edfa4662f28"
+    "mtime": 1778860810.2335844,
+    "hash": "c746518b7dbb2c4aedd32196d1f15ddf"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\parser.py": {
-    "mtime": 1777113851.999805,
-    "hash": "7ae788461dc22d813764bd90ded2bc79"
+    "mtime": 1778872146.0706143,
+    "hash": "a8d804db9b69906b340f643ddeb0aab5"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\renderer.py": {
     "mtime": 1775297792.0152948,
@@ -31,17 +31,33 @@
     "mtime": 1778225664.863461,
     "hash": "f6edacecd676de19d5ba070ba28f0b79"
   },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\test_corrupted_docx_pipeline.py": {
+    "mtime": 1778872345.7696223,
+    "hash": "9f9d4bd19e1a415bc8096f2a875d165d"
+  },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\test_experience_audit.py": {
+    "mtime": 1778861940.7499087,
+    "hash": "aa7904e3efe0f7fe54141199216b4bea"
+  },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\test_gap_session_fixes.py": {
     "mtime": 1775825974.364697,
     "hash": "a6927b84d0dc7dd5822448873ae87ff5"
+  },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\test_pdf_experience_fragment_rejoin.py": {
+    "mtime": 1778873065.6888742,
+    "hash": "40ba305c21c2979ddd150fecb8692011"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\test_rewriter_experience_preservation.py": {
     "mtime": 1778225539.6642284,
     "hash": "b665278a985eec627873bbfe83a45381"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\validators.py": {
-    "mtime": 1777745441.1595726,
-    "hash": "55eee5571845b79b372c6bd32d0d804c"
+    "mtime": 1778860799.4881592,
+    "hash": "e51b3cf0e55dc6318629d54d03aeb847"
+  },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\_test_fixes.py": {
+    "mtime": 1778860175.6424236,
+    "hash": "cf860402a4be981cf93e5b6b726ea0be"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\auth.py": {
     "mtime": 1778827074.3133955,
@@ -56,8 +72,8 @@
     "hash": "cbf9b0732ea019ef59e6571113b888f6"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\main.py": {
-    "mtime": 1778827672.8153613,
-    "hash": "f459ca6f9d344bde42c46f4fed3f8b1e"
+    "mtime": 1778860826.2837908,
+    "hash": "6e3bc4c6a7cb05fa5444bfc7c478d670"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\persistence.py": {
     "mtime": 1778828731.2720585,
@@ -88,12 +104,12 @@
     "hash": "7a42da82e95ee500208f818616422565"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\resume_understanding.py": {
-    "mtime": 1778225571.1021295,
-    "hash": "af362b1dcdbbe2d91896323fa4acc344"
+    "mtime": 1778860789.3701885,
+    "hash": "5fd5b0419303a308d4a44db554dd54f0"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\rewriter.py": {
-    "mtime": 1778829021.4922395,
-    "hash": "ec1c8d3b6019a5dfb8d803a4e10828b3"
+    "mtime": 1778929121.3138902,
+    "hash": "d4896b4d0ec64685190bd5d50efa3446"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\sectioner_agent.py": {
     "mtime": 1778225592.3441617,
@@ -184,8 +200,8 @@
     "hash": "9ac9efc4a587ceaa103e367f73675ba8"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\engine\\resume_builder.py": {
-    "mtime": 1778045168.2122505,
-    "hash": "4fbc050bd8761889bcb8330913ef9598"
+    "mtime": 1778929146.564227,
+    "hash": "75835112be37788416844bd037346370"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\engine\\__init__.py": {
     "mtime": 1775297799.039996,
@@ -312,8 +328,8 @@
     "hash": "0ef3fe707af1a13c245d7accfa4c0980"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\hooks\\useUsageLimits.ts": {
-    "mtime": 1778779945.3340771,
-    "hash": "449b7067392219e7cfbecd0906aff1f6"
+    "mtime": 1778829359.1951084,
+    "hash": "73ecbb93671f840f77970dc076521af8"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\hooks\\useUserHistory.ts": {
     "mtime": 1778828664.585112,
@@ -367,13 +383,17 @@
     "mtime": 1775757808.0784044,
     "hash": "4863be31c7e25c00cb110601ade40b23"
   },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\validator\\experience_audit.py": {
+    "mtime": 1778860760.8665905,
+    "hash": "fa5d8353f911bc5f636616ec8c58da8c"
+  },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\validator\\resume_understanding_validator.py": {
-    "mtime": 1777786066.4990997,
-    "hash": "b31734ef61f7c723c11d1fac08453a70"
+    "mtime": 1778873065.683463,
+    "hash": "bd099d5e83438307d8f9f464db6a716d"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\validator\\rewriter_validator.py": {
-    "mtime": 1778225534.1239,
-    "hash": "9f02b3b9e9cbb590604b28c0b6aee028"
+    "mtime": 1778929133.8168893,
+    "hash": "1a4dbc2a2d6b91d7e09d366df4eb18dc"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\AGENTS.md": {
     "mtime": 1777470909.726195,
@@ -398,6 +418,10 @@
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\runtime.txt": {
     "mtime": 1778159693.8917303,
     "hash": "c7a7c7a69332debc92c10e640991d728"
+  },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\_debug_exp.txt": {
+    "mtime": 1778872981.5093865,
+    "hash": "4415051f010b2776a6a4de25f4180de0"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\API_CONTRACT.md": {
     "mtime": 1777616784.9901774,

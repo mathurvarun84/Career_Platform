@@ -27,57 +27,242 @@ COMPANY_HEADER_START = "##COMPANY##"
 COMPANY_ROLE_START   = "##ROLE##"
 HEADER_END           = "##END_HEADER##"
 
+# Sections that carry sub_entries — content must be built from sub_entries, not full_text
+_SUB_ENTRY_SECTIONS = frozenset({"experience", "projects", "education", "certifications"})
+
+# Canonical alias map — maps any raw section key to its canonical name
+_SECTION_CANONICAL_MAP: dict[str, str] = {
+    # awards variants
+    "awards & achievements":    "awards",
+    "awards and achievements":  "awards",
+    "honours":                  "awards",
+    "accomplishments":          "awards",
+    "achievements":             "awards",
+    "honors":                   "awards",
+    # projects variants
+    "projects & side work":     "projects",
+    "projects and side work":   "projects",
+    "side projects":            "projects",
+    "project work":             "projects",
+    "key projects":             "projects",
+    "personal projects":        "projects",
+    # experience variants
+    "work experience":          "experience",
+    "professional experience":  "experience",
+    "employment history":       "experience",
+    "employment":               "experience",
+    "career history":           "experience",
+    "work history":             "experience",
+    # skills variants
+    "technical skills":         "skills",
+    "core competencies":        "skills",
+    "key skills":               "skills",
+    "technologies":             "skills",
+    "technical expertise":      "skills",
+    # summary variants
+    "professional summary":     "summary",
+    "objective":                "summary",
+    "profile":                  "summary",
+    "about":                    "summary",
+    "career objective":         "summary",
+    # education variants
+    "academic background":      "education",
+    "academics":                "education",
+    "qualifications":           "education",
+    # certifications variants
+    "certificates":             "certifications",
+    "credentials":              "certifications",
+    "licenses":                 "certifications",
+}
+
+
+def _canonicalize_key(raw_key: str) -> str:
+    """Map any raw section key to its canonical name. Returns raw_key if no match."""
+    return _SECTION_CANONICAL_MAP.get(raw_key.lower().strip(), raw_key.lower().strip())
+
+
+# Date range pattern — matches any of:
+#   "Feb 2017 – Nov 2018", "Sep 2020 – Present", "2013 – 2017", "Nov 2013 – Jan 2017"
+_DATE_RANGE_RE = _re.compile(
+    r'(?:'
+        r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}'
+        r'|\d{4}'
+    r')'
+    r'\s*[–—\-]+\s*'
+    r'(?:'
+        r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}'
+        r'|[Pp]resent|[Cc]urrent|\d{4}'
+    r')',
+    _re.IGNORECASE,
+)
+
+# Separators that commonly divide role from company, or company from location
+_PIPE_OR_DASH_RE = _re.compile(r'\s*[\|]\s*|\s+[–—]\s+')
+# Whitespace/comma gaps on company lines (used after pipe/dash split)
+_CO_LOC_SEP_RE = _re.compile(r'\s{2,}|\s*[,]\s+(?=[A-Z])')
+
+
+def _parse_experience_header_from_verbatim(text: str) -> dict[str, str]:
+    """
+    Extract company, role, location, and dates from the first 4 non-empty lines
+    of an experience entry's verbatim text.
+
+    Works for any resume format — does not assume a specific delimiter convention.
+
+    Strategy:
+      - Scan all header lines (up to 4) for a date range pattern.
+      - Whichever line contains the date range is the role line.
+      - The line(s) before it are the company/location line(s).
+      - Everything after the date on the role line (stripped) is discarded.
+      - Everything before the date on the role line is the role title.
+
+    Returns dict with keys: company, role, location, dates (all str, "" if not found).
+    """
+    lines = [l.strip() for l in text.splitlines() if l.strip()][:3]
+    company = role = location = dates = ""
+
+    if not lines:
+        return dict(company=company, role=role, location=location, dates=dates)
+
+    date_line_idx = -1
+    date_match = None
+    for i, line in enumerate(lines):
+        m = _DATE_RANGE_RE.search(line)
+        if m:
+            date_line_idx = i
+            date_match = m
+            break
+
+    if date_line_idx >= 0 and date_match:
+        dates = date_match.group(0).strip()
+        role = lines[date_line_idx][:date_match.start()].strip().rstrip("|–—-").strip()
+        company_line = lines[0] if date_line_idx > 0 else ""
+    else:
+        company_line = lines[0] if lines else ""
+        role = lines[1] if len(lines) > 1 else ""
+
+    if company_line:
+        parts = _PIPE_OR_DASH_RE.split(company_line, maxsplit=1)
+        company = parts[0].strip()
+        location = parts[1].strip() if len(parts) > 1 else ""
+        if not location:
+            gap_match = _CO_LOC_SEP_RE.search(company_line)
+            if gap_match:
+                company = company_line[:gap_match.start()].strip()
+                location = company_line[gap_match.end():].strip()
+
+    return dict(company=company, role=role, location=location, dates=dates)
+
+
+def _fallback_from_sub_entries(
+    section: str,
+    section_text: SectionText | None = None,
+    *,
+    sub_entries: list | None = None,
+    sep: str = "\n\n",
+) -> str:
+    """Rebuild section content from sub_entries only (no full_text)."""
+    entries = sub_entries if sub_entries is not None else (
+        section_text.sub_entries if section_text else []
+    )
+    if not entries:
+        return ""
+    parts: list[str] = []
+    for entry in entries:
+        t = entry.verbatim_text.strip()
+        if not t:
+            continue
+        if section == "experience":
+            t = _ensure_experience_markers(t, entry.label)
+        parts.append(t)
+    return sep.join(parts)
+
+
+def _build_content_from_sub_entries(
+    section: str,
+    sub_entries: list,
+    full_text_fallback: str = "",
+) -> str:
+    """
+    Build section content string exclusively from sub_entries.
+    Falls back to full_text_fallback only when sub_entries is empty or all blank.
+
+    For experience entries, wraps each entry in ##COMPANY## markers.
+    For all other sub-entry sections, joins verbatim_text with double newline.
+
+    Args:
+        section:             Canonical section name.
+        sub_entries:         List of SubEntry objects from SectionText.
+        full_text_fallback:  Used ONLY when sub_entries is empty or all blank.
+
+    Returns:
+        Assembled content string ready for the rewrites dict.
+    """
+    if sub_entries:
+        built = _fallback_from_sub_entries(section, sub_entries=sub_entries)
+        if built.strip():
+            return built
+    return full_text_fallback
+
 
 def _ensure_experience_markers(text: str, sub_label: str) -> str:
     """
     Wraps an experience sub-entry in structural markers for the docx writer.
     If text already starts with COMPANY_HEADER_START, returns unchanged.
 
-    Marker format:
+    Parsing hierarchy:
+      1. Parse company/role/location/dates from verbatim_text lines (primary — format-agnostic).
+      2. Fill any gaps from sub_label (secondary fallback).
+
+    Marker format produced:
       ##COMPANY##Company Name | Location##ROLE##Role Title | Dates##END_HEADER##
       • bullet 1
       • bullet 2
-      Tech Stack: React, Java
+      Tech Stack: lang1, lang2
     """
     if text.startswith(COMPANY_HEADER_START):
         return text
 
-    company = location = role = dates = ""
+    # Step 1: Parse from verbatim_text — works for any resume format
+    parsed = _parse_experience_header_from_verbatim(text)
+    company  = parsed["company"]
+    role     = parsed["role"]
+    location = parsed["location"]
+    dates    = parsed["dates"]
 
-    if " — " in sub_label:
-        parts = sub_label.split(" — ", 1)
-        company = parts[0].strip()
-        role_dates = parts[1].strip()
-        m = _re.search(r'\(([^)]+)\)$', role_dates)
-        if m:
-            dates = m.group(1)
-            role = role_dates[:m.start()].strip()
+    # Step 2: Fill gaps from sub_label — secondary source only
+    if not company:
+        if " — " in sub_label:
+            label_parts = sub_label.split(" — ", 1)
+            company = label_parts[0].strip()
+            role_dates_str = label_parts[1].strip()
+            if not role and not dates:
+                m = _re.search(r'\(([^)]+)\)$', role_dates_str)
+                if m:
+                    dates = m.group(1)
+                    role = role_dates_str[:m.start()].strip()
+                else:
+                    role = role_dates_str
         else:
-            role = role_dates
-    else:
-        company = sub_label
+            company = sub_label.strip()
 
-    # If parsing failed, extract from first lines of text
-    if not company and text:
-        first_lines = [l.strip() for l in text.splitlines() if l.strip()][:2]
-        if first_lines:
-            company = first_lines[0]
-        if len(first_lines) > 1:
-            role = first_lines[1]
+    # Build the marker header
+    co_loc = f"{company} | {location}" if location else company
+    ro_dt  = f"{role} | {dates}"       if dates    else role
+    header = f"{COMPANY_HEADER_START}{co_loc}{COMPANY_ROLE_START}{ro_dt}{HEADER_END}"
 
-    header = (f"{COMPANY_HEADER_START}{company}"
-              f"{COMPANY_ROLE_START}{role} | {dates}{HEADER_END}")
-
-    # Strip original header lines from body to avoid duplication
+    # Strip the header lines from body to avoid duplication in the docx
+    # Scan up to 4 lines — covers company line + role+date line
     text_lines = text.splitlines()
     content_start = 0
-    for i, line in enumerate(text_lines[:3]):
+    for i, line in enumerate(text_lines[:4]):
         s = line.strip()
         if s and not s.startswith(('•', '-', '*', 'Tech Stack')):
             content_start = i + 1
         else:
             break
     content = '\n'.join(text_lines[content_start:]).strip()
+
     return f"{header}\n{content}"
 
 
@@ -181,10 +366,12 @@ class RewriterAgent(BaseAgent):
         unique_gaps: list[tuple[str, dict]] = []
         seen_sections: set[str] = set()
         for gap in gaps:
-            section = str(gap.get("section", "other"))
+            section = self._canonicalize_section_key(str(gap.get("section", "other")))
             if section in seen_sections:
                 continue
             seen_sections.add(section)
+            gap = dict(gap)
+            gap["section"] = section
             unique_gaps.append((section, gap))
 
         with ThreadPoolExecutor(max_workers=6) as executor:
@@ -201,36 +388,62 @@ class RewriterAgent(BaseAgent):
                 section = futures[future]
                 rewrites[section] = future.result()
 
-        # SECOND PASS — ensure every section from sectioner appears in rewrites.
-        # A3 may have omitted sections with needs_change=False entirely.
-        # This pass guarantees the full resume is always in the output.
-        CANONICAL_SECTIONS = [
-            "summary", "skills", "experience", "education",
-            "certifications", "awards", "projects",
-        ]
-        for sec_name in CANONICAL_SECTIONS:
-            if sec_name in rewrites:
+        from validator.rewriter_validator import collapse_rewrites_to_canonical
+
+        rewrites = collapse_rewrites_to_canonical(rewrites)
+
+        # SECOND PASS — ensure every section the sectioner extracted appears in rewrites.
+        # Drives from resume_sections.items() (not a hardcoded list) to catch any key the
+        # sectioner used, including non-canonical ones like "awards & achievements".
+        # Uses _build_content_from_sub_entries to enforce Invariant B (sub_entries first).
+        for raw_key, sec_text in resume_sections.items():
+            canonical = _canonicalize_key(str(raw_key))
+            if canonical in rewrites:
                 continue
-            sec_text = resume_sections.get(sec_name)
             if isinstance(sec_text, dict):
-                sec_text = SectionText(**sec_text)
-            if not sec_text or not sec_text.full_text.strip():
+                try:
+                    sec_text = SectionText(**sec_text)
+                except Exception:
+                    continue
+            if not sec_text:
                 continue
-            logging.info(
-                "RewriterAgent: '%s' not in gaps — preserving verbatim", sec_name
+            # Check there is something to preserve
+            has_content = (
+                (sec_text.sub_entries and any(e.verbatim_text.strip() for e in sec_text.sub_entries))
+                or sec_text.full_text.strip()
             )
-            content = sec_text.full_text
-            if sec_name == "experience" and sec_text.sub_entries:
-                parts = [
-                    _ensure_experience_markers(e.verbatim_text, e.label)
-                    for e in sec_text.sub_entries
-                ]
-                content = "\n\n".join(parts)
-            rewrites[sec_name] = SectionRewrite(
+            if not has_content:
+                continue
+            logging.info("RewriterAgent: '%s' → '%s' not in gaps — preserving verbatim", raw_key, canonical)
+            content = _build_content_from_sub_entries(
+                canonical,
+                sec_text.sub_entries or [],
+                full_text_fallback=sec_text.full_text,
+            )
+            if not content.strip():
+                continue
+            rewrites[canonical] = SectionRewrite(
                 balanced=content,
                 aggressive=content,
                 top_1_percent=content,
             ).model_dump()
+
+        rewrites = collapse_rewrites_to_canonical(rewrites)
+
+        logging.info(
+            "RewriterAgent: final sections in rewrites: %s",
+            list(rewrites.keys()),
+        )
+        missing = [
+            self._canonicalize_section_key(str(key))
+            for key in resume_sections
+            if self._canonicalize_section_key(str(key)) not in rewrites
+        ]
+        if missing:
+            logging.warning(
+                "RewriterAgent: sectioner sections not in rewrites: %s",
+                missing,
+            )
 
         return {
             "rewrites": rewrites,
@@ -251,6 +464,23 @@ class RewriterAgent(BaseAgent):
 
         if not gap.get("needs_change", gap.get("must_rewrite", True)):
             logging.info("RewriterAgent: copying verbatim section '%s'", section)
+            if section_text and section in _SUB_ENTRY_SECTIONS and section_text.sub_entries:
+                content = _build_content_from_sub_entries(
+                    section,
+                    section_text.sub_entries,
+                    full_text_fallback=section_text.full_text,
+                )
+                if section == "experience":
+                    logging.info(
+                        "RewriterAgent: experience verbatim stitch — %d entries, %d markers",
+                        len(section_text.sub_entries),
+                        content.count(COMPANY_HEADER_START),
+                    )
+                return SectionRewrite(
+                    balanced=content or f"[{section} section unavailable]",
+                    aggressive=content or f"[{section} section unavailable]",
+                    top_1_percent=content or f"[{section} section unavailable]",
+                ).model_dump()
             return SectionRewrite(
                 balanced=original_content or f"[{section} section unavailable]",
                 aggressive=original_content or f"[{section} section unavailable]",
@@ -266,6 +496,21 @@ class RewriterAgent(BaseAgent):
             )
             return self._rewrite_with_sub_changes(
                 section, sub_changes, gap, section_text or None
+            )
+
+        # Never monolithic-rewrite experience when sub_entries exist — LLM drops entries.
+        if (
+            section == "experience"
+            and section_text
+            and section_text.sub_entries
+        ):
+            logging.warning(
+                "RewriterAgent: experience gap has no sub_changes but %d sub_entries — "
+                "using ordered per-entry path (avoids monolithic truncation)",
+                len(section_text.sub_entries),
+            )
+            return self._rewrite_with_sub_changes(
+                section, [], gap, section_text
             )
 
         return self._rewrite_monolithic(section, original_content, gap)
@@ -354,91 +599,141 @@ class RewriterAgent(BaseAgent):
         section_text: SectionText | None,
     ) -> dict:
         """
-        Rewrites a section entry-by-entry using sub_changes from the gap analysis.
+        Rewrites a section entry-by-entry.
 
-        For each sub-change:
-          - needs_change=False → verbatim copy from sectioner SubEntry to all 3 styles.
-          - needs_change=True  → focused LLM call for this ONE entry only.
+        INVARIANT: iterates section_text.sub_entries as the master list.
+        sub_changes from the gap agent is an annotation map — it never drives
+        the loop. Entries the gap agent didn't mention are copied verbatim.
 
-        After processing all entries, stitch results together with '\n\n' per style.
-
-        Key invariant: entries with needs_change=False must NEVER call the LLM.
-        Verbatim copy from sectioner only.
-
-        When ``section_text.sub_entries`` is populated, output follows **canonical
-        entry order**: each SubEntry appears exactly once (rewritten or verbatim).
-
-        Args:
-            section: Canonical section name (e.g. 'experience', 'education').
-            sub_changes: List of SubLocationChange dicts from Agent 3.
-            gap: The parent section gap dict (carries section-level context).
-            section_text: SectionText from sectioner for this section, or None.
-
-        Returns:
-            Dict with balanced, aggressive, top_1_percent keys (SectionRewrite shape).
+        For each sub_entry:
+          - Find matching sub_change by entry_index (preferred) or fuzzy label.
+          - If no match or needs_change=False → verbatim copy, zero LLM.
+          - If needs_change=True → focused LLM call for this ONE entry.
         """
-        if section_text and section_text.sub_entries:
-            return self._rewrite_with_sub_changes_ordered(
-                section, sub_changes, gap, section_text
+        sep = "\n\n"
+
+        # If no sub_entries in sectioner data, fall back to the sub_changes list
+        # (degraded mode — gap agent labels used as entry source)
+        if not section_text or not section_text.sub_entries:
+            logging.warning(
+                "RewriterAgent: section '%s' has no sub_entries — iterating sub_changes only",
+                section,
             )
+            stitched_b, stitched_a, stitched_t = [], [], []
+            for sub in sub_changes:
+                original_text = sub.get("original_text", "")
+                if not sub.get("needs_change", True):
+                    text = original_text
+                    if section == "experience":
+                        text = _ensure_experience_markers(text, sub.get("sub_label", ""))
+                    stitched_b.append(text)
+                    stitched_a.append(text)
+                    stitched_t.append(text)
+                else:
+                    entry_rw = self._rewrite_sub_entry(
+                        section, sub, gap.get("rewrite_instruction", ""), original_text
+                    )
+                    if section == "experience":
+                        stitched_b.append(_ensure_experience_markers(entry_rw.balanced, sub.get("sub_label", "")))
+                        stitched_a.append(_ensure_experience_markers(entry_rw.aggressive, sub.get("sub_label", "")))
+                        stitched_t.append(_ensure_experience_markers(entry_rw.top_1_percent, sub.get("sub_label", "")))
+                    else:
+                        stitched_b.append(entry_rw.balanced)
+                        stitched_a.append(entry_rw.aggressive)
+                        stitched_t.append(entry_rw.top_1_percent)
+            fallback = _build_content_from_sub_entries(section, [], full_text_fallback=f"[{section} rewrite unavailable]")
+            return SectionRewrite(
+                balanced=sep.join(stitched_b) or fallback,
+                aggressive=sep.join(stitched_a) or fallback,
+                top_1_percent=sep.join(stitched_t) or fallback,
+            ).model_dump()
 
-        stitched_b: list[str] = []
-        stitched_a: list[str] = []
-        stitched_t: list[str] = []
-        processed_labels: set[str] = set()
+        # Build annotation map: entry_index → sub_change
+        sub_change_map: dict[int, dict] = {}
+        unmatched_sub_changes = list(sub_changes)
 
-        for sub in sub_changes:
-            sub_label = sub.get("sub_label", "")
-            original_text = self._resolve_sub_text(section_text, sub_label)
-            sub = dict(sub)
-            sub["original_text"] = original_text
-            if sub_label:
-                processed_labels.add(sub_label)
+        # Pass 1: explicit entry_index
+        still_unmatched = []
+        for sub in unmatched_sub_changes:
+            idx = sub.get("entry_index")
+            if isinstance(idx, int) and 0 <= idx < len(section_text.sub_entries):
+                sub_change_map[idx] = sub
+            else:
+                still_unmatched.append(sub)
 
-            if not sub.get("needs_change", True):
-                text = original_text
-                if section == "experience":
-                    text = _ensure_experience_markers(text, sub_label)
-                stitched_b.append(text)
-                stitched_a.append(text)
-                stitched_t.append(text)
+        # Pass 2: fuzzy label match for remaining
+        for sub in still_unmatched:
+            sub_label = sub.get("sub_label", "").lower()
+            words = [w for w in sub_label.split() if len(w) > 3]
+            for i, entry in enumerate(section_text.sub_entries):
+                if i in sub_change_map:
+                    continue
+                entry_label = entry.label.lower()
+                if sub_label in entry_label or entry_label in sub_label:
+                    sub_change_map[i] = sub
+                    break
+                if words and any(w in entry_label for w in words):
+                    sub_change_map[i] = sub
+                    break
+
+        # Master loop — drives from sectioner sub_entries
+        stitched_b, stitched_a, stitched_t = [], [], []
+
+        for i, entry in enumerate(section_text.sub_entries):
+            verbatim = entry.verbatim_text.strip()
+            if not verbatim:
+                logging.warning("RewriterAgent: sub_entry[%d] for '%s' has empty verbatim_text — skipping", i, section)
                 continue
 
-            entry_rw = self._rewrite_sub_entry(
-                section=section,
-                sub=sub,
-                section_context=gap.get("rewrite_instruction", ""),
-                original_verbatim=original_text,
-            )
+            sub = sub_change_map.get(i)
 
-            if section == "experience":
-                stitched_b.append(_ensure_experience_markers(
-                    entry_rw.balanced, sub_label))
-                stitched_a.append(_ensure_experience_markers(
-                    entry_rw.aggressive, sub_label))
-                stitched_t.append(_ensure_experience_markers(
-                    entry_rw.top_1_percent, sub_label))
-            else:
-                stitched_b.append(entry_rw.balanced)
-                stitched_a.append(entry_rw.aggressive)
-                stitched_t.append(entry_rw.top_1_percent)
-
-        if section_text and section_text.sub_entries:
-            for entry in section_text.sub_entries:
-                if any(self._labels_match(entry.label, label) for label in processed_labels):
-                    continue
-                text = entry.verbatim_text
+            # No matching sub_change OR needs_change=False → verbatim copy
+            if sub is None or not sub.get("needs_change", True):
+                text = verbatim
                 if section == "experience":
                     text = _ensure_experience_markers(text, entry.label)
                 stitched_b.append(text)
                 stitched_a.append(text)
                 stitched_t.append(text)
+                continue
 
-        sep = "\n\n"
+            # needs_change=True → LLM rewrite
+            entry_rw = self._rewrite_sub_entry(section, sub, gap.get("rewrite_instruction", ""), verbatim)
+
+            if section == "experience":
+                stitched_b.append(_ensure_experience_markers(entry_rw.balanced, entry.label))
+                stitched_a.append(_ensure_experience_markers(entry_rw.aggressive, entry.label))
+                stitched_t.append(_ensure_experience_markers(entry_rw.top_1_percent, entry.label))
+            else:
+                stitched_b.append(entry_rw.balanced)
+                stitched_a.append(entry_rw.aggressive)
+                stitched_t.append(entry_rw.top_1_percent)
+
+        if len(stitched_b) != len([e for e in section_text.sub_entries if e.verbatim_text.strip()]):
+            logging.warning(
+                "RewriterAgent: stitched count %d != non-empty sub_entry count %d for section '%s'",
+                len(stitched_b),
+                len([e for e in section_text.sub_entries if e.verbatim_text.strip()]),
+                section,
+            )
+
+        balanced = sep.join(s for s in stitched_b if s.strip())
+        aggressive = sep.join(s for s in stitched_a if s.strip())
+        top = sep.join(s for s in stitched_t if s.strip())
+
+        if not balanced.strip():
+            logging.error(
+                "RewriterAgent: stitched output empty for section '%s' — "
+                "falling back to verbatim sub_entries",
+                section,
+            )
+            fallback = _fallback_from_sub_entries(section, section_text, sep=sep)
+            balanced = aggressive = top = fallback or f"[{section} rewrite unavailable]"
+
         return SectionRewrite(
-            balanced=sep.join(stitched_b) or f"[{section} rewrite unavailable]",
-            aggressive=sep.join(stitched_a) or f"[{section} rewrite unavailable]",
-            top_1_percent=sep.join(stitched_t) or f"[{section} rewrite unavailable]",
+            balanced=balanced,
+            aggressive=aggressive,
+            top_1_percent=top,
         ).model_dump()
 
     def _rewrite_with_sub_changes_ordered(
@@ -505,7 +800,7 @@ class RewriterAgent(BaseAgent):
             )
         except AssertionError as exc:
             logging.warning("%s", exc)
-            fallback = section_text.full_text or f"[{section} rewrite unavailable]"
+            fallback = _fallback_from_sub_entries(section, section_text) or f"[{section} rewrite unavailable]"
             return SectionRewrite(
                 balanced=fallback,
                 aggressive=fallback,
@@ -513,9 +808,12 @@ class RewriterAgent(BaseAgent):
             ).model_dump()
 
         sep = "\n\n"
-        balanced = sep.join(stitched_b) or f"[{section} rewrite unavailable]"
-        aggressive = sep.join(stitched_a) or f"[{section} rewrite unavailable]"
-        top_1 = sep.join(stitched_t) or f"[{section} rewrite unavailable]"
+        balanced = sep.join(stitched_b)
+        aggressive = sep.join(stitched_a)
+        top_1 = sep.join(stitched_t)
+        if not balanced.strip():
+            fallback = _fallback_from_sub_entries(section, section_text, sep=sep)
+            balanced = aggressive = top_1 = fallback or f"[{section} rewrite unavailable]"
 
         if section == "experience":
             n_markers = balanced.count(COMPANY_HEADER_START)
@@ -559,6 +857,7 @@ class RewriterAgent(BaseAgent):
 
         Fallback: if LLM call fails after retry, returns original verbatim text for all 3 styles.
         """
+        # Prefer caller-supplied verbatim (from sectioner sub_entry) over gap agent's copy
         original_text = original_verbatim or sub.get("original_text", "")
         rewrite_hint = sub.get("rewrite_instruction", "")
         missing_kw = sub.get("missing_keywords", [])
@@ -717,25 +1016,38 @@ class RewriterAgent(BaseAgent):
         resume_sections: Dict[str, SectionText],
         section: str,
     ) -> SectionText | None:
-        """Resolve a section by canonical name, then common aliases."""
-        section_text = resume_sections.get(section)
-        if section_text:
-            return section_text
-
-        aliases = {
-            "skills": ["technical_skills", "core_competencies", "key_skills"],
-            "experience": ["work_experience", "professional_experience", "employment"],
-            "education": ["academic_background", "academics"],
-            "certifications": ["certificates", "credentials"],
-            "awards": ["achievements", "honors"],
-            "summary": ["professional_summary", "objective", "profile"],
-            "projects": ["project_experience", "personal_projects"],
-        }
-        for alias in aliases.get(section, []):
-            section_text = resume_sections.get(alias)
-            if section_text:
-                return section_text
+        """Resolve a section by canonical name, then by alias map."""
+        result = resume_sections.get(section)
+        if result:
+            return result if isinstance(result, SectionText) else SectionText(**result) if isinstance(result, dict) else None
+        for raw_key, value in resume_sections.items():
+            if _canonicalize_key(raw_key) == section:
+                if isinstance(value, SectionText):
+                    return value
+                if isinstance(value, dict):
+                    try:
+                        return SectionText(**value)
+                    except Exception:
+                        pass
         return None
+
+    def _canonicalize_section_key(self, raw_key: str) -> str:
+        """Map sectioner/raw section keys to canonical section names."""
+        normalized = raw_key.lower().strip()
+        if normalized in _SECTION_CANONICAL_MAP:
+            return _SECTION_CANONICAL_MAP[normalized]
+        underscore_aliases = {
+            "technical_skills": "skills",
+            "core_competencies": "skills",
+            "key_skills": "skills",
+            "work_experience": "experience",
+            "professional_experience": "experience",
+            "professional_summary": "summary",
+            "project_experience": "projects",
+            "personal_projects": "projects",
+            "academic_background": "education",
+        }
+        return underscore_aliases.get(normalized, normalized)
 
     def _build_legacy_styles(self, rewrites: Dict[str, Dict[str, str]]) -> Dict[str, Dict[str, Any]]:
         styles: Dict[str, Dict[str, Any]] = {

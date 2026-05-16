@@ -73,16 +73,53 @@ _SECTION_HEADER_RE = re.compile(
 
 _DATE_RANGE_RE = re.compile(
     r'(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?'
-    r'(\d{4})\s*[-–—to]+\s*'
+    r'(\d{4})\s*(?:–|—|-|to)\s*'
     r'(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?'
     r'(\d{4}|\bPresent\b|\bpresent\b|\bCurrent\b|\bcurrent\b)',
     re.IGNORECASE
+)
+
+# Core date-range token (do NOT use [-–—to]+ — that wrongly matches letters t/o inside words)
+_DATE_RANGE_CORE = (
+    r'(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?'
+    r'(?:19|20)\d{2}'
+    r'\s*(?:–|—|-|to)\s*'
+    r'(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?'
+    r'(?:(?:19|20)\d{2}|\bPresent\b|\bCurrent\b|\bTill\s+Date\b|\bOn\s?Going\b)'
+)
+
+_DATE_RANGE_LINE_RE = re.compile(_DATE_RANGE_CORE, re.IGNORECASE)
+
+# PDF/DOCX often merges role header + dates on one line (tab or spaces before month)
+_INLINE_HEADER_DATE_SUFFIX_RE = re.compile(
+    r'^(.+?)\s+(' + _DATE_RANGE_CORE + r')\s*$',
+    re.IGNORECASE,
+)
+
+_ROLE_HEADER_HINT_RE = re.compile(
+    r'\b(Engineer|Engineering|Manager|Consultant|Lead|Director|Head|Developer|'
+    r'Analyst|Architect|Intern|Associate|Principal|Staff)\b',
+    re.IGNORECASE,
 )
 
 
 # ─────────────────────────────────────────────
 # Section text extraction from raw resume
 # ─────────────────────────────────────────────
+
+def _normalize_spaced_heading(line: str) -> str:
+    """Collapse spaced-character headings to their solid form.
+
+    Handles PDF-extracted headings like 'C E R T I F I C A T I O N S'
+    (every uppercase letter separated by a single space) and returns
+    'CERTIFICATIONS'. Only fires when the stripped line consists solely
+    of single uppercase letters separated by single spaces (≥3 letters).
+    """
+    stripped = line.strip()
+    if re.match(r'^([A-Z] ){2,}[A-Z]$', stripped):
+        return stripped.replace(' ', '')
+    return stripped
+
 
 def _extract_all_sections_from_text(resume_text: str) -> dict[str, str]:
     """
@@ -96,7 +133,8 @@ def _extract_all_sections_from_text(resume_text: str) -> dict[str, str]:
     current_lines: list[str] = []
 
     for line in lines:
-        stripped = line.strip()
+        # Normalise spaced headings before matching (e.g. "C E R T I F I C A T I O N S")
+        stripped = _normalize_spaced_heading(line)
         # Check if this line is a section header
         m = _SECTION_HEADER_RE.match(stripped)
         if m:
@@ -204,6 +242,11 @@ _CERT_PATTERNS = [
     r'Certified\b',
     r'Certificate\b',
     r'Certification\b',
+    r'IISc\b',
+    r'University\b',
+    r'Pursuing\b',
+    r'\|\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}',
+    r'\|\s*\d{4}',
 ]
 
 # PROJECTS: detects project block start lines
@@ -216,16 +259,295 @@ _PROJECT_PATTERNS = [
 ]
 
 
+_MONTH_PAT = r'(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*'
+_YEAR_PAT = r'(?:19|20)\d{2}'
+_PRESENT_PAT = r'(?:Present|Current|Till\s+Date|OnGoing)'
+
+_FULL_DATE_RE = re.compile(
+    rf'(?:{_MONTH_PAT}\.?\s+)?{_YEAR_PAT}'
+    rf'\s*[–—-]\s*'
+    rf'(?:{_MONTH_PAT}\.?\s+)?(?:{_YEAR_PAT}|{_PRESENT_PAT})',
+    re.IGNORECASE,
+)
+_BARE_DATE_RE = re.compile(
+    rf'^[–—]?\s*(?:{_MONTH_PAT}\.?\s+)?(?:{_YEAR_PAT}|{_PRESENT_PAT})\s*$',
+    re.IGNORECASE,
+)
+_SECTION_HDR_RE = re.compile(r'^[A-Z][A-Z &]{3,}$')
+_BULLET_START_RE = re.compile(r'^[•\-\*·●]')
+
+
+def _is_pdf_fragment(line: str, prev_line: str) -> bool:
+    """
+    Returns True when `line` is a PDF soft-wrap fragment that belongs
+    to the end of `prev_line` rather than being an independent unit.
+
+    Rules (in order, all purely structural — no hardcoded content):
+
+    1. Bullet lines are never fragments.
+    2. Section headers (ALL CAPS, short) are never fragments.
+    3. Complete role headers (contain | AND a full date range) are never fragments.
+    4. Starts with lowercase → fragment (soft-wrap continuation).
+    5. Starts with – or — → fragment (split date range, second half).
+    6. Is a bare date/month string → fragment (split date range, second half).
+    7. Starts with a digit AND prev line is a bullet ending without terminal
+       punctuation → fragment (metric continuation, e.g. "20% MTTR reduction.").
+    8. Starts with uppercase AND prev line is a bullet ending without terminal
+       punctuation → fragment (sentence continuation, e.g. "GMV growth...").
+    """
+    s = line.strip()
+    if not s:
+        return False
+    # Rule 1
+    if _BULLET_START_RE.match(s):
+        return False
+    # Rule 2
+    if _SECTION_HDR_RE.match(s):
+        return False
+    # Rule 3
+    if '|' in s and _FULL_DATE_RE.search(s):
+        return False
+    # Role header lines (| + job-title token) are independent units, not bullet tails
+    if '|' in s and _ROLE_HEADER_HINT_RE.search(s):
+        return False
+    # Rule 4
+    if s[0].islower():
+        return True
+    # Rule 5
+    if re.match(r'^[–—]', s):
+        return True
+    # Rule 6
+    if _BARE_DATE_RE.match(s):
+        return True
+    # Rules 7 & 8: digit or uppercase start after an unterminated bullet
+    prev = prev_line.strip()
+    if prev and _BULLET_START_RE.match(prev) and not re.search(r'[.!?:]\s*$', prev):
+        if s[0].isdigit() or s[0].isupper():
+            return True
+    return False
+
+
+def _normalize_experience_section_text(section_text: str) -> str:
+    """
+    Normalize PDF-extracted experience text before block detection.
+
+    - Splits ``Role | Company — City Sep 2020 – Present`` into two lines.
+    - Collapses tabs to spaces (pdfplumber often preserves tabs).
+    """
+    # ── Pass 0: rejoin PDF line fragments ────────────────────────────
+    raw_lines = section_text.splitlines()
+    joined: list[str] = []
+    for line in raw_lines:
+        if joined and _is_pdf_fragment(line, joined[-1]):
+            joined[-1] = joined[-1].rstrip() + ' ' + line.strip()
+        else:
+            joined.append(line)
+    section_text = '\n'.join(joined)
+
+    # ── Pass 1: existing normalization (keep exactly as-is) ──────────
+    out_lines: list[str] = []
+    for raw_line in section_text.splitlines():
+        line = raw_line.replace('\t', ' ').strip()
+        line = re.sub(r' {2,}', ' ', line)
+        if not line:
+            out_lines.append('')
+            continue
+        if line.startswith(('•', '-', '*', '·', '●')):
+            out_lines.append(line)
+            continue
+        m = _INLINE_HEADER_DATE_SUFFIX_RE.match(line)
+        if m and _ROLE_HEADER_HINT_RE.search(m.group(1)):
+            header = m.group(1).strip()
+            dates = m.group(2).strip()
+            out_lines.append(header)
+            out_lines.append(dates)
+            continue
+        out_lines.append(line)
+    return '\n'.join(out_lines)
+
+
+def _is_experience_date_anchor_line(line: str) -> bool:
+    """
+    True when a line is a job date-range anchor (not a long bullet with stray digits).
+
+    Rejects bullet lines and prose lines where a substring looks like a date range.
+    """
+    s = line.strip()
+    if not s or s.startswith(('•', '-', '*', '·', '●')):
+        return False
+    m = _DATE_RANGE_LINE_RE.search(s)
+    if not m:
+        return False
+    # Standalone date line (common when PDF splits header / dates)
+    if len(s) <= 55 and not s.startswith('•'):
+        return True
+    # Role header with inline dates: ``Role | Co — City Sep 2020 – Present``
+    if _INLINE_HEADER_DATE_SUFFIX_RE.match(s) and _ROLE_HEADER_HINT_RE.search(s):
+        return True
+    if '|' in s and _ROLE_HEADER_HINT_RE.search(s) and len(s) <= 160:
+        return True
+    # Long prose / bullets must not anchor a block
+    if len(s) > 100:
+        return False
+    return bool(_ROLE_HEADER_HINT_RE.search(s))
+
+
+_ROLE_HEADER_LINE_RE = re.compile(
+    r'^(?:Engineering Manager|Head of Engineering|Senior Consultant|'
+    r'Tech Consultant|Lead Software Engineer|Software Engineer|'
+    r'Principal Engineer|Staff Engineer|Director|VP|CTO)\b.{0,120}$',
+    re.IGNORECASE,
+)
+
+
+def _detect_experience_by_role_headers(section_text: str) -> list[dict]:
+    """
+    Detect experience entry boundaries by role-title header lines.
+    Used when date-range detection finds fewer than 2 blocks.
+
+    Matches lines like:
+      "Engineering Manager  Flipkart"
+      "Engineering Manager | Apttus (via Altran — ...) — Bengaluru, KANov 2018 –"
+      "Head of Engineering | SmartVizX — Bengaluru, KA"
+
+    Returns list of {'label': str, 'text': str} dicts.
+    """
+    lines = section_text.splitlines()
+    block_starts: list[int] = []
+
+    for i, line in enumerate(lines):
+        s = line.strip()
+        if not s:
+            continue
+        if s.startswith(('•', '-', '*')):
+            continue
+        if _ROLE_HEADER_LINE_RE.match(s):
+            block_starts.append(i)
+
+    if len(block_starts) < 2:
+        return []
+
+    blocks: list[dict] = []
+    for i, start in enumerate(block_starts):
+        end = block_starts[i + 1] if i + 1 < len(block_starts) else len(lines)
+        block_lines = lines[start:end]
+        while block_lines and not block_lines[-1].strip():
+            block_lines.pop()
+        label = lines[start].strip()
+        text = '\n'.join(block_lines).strip()
+        if text:
+            blocks.append({'label': label, 'text': text})
+
+    return blocks
+
+
+def _detect_experience_by_date_ranges(section_text: str) -> list[dict]:
+    """
+    Fallback experience entry detector using date-range lines as block anchors.
+
+    Algorithm:
+      1. Find every line that contains a date range (e.g. "2020 – Present").
+      2. For each such line, look back up to 3 non-empty, non-bullet lines to
+         find the company/role header that precedes the date.
+      3. Use the identified header line as the block start.
+      4. Split the section text into blocks at those start positions.
+
+    This handles the very common Indian resume format where company names appear
+    in mixed case on their own line (not matched by the all-caps Pattern 3), e.g.:
+
+        Flipkart
+        Engineering Manager  |  Bengaluru  |  Jan 2022 – Present
+        • Led a team of 12…
+
+    Returns list of {'label': str, 'text': str} dicts, same shape as
+    _detect_sub_entries.
+    """
+    if not section_text.strip():
+        return []
+
+    section_text = _normalize_experience_section_text(section_text)
+    lines = section_text.splitlines()
+
+    # Collect indices of lines that are date-range anchors (not bullet false positives)
+    date_line_indices: list[int] = []
+    for i, line in enumerate(lines):
+        if _is_experience_date_anchor_line(line):
+            date_line_indices.append(i)
+
+    if len(date_line_indices) < 2:
+        # Only one date range means we can't split into multiple blocks
+        return []
+
+    # For each date-range line, walk back to find the topmost header line.
+    # Walk backward: stop at a blank line, a bullet, or another date range.
+    # Update block_start on every valid header line so the topmost company name
+    # line (e.g. "Flipkart") becomes the start even when a role title sits
+    # between it and the date line.
+    block_starts: list[int] = []
+    for date_idx in date_line_indices:
+        block_start = date_idx
+        for back in range(1, 6):
+            candidate_idx = date_idx - back
+            if candidate_idx < 0:
+                break
+            candidate = lines[candidate_idx].strip()
+            if not candidate:
+                break  # blank line separates entries — stop here
+            if candidate.startswith(('•', '-', '*')):
+                break  # bullet from previous block — stop (not '–'/'—': those appear mid-line in role headers)
+            if _DATE_RANGE_LINE_RE.search(candidate):
+                break  # another date range — this belongs to a different entry
+            # Valid non-bullet, non-date, non-blank header line
+            block_start = candidate_idx  # keep walking back to the topmost line
+
+        # Deduplicate: only append if it advances past the previous start
+        if not block_starts or block_start > block_starts[-1]:
+            block_starts.append(block_start)
+
+    if len(block_starts) < 2:
+        return []
+
+    blocks: list[dict] = []
+    for i, start in enumerate(block_starts):
+        end = block_starts[i + 1] if i + 1 < len(block_starts) else len(lines)
+        block_lines = lines[start:end]
+        # Trim trailing blank lines
+        while block_lines and not block_lines[-1].strip():
+            block_lines.pop()
+        label = lines[start].strip()
+        text = '\n'.join(block_lines).strip()
+        if text:
+            blocks.append({'label': label, 'text': text})
+
+    return blocks
+
+
 def _detect_sub_entries(section_text: str, section_type: str) -> list[dict]:
     """
     Detects sub-entries within a section block using type-specific patterns.
     Returns list of {label, text} dicts.
     section_type: 'experience' | 'education' | 'certifications' | 'projects'
+
+    For 'experience', falls back to date-range based detection when the primary
+    regex patterns detect fewer than 2 entries (handles mixed-case company names
+    that don't match all-caps Pattern 3).
     """
     if not section_text.strip():
         return []
 
     lines = section_text.splitlines()
+
+    if section_type == 'certifications':
+        cert_entries: list[dict] = []
+        for line in lines:
+            stripped = line.strip()
+            if not stripped:
+                continue
+            for pat in _CERT_PATTERNS:
+                if re.search(pat, stripped):
+                    cert_entries.append({'label': stripped, 'text': stripped})
+                    break
+        return cert_entries
 
     if section_type == 'experience':
         patterns = _COMPANY_BLOCK_PATTERNS
@@ -252,18 +574,31 @@ def _detect_sub_entries(section_text: str, section_type: str) -> list[dict]:
                 break
 
     if not entry_start_indices:
+        primary_blocks: list[dict] = []
+    else:
+        primary_blocks = []
+        for idx, start in enumerate(entry_start_indices):
+            end = entry_start_indices[idx + 1] if idx + 1 < len(entry_start_indices) else len(lines)
+            block_lines = lines[start:end]
+            label = lines[start].strip()
+            text = '\n'.join(block_lines).strip()
+            if text:
+                primary_blocks.append({'label': label, 'text': text})
+
+    if section_type == 'experience':
+        fallback_date = _detect_experience_by_date_ranges(section_text)
+        fallback_role = _detect_experience_by_role_headers(section_text)
+        best = primary_blocks
+        if len(fallback_date) > len(best):
+            best = fallback_date
+        if len(fallback_role) > len(best):
+            best = fallback_role
+        return best
+
+    if not primary_blocks:
         return []
 
-    blocks: list[dict] = []
-    for idx, start in enumerate(entry_start_indices):
-        end = entry_start_indices[idx + 1] if idx + 1 < len(entry_start_indices) else len(lines)
-        block_lines = lines[start:end]
-        label = lines[start].strip()
-        text = '\n'.join(block_lines).strip()
-        if text:
-            blocks.append({'label': label, 'text': text})
-
-    return blocks
+    return primary_blocks
 
 
 def _labels_overlap(a: str, b: str) -> bool:
@@ -734,32 +1069,51 @@ class ResumeUnderstandingValidator:
         if isinstance(exp_data, dict):
             detected_sections_raw = _extract_all_sections_from_text(resume_text)
             raw_exp_text = detected_sections_raw.get('experience', '')
+            if not raw_exp_text.strip():
+                raw_exp_text = resume_text
             detected_blocks = _detect_sub_entries(raw_exp_text, 'experience')
             existing_entries = _dedupe_entries(exp_data.get('sub_entries', []))
 
-            missing_blocks = [
-                b for b in detected_blocks
-                if not _block_already_present(b, existing_entries)
-            ]
-            if missing_blocks:
+            logging.info(
+                "ResumeUnderstandingValidator: experience A1=%d blocks, "
+                "detected=%d from raw text",
+                len(existing_entries),
+                len(detected_blocks),
+            )
+
+            # When deterministic detection finds more entries than A1, prefer it
+            # as the ordered source of truth (preserves chronological order).
+            if len(detected_blocks) > len(existing_entries):
                 all_anomalies.append(
-                    f"experience: A1 missing {len(missing_blocks)} companies: "
-                    f"{[b['label'][:50] for b in missing_blocks]}"
+                    f"experience: A1 had {len(existing_entries)} entries, "
+                    f"detected {len(detected_blocks)} — using detected blocks"
                 )
-                for block in missing_blocks:
-                    existing_entries.append({
-                        'label': block['label'],
-                        'verbatim_text': block['text'],
-                    })
-                exp_data['sub_entries'] = _dedupe_entries(existing_entries)
-                if missing_blocks:
-                    all_texts = [
-                        e.get('verbatim_text', '')
-                        for e in exp_data['sub_entries']
-                    ]
-                    exp_data['full_text'] = '\n\n'.join(t for t in all_texts if t)
+                existing_entries = [
+                    {'label': b['label'], 'verbatim_text': b['text']}
+                    for b in detected_blocks
+                ]
             else:
-                exp_data['sub_entries'] = existing_entries
+                missing_blocks = [
+                    b for b in detected_blocks
+                    if not _block_already_present(b, existing_entries)
+                ]
+                if missing_blocks:
+                    all_anomalies.append(
+                        f"experience: A1 missing {len(missing_blocks)} companies: "
+                        f"{[b['label'][:50] for b in missing_blocks]}"
+                    )
+                    for block in missing_blocks:
+                        existing_entries.append({
+                            'label': block['label'],
+                            'verbatim_text': block['text'],
+                        })
+
+            exp_data['sub_entries'] = _dedupe_entries(existing_entries)
+            all_texts = [
+                e.get('verbatim_text', '')
+                for e in exp_data['sub_entries']
+            ]
+            exp_data['full_text'] = '\n\n'.join(t for t in all_texts if t)
             sections['experience'] = exp_data
 
         # ── 2. EDUCATION ──────────────────────────────────────────────

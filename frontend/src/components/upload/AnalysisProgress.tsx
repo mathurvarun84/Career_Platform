@@ -1,14 +1,13 @@
 import type { CSSProperties, ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { normalizeAnalysisResult } from "../../api/analyze";
+import { ANALYZE_TIMEOUT_MS, normalizeAnalysisResult } from "../../api/analyze";
 import UpgradeModal from "../auth/UpgradeModal";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../store/authStore";
 import type { AnalysisResult } from "../../types";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-const ANALYZE_TIMEOUT_MS = 60_000;
 /** Use access token as-is while it has this many seconds left; avoid refresh (user / Supabase limits). */
 const MIN_ACCESS_TOKEN_VALID_SEC_BEFORE_REFRESH = 120;
 
@@ -302,7 +301,11 @@ export default function AnalysisProgress({
   useEffect(() => {
     let aborted = false;
     const controller = new AbortController();
-    const timeoutId = window.setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+    let timeoutId = window.setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+    const resetStreamTimeout = (): void => {
+      window.clearTimeout(timeoutId);
+      timeoutId = window.setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+    };
 
     const applyStepComplete = (step: number): void => {
       if (step === 3) {
@@ -355,6 +358,7 @@ export default function AnalysisProgress({
           if (done) {
             break;
           }
+          resetStreamTimeout();
           buffer += decoder.decode(value, { stream: true });
           buffer = parseAndDispatchSseBuffer(buffer, (payload) => {
             if (aborted) {
@@ -399,8 +403,9 @@ export default function AnalysisProgress({
         }
 
         if (err instanceof DOMException && err.name === "AbortError") {
+          const sec = Math.round(ANALYZE_TIMEOUT_MS / 1000);
           setErrorMessage(
-            "Analysis timed out. The server took too long to respond. Try again."
+            `Analysis timed out (${sec}s without progress). The pipeline may still be running — try again or increase VITE_ANALYZE_TIMEOUT_MS.`
           );
           return;
         }

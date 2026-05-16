@@ -13,6 +13,7 @@ Exact style match to reference resume:
 
 from __future__ import annotations
 
+import logging
 import re
 from io import BytesIO
 
@@ -20,7 +21,16 @@ from docx import Document
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
-from docx.shared import Pt
+from docx.shared import Pt, RGBColor
+
+try:
+    from rewriter import COMPANY_HEADER_START, COMPANY_ROLE_START, HEADER_END
+except ImportError:
+    from backend.agents.rewriter import (  # type: ignore[no-redef]
+        COMPANY_HEADER_START,
+        COMPANY_ROLE_START,
+        HEADER_END,
+    )
 
 # ── Color palette (from reference resume docx XML) ──
 COLOR_NAME       = "1F3864"   # dark navy — candidate name + role/company
@@ -45,20 +55,41 @@ SECTION_NAME_MAP = {
     "objective": "summary",
     "profile": "summary",
     "summary": "summary",
+    "career objective": "summary",
+    "about": "summary",
     "core_competencies": "skills",
     "key_skills": "skills",
     "skills": "skills",
     "technical_skills": "skills",
+    "technologies": "skills",
+    "technical expertise": "skills",
     "work_experience": "experience",
     "professional_experience": "experience",
     "employment": "experience",
     "experience": "experience",
+    "career history": "experience",
+    "work history": "experience",
+    "employment history": "experience",
     "education": "education",
+    "qualifications": "education",
+    "academic qualifications": "education",
     "certifications": "certifications",
     "certificates": "certifications",
+    "licenses": "certifications",
+    "professional certifications": "certifications",
     "awards": "awards",
     "achievements": "awards",
+    "awards & achievements": "awards",
+    "awards and achievements": "awards",
+    "honours": "awards",
+    "accomplishments": "awards",
     "projects": "projects",
+    "projects & side work": "projects",
+    "projects and side work": "projects",
+    "side projects": "projects",
+    "project work": "projects",
+    "key projects": "projects",
+    "personal projects": "projects",
     "languages": "languages",
     "interests": "interests",
 }
@@ -66,7 +97,8 @@ SECTION_NAME_MAP = {
 
 def _normalize_key(key: str) -> str:
     """Map variant section keys to canonical names."""
-    return SECTION_NAME_MAP.get(key, key)
+    normalized = key.lower().strip()
+    return SECTION_NAME_MAP.get(normalized, normalized)
 
 
 def _set_color(run, hex_color: str):
@@ -75,6 +107,169 @@ def _set_color(run, hex_color: str):
     color_el = OxmlElement("w:color")
     color_el.set(qn("w:val"), hex_color)
     r_pr.append(color_el)
+
+
+_PLACEHOLDER_RE = re.compile(r"^\[.+\]$")
+
+
+def _is_placeholder_text(text: str) -> bool:
+    return bool(_PLACEHOLDER_RE.match(text.strip()))
+
+
+def _company(doc, company: str, location: str = "") -> None:
+    """Bold company name line."""
+    p = doc.add_paragraph()
+    r = p.add_run(company)
+    r.bold = True
+    r.font.size = Pt(10)
+    r.font.color.rgb = RGBColor(0x1F, 0x38, 0x64)
+    if location:
+        r2 = p.add_run(f"  {location}")
+        r2.font.size = Pt(9)
+        r2.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+    p.paragraph_format.space_before = Pt(6)
+    p.paragraph_format.space_after = Pt(1)
+
+
+def _role(doc, role: str, dates: str = "") -> None:
+    """Italic role + gray dates."""
+    p = doc.add_paragraph()
+    r = p.add_run(role)
+    r.italic = True
+    r.font.size = Pt(9.5)
+    r.font.color.rgb = RGBColor(0x2E, 0x2E, 0x2E)
+    if dates:
+        r2 = p.add_run(f"  {dates}")
+        r2.font.size = Pt(9)
+        r2.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
+    p.paragraph_format.space_after = Pt(1)
+
+
+def _bullet(doc, text: str) -> None:
+    """List Bullet paragraph with placeholder guard."""
+    t = text.lstrip("-•* ").strip()
+    if not t or _is_placeholder_text(t):
+        return
+    p = doc.add_paragraph(style="List Bullet")
+    r = p.add_run(t)
+    r.font.size = Pt(9.5)
+    r.font.color.rgb = RGBColor(0x2E, 0x2E, 0x2E)
+    p.paragraph_format.space_after = Pt(1)
+
+
+def _normal(doc, text: str) -> None:
+    """Normal paragraph with placeholder guard."""
+    t = text.strip()
+    if not t or _is_placeholder_text(t):
+        return
+    p = doc.add_paragraph()
+    r = p.add_run(t)
+    r.font.size = Pt(9.5)
+    r.font.color.rgb = RGBColor(0x2E, 0x2E, 0x2E)
+    p.paragraph_format.space_after = Pt(1)
+
+
+def _tech_stack(doc, text: str) -> None:
+    """Italic tech stack line."""
+    p = doc.add_paragraph()
+    r = p.add_run(text.strip())
+    r.italic = True
+    r.font.size = Pt(9)
+    r.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+    p.paragraph_format.space_after = Pt(2)
+
+
+def _render_experience_from_markers(doc, content: str) -> None:
+    """Render experience using ##COMPANY##/##ROLE##/##END_HEADER## markers."""
+    bullet_markers = ("•", "-", "*")
+    for block in content.split(COMPANY_HEADER_START):
+        if not block.strip():
+            continue
+        header_part = body = ""
+        if HEADER_END in block:
+            header_part, body = block.split(HEADER_END, 1)
+        else:
+            body = block
+        co = loc = ro = dt = ""
+        if COMPANY_ROLE_START in header_part:
+            co_loc, ro_dt = header_part.split(COMPANY_ROLE_START, 1)
+            co, loc = (co_loc.split("|", 1) + [""])[:2]
+            ro, dt = (ro_dt.split("|", 1) + [""])[:2]
+            co, loc, ro, dt = co.strip(), loc.strip(), ro.strip(), dt.strip()
+        else:
+            co = header_part.strip()
+        if co:
+            _company(doc, co, loc)
+        if ro:
+            _role(doc, ro, dt)
+        for line in body.splitlines():
+            s = line.strip()
+            if not s:
+                continue
+            if s.startswith(bullet_markers):
+                _bullet(doc, s)
+            elif s.lower().startswith("tech stack:"):
+                _tech_stack(doc, s)
+            else:
+                _normal(doc, s)
+
+
+def _render_experience_heuristic(doc, content: str) -> None:
+    """
+    Heuristic experience renderer for flat (non-marker) content.
+    Handles Indian resume patterns where role, company, location, and dates
+    appear on one line separated by | and —.
+    """
+    year_re = re.compile(r"\b(19|20)\d{2}\b|[Pp]resent")
+    bullet_markers = ("•", "-", "*")
+
+    for raw in content.splitlines():
+        s = raw.strip()
+        if not s:
+            continue
+        if s.startswith(bullet_markers):
+            _bullet(doc, s)
+        elif s.lower().startswith("tech stack:"):
+            _tech_stack(doc, s)
+        elif '|' in s and year_re.search(s):
+            # Compound line: "Role | Company — Location   Date–Date"
+            role_part, rest = s.split('|', 1)
+            role_part = role_part.strip()
+            rest = rest.strip()
+            co_match = re.split(r'\s*[—–]\s*|\s{2,}', rest, maxsplit=1)
+            company_part = co_match[0].strip()
+            loc_date = co_match[1].strip() if len(co_match) > 1 else ''
+            dm = year_re.search(loc_date)
+            if dm:
+                location_part = loc_date[:dm.start()].strip().rstrip(',').strip()
+                date_part = loc_date[dm.start():].strip()
+            else:
+                location_part = loc_date
+                date_part = ''
+            if company_part:
+                _company(doc, company_part, location_part)
+            if role_part:
+                _role(doc, role_part, date_part)
+        elif year_re.search(s) and '|' not in s:
+            _role(doc, s)
+        elif s[0].isupper() and len(s) < 80:
+            _company(doc, s)
+        else:
+            _normal(doc, s)
+
+
+def _write_experience_unified(doc, content: str) -> None:
+    """
+    Single authoritative experience renderer.
+
+    Dispatch:
+      1. ##COMPANY## markers present → marker-based rendering.
+      2. Otherwise → heuristic rendering with Indian resume pattern handling.
+    """
+    if COMPANY_HEADER_START in content:
+        _render_experience_from_markers(doc, content)
+    else:
+        _render_experience_heuristic(doc, content)
 
 
 def merge_structured_with_parsed_header(structured: dict | None, resume_text: str) -> dict:
@@ -112,8 +307,8 @@ def build_final_docx(
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
-    from rewriter import COMPANY_HEADER_START, COMPANY_ROLE_START, HEADER_END
-    import io, re
+    import io
+    import re
 
     doc = Document()
     for sec in doc.sections:
@@ -145,12 +340,10 @@ def build_final_docx(
         r.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    placeholder_re = re.compile(r'^\[.+\]$')
-    year_re = re.compile(r'\b(19|20)\d{2}\b|[Pp]resent')
-    bullet_markers = ('•', '-', '*')
+    bullet_markers = ("•", "-", "*")
 
     def _is_placeholder(t):
-        return bool(placeholder_re.match(t.strip()))
+        return _is_placeholder_text(t)
 
     def _hdr(text):
         """Section header with bottom border, brand blue."""
@@ -171,123 +364,17 @@ def build_final_docx(
         p.paragraph_format.space_before = Pt(8)
         p.paragraph_format.space_after = Pt(2)
 
-    def _company(company, location=""):
-        """Bold company name line."""
-        p = doc.add_paragraph()
-        r = p.add_run(company)
-        r.bold = True
-        r.font.size = Pt(10)
-        r.font.color.rgb = RGBColor(0x1F, 0x38, 0x64)
-        if location:
-            r2 = p.add_run(f"  {location}")
-            r2.font.size = Pt(9)
-            r2.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
-        p.paragraph_format.space_before = Pt(6)
-        p.paragraph_format.space_after = Pt(1)
-
-    def _role(role, dates=""):
-        """Italic role + gray dates."""
-        p = doc.add_paragraph()
-        r = p.add_run(role)
-        r.italic = True
-        r.font.size = Pt(9.5)
-        r.font.color.rgb = RGBColor(0x2E, 0x2E, 0x2E)
-        if dates:
-            r2 = p.add_run(f"  {dates}")
-            r2.font.size = Pt(9)
-            r2.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
-        p.paragraph_format.space_after = Pt(1)
-
-    def _bullet(text):
-        """List Bullet paragraph with placeholder guard."""
-        t = text.lstrip("-•* ").strip()
-        if not t or _is_placeholder(t):
-            return
-        p = doc.add_paragraph(style="List Bullet")
-        r = p.add_run(t)
-        r.font.size = Pt(9.5)
-        r.font.color.rgb = RGBColor(0x2E, 0x2E, 0x2E)
-        p.paragraph_format.space_after = Pt(1)
-
-    def _normal(text):
-        """Normal paragraph with placeholder guard."""
-        t = text.strip()
-        if not t or _is_placeholder(t):
-            return
-        p = doc.add_paragraph()
-        r = p.add_run(t)
-        r.font.size = Pt(9.5)
-        r.font.color.rgb = RGBColor(0x2E, 0x2E, 0x2E)
-        p.paragraph_format.space_after = Pt(1)
-
-    def _tech_stack(text):
-        """Italic tech stack line."""
-        p = doc.add_paragraph()
-        r = p.add_run(text.strip())
-        r.italic = True
-        r.font.size = Pt(9)
-        r.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
-        p.paragraph_format.space_after = Pt(2)
-
-    def _write_experience(content):
-        """Write marker-based or plain experience with consistent formatting."""
-        if COMPANY_HEADER_START in content:
-            for block in content.split(COMPANY_HEADER_START):
-                if not block.strip():
-                    continue
-                header_part = body = ""
-                if HEADER_END in block:
-                    header_part, body = block.split(HEADER_END, 1)
-                else:
-                    body = block
-                co = loc = ro = dt = ""
-                if COMPANY_ROLE_START in header_part:
-                    co_loc, ro_dt = header_part.split(COMPANY_ROLE_START, 1)
-                    co, loc = (co_loc.split("|", 1) + [""])[:2]
-                    ro, dt = (ro_dt.split("|", 1) + [""])[:2]
-                    co = co.strip()
-                    loc = loc.strip()
-                    ro = ro.strip()
-                    dt = dt.strip()
-                else:
-                    co = header_part.strip()
-                if co:
-                    _company(co, loc)
-                if ro:
-                    _role(ro, dt)
-                for line in body.splitlines():
-                    s = line.strip()
-                    if not s:
-                        continue
-                    if s.startswith(bullet_markers):
-                        _bullet(s)
-                    elif s.lower().startswith("tech stack:"):
-                        _tech_stack(s)
-                    else:
-                        _normal(s)
-        else:
-            for raw in content.splitlines():
-                s = raw.strip()
-                if not s:
-                    continue
-                if s.startswith(bullet_markers):
-                    _bullet(s)
-                elif s.lower().startswith("tech stack:"):
-                    _tech_stack(s)
-                elif year_re.search(s):
-                    _role(s)
-                elif s[0].isupper() and len(s) < 80:
-                    _company(s)
-                else:
-                    _normal(s)
-
     def _get_content(section_name):
         """Return rewrite content, balanced fallback, then structured original."""
         rw = rewrites.get(section_name, {})
         if not rw:
-            # Accept aliased rewrite keys (e.g., work_experience -> experience)
             for key, value in rewrites.items():
-                if _normalize_key(str(key)) == section_name:
+                if str(key).lower().strip() == section_name:
+                    rw = value
+                    break
+        if not rw:
+            for key, value in rewrites.items():
+                if _normalize_key(str(key).lower().strip()) == section_name:
                     rw = value
                     break
         for key in (style, "balanced"):
@@ -302,7 +389,7 @@ def build_final_docx(
             continue
         _hdr(sec_name)
         if sec_name == "experience":
-            _write_experience(content)
+            _write_experience_unified(doc, content)
         elif sec_name == "summary":
             p = doc.add_paragraph()
             r = p.add_run(content.strip())
@@ -331,7 +418,7 @@ def build_final_docx(
                     ]
                     if len(chunks) > 1:
                         for skill in chunks:
-                            _bullet(f"• {skill}")
+                            _bullet(doc, f"• {skill}")
                     else:
                         p = doc.add_paragraph()
                         r = p.add_run(s)
@@ -346,25 +433,36 @@ def build_final_docx(
                 entries = [e.strip() for e in re.split(r";\s*", s) if e.strip()]
                 if len(entries) > 1:
                     for entry in entries:
-                        _bullet(f"• {entry}")
+                        _bullet(doc, f"• {entry}")
                 elif s.startswith(bullet_markers):
-                    _bullet(s)
+                    _bullet(doc, s)
                 else:
-                    _bullet(f"• {s}")
+                    _bullet(doc, f"• {s}")
         else:
             for line in content.splitlines():
                 s = line.strip()
                 if not s or _is_placeholder(s):
                     continue
                 if s.startswith(bullet_markers):
-                    _bullet(s)
+                    _bullet(doc, s)
                 else:
-                    _normal(s)
+                    _normal(doc, s)
 
     buf = io.BytesIO()
     doc.save(buf)
     result = buf.getvalue()
     assert len(result) > 5000, f"Docx too small: {len(result)} bytes"
+    exp_rw = rewrites.get("experience", {})
+    if isinstance(exp_rw, dict):
+        exp_text = exp_rw.get(style, "") or exp_rw.get("balanced", "")
+    else:
+        exp_text = ""
+    if COMPANY_HEADER_START not in (exp_text or ""):
+        logging.warning(
+            "build_final_docx: experience section for style '%s' has no ##COMPANY## "
+            "markers — heuristic renderer will be used. Verify output visually.",
+            style,
+        )
     return result
 
 
@@ -564,7 +662,7 @@ def _build_docx(
             _render_summary(doc, content)
         elif key == "experience":
             if isinstance(content, str):
-                _write_experience_section(doc, content)
+                _write_experience_unified(doc, content)
             else:
                 _render_experience(doc, content)
         else:
@@ -616,44 +714,6 @@ def _render_summary(doc, content):
         run.font.name = "Arial"
         run.font.size = Pt(9.5)
         _set_color(run, COLOR_BODY)
-
-
-def _write_experience_section(document, content: str):
-    """
-    Write flat rewritten experience text with company, role, bullet, and stack styles.
-    """
-    year_pattern = re.compile(r"\b(19|20)\d{2}\b|[Pp]resent")
-    bullet_markers = ("-", "\u2022", "*")
-
-    wrote_content = False
-    pending_blank = False
-    for raw_line in content.splitlines():
-        line = raw_line.strip()
-        if not line:
-            if wrote_content:
-                pending_blank = True
-            continue
-
-        if pending_blank:
-            spacer = document.add_paragraph()
-            spacer.paragraph_format.space_before = Pt(0)
-            spacer.paragraph_format.space_after = Pt(2)
-            pending_blank = False
-
-        if line.startswith(bullet_markers):
-            cleaned = line.lstrip("-\u2022* ").strip()
-            p = document.add_paragraph(cleaned, style="List Bullet")
-            _format_paragraph_runs(p)
-        elif line.lower().startswith("tech stack:"):
-            p = document.add_paragraph(line)
-            _format_paragraph_runs(p, italic=True)
-        elif year_pattern.search(line):
-            p = document.add_paragraph(line)
-            _format_paragraph_runs(p)
-        else:
-            p = document.add_paragraph(line)
-            _format_paragraph_runs(p, bold=True)
-        wrote_content = True
 
 
 def _format_paragraph_runs(paragraph, bold: bool = False, italic: bool = False):

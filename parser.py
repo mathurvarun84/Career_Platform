@@ -98,8 +98,36 @@ def _parse_docx(file_path: str) -> str:
     from docx import Document
 
     doc = Document(file_path)
-    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-    return _clean_text("\n".join(paragraphs))
+    output_lines: list[str] = []
+    prev_was_bullet = False
+
+    for p in doc.paragraphs:
+        text = p.text.strip()
+        if not text:
+            prev_was_bullet = False
+            output_lines.append("")
+            continue
+
+        is_bullet = (
+            "bullet" in p.style.name.lower() or "list" in p.style.name.lower()
+        )
+
+        if is_bullet:
+            output_lines.append("• " + text)
+            prev_was_bullet = True
+        else:
+            is_continuation = (
+                prev_was_bullet
+                and output_lines
+                and text[0].islower()
+            )
+            if is_continuation:
+                output_lines[-1] = output_lines[-1].rstrip() + " " + text
+            else:
+                output_lines.append(text)
+                prev_was_bullet = False
+
+    return _clean_text("\n".join(output_lines))
 
 
 def _parse_txt(file_path: str) -> str:
@@ -134,6 +162,8 @@ def _clean_text(text: str) -> str:
     text = '\n'.join(fixed)
     # Pass 6: normalize multiple blank lines
     text = re.sub(r'\n{3,}', '\n\n', text)
+    # Pass 7: tabs → spaces (PDF tables often use tabs between role and dates)
+    text = text.replace('\t', ' ')
     return text.strip()
 
 
@@ -153,6 +183,20 @@ def _fix_concatenated_words(text: str) -> str:
     return "\n".join(fixed_lines)
 
 
+def _normalize_spaced_heading(line: str) -> str:
+    """Collapse spaced-character headings to their solid form.
+
+    Handles PDF-extracted headings like 'C E R T I F I C A T I O N S'
+    (every letter separated by a single space) and returns 'CERTIFICATIONS'.
+    Only fires when the line consists solely of single uppercase letters
+    separated by single spaces (at least 3 letters).
+    """
+    stripped = line.strip()
+    if re.match(r'^([A-Z] ){2,}[A-Z]$', stripped):
+        return stripped.replace(' ', '')
+    return stripped
+
+
 def _extract_section_blocks(text: str) -> Dict[str, str]:
     headings = {
         "summary": ["summary", "professional summary", "objective", "profile"],
@@ -167,12 +211,25 @@ def _extract_section_blocks(text: str) -> Dict[str, str]:
     pattern = re.compile(
         rf"(?im)^(?:{'|'.join(re.escape(item) for item in sorted(all_headings, key=len, reverse=True))})\s*:?\s*$"
     )
-    matches = list(pattern.finditer(text))
+
+    # Build a line-normalised copy of the text so spaced headings like
+    # "C E R T I F I C A T I O N S" are collapsed before pattern matching.
+    # We rebuild the text line-by-line, keeping character positions intact
+    # by padding collapsed lines with spaces so downstream offsets stay valid.
+    normalized_lines: list[str] = []
+    for raw_line in text.splitlines():
+        norm = _normalize_spaced_heading(raw_line)
+        # Pad to original length so match.end() / match.start() stay correct
+        normalized_lines.append(norm.ljust(len(raw_line)))
+    normalized_text = '\n'.join(normalized_lines)
+
+    matches = list(pattern.finditer(normalized_text))
 
     for index, match in enumerate(matches):
         raw_heading = match.group(0).strip().rstrip(":").lower()
         start = match.end()
         end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
+        # Slice from the ORIGINAL text so content is never padded
         content = text[start:end].strip()
         for section_name, aliases in headings.items():
             if raw_heading in aliases:

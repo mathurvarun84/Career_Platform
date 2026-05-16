@@ -25,6 +25,7 @@ from backend.db import get_db
 from backend.limit_checker import check_upload_limit, reset_user_limit
 from backend.persistence import save_analysis
 from engine.resume_builder import build_final_docx
+from validator.rewriter_validator import assert_structural_completeness
 from orchestrator import Orchestrator
 from parser import parse_resume
 from backend.schemas.jd_fetch_schema import FetchJDRequest, FetchJDResponse
@@ -428,6 +429,27 @@ def download(job_id: str, style: str = "balanced") -> Response:
     if isinstance(rewrites, dict) and "rewrites" in rewrites and isinstance(rewrites.get("rewrites"), dict):
         rewrites = rewrites["rewrites"]
     resume_text = job.get("resume_text") or ""
+    resume_sections = (
+        (structured.get("resume_sections") if isinstance(structured, dict) else None)
+        or result.get("resume_sections")
+        or {}
+    )
+    missing_sections = assert_structural_completeness(rewrites, resume_sections)
+    if missing_sections:
+        logging.error(
+            "Structural completeness FAILED — sections missing from rewrites: %s. "
+            "Docx will be incomplete.",
+            missing_sections,
+        )
+    from validator.experience_audit import log_experience_audit
+
+    log_experience_audit(
+        "pre_docx_download",
+        resume_text,
+        resume_sections,
+        rewrites,
+        style=style,
+    )
     docx = build_final_docx(
         structured=structured,
         rewrites=rewrites,

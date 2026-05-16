@@ -19,6 +19,11 @@ from backend.agents.rewriter import RewriterAgent
 from engine.ats_scorer import score_resume
 from engine.percentile import get_percentile
 from validators import ResumeUnderstandingValidator, RewriterValidator
+from validator.rewriter_validator import assert_structural_completeness
+from validator.experience_audit import (
+    ensure_experience_completeness,
+    log_experience_audit,
+)
 
 
 class Orchestrator:
@@ -72,6 +77,50 @@ class Orchestrator:
             k: v.model_dump() if hasattr(v, "model_dump") else v
             for k, v in sections.items()
         }
+
+    def _sync_experience_sections(
+        self,
+        resume_sections: Dict[str, Any],
+        resume_text: str,
+        resume_und: dict | None = None,
+    ) -> Dict[str, Any]:
+        """
+        Backfill experience sub_entries from raw resume and log counts.
+
+        Must run before A4 rewriter so stitch order includes every company.
+        """
+        from backend.schemas.common import SectionText
+
+        exp = resume_sections.get("experience")
+        if exp is None:
+            for key, val in list(resume_sections.items()):
+                if str(key).lower().strip() in (
+                    "experience",
+                    "work experience",
+                    "professional experience",
+                    "employment",
+                ):
+                    exp = val
+                    break
+
+        augmented = ensure_experience_completeness(exp, resume_text)
+        if augmented is not None:
+            resume_sections["experience"] = augmented
+            if resume_und is not None:
+                rs = resume_und.setdefault("resume_sections", {})
+                if isinstance(rs, dict):
+                    rs["experience"] = (
+                        augmented.model_dump()
+                        if hasattr(augmented, "model_dump")
+                        else augmented
+                    )
+
+        log_experience_audit(
+            "orchestrator_pre_rewrite",
+            resume_text,
+            resume_sections,
+        )
+        return resume_sections
 
     def _extract_a1_sections(self, resume_und: dict) -> Dict[str, Any]:
         """Extract resume sections available directly in A1 output."""
@@ -181,6 +230,10 @@ class Orchestrator:
 
             resume_und = ResumeUnderstandingValidator().validate_and_fix(resume_und, resume_text)
             resume_sections = self._extract_a1_sections(resume_und)
+            resume_sections = self._sync_experience_sections(
+                resume_sections, resume_text, resume_und
+            )
+            log_experience_audit("post_a1_validator", resume_text, resume_sections)
             if stage_cache_cb:
                 stage_cache_cb({
                     "resume_und": dict(resume_und),
@@ -194,6 +247,9 @@ class Orchestrator:
                 k: SectionText(**v) if isinstance(v, dict) else v
                 for k, v in resume_sections.items()
             }
+        resume_sections = self._sync_experience_sections(
+            resume_sections, resume_text, resume_und
+        )
         resume_und["resume_sections"] = self._dump_sections(resume_sections)
         if partial_result_cb:
             partial_result_cb({"resume": resume_und})
@@ -249,6 +305,10 @@ class Orchestrator:
                         resume_und["resume_sections"] = self._dump_sections(resume_sections)
                     except Exception as exc:
                         logging.warning("Sectioner merge skipped: %s", exc)
+            resume_sections = self._sync_experience_sections(
+                resume_sections, resume_text, resume_und
+            )
+            log_experience_audit("post_sectioner_merge", resume_text, resume_sections)
             if progress_cb: progress_cb({"step":2,"label":"Gap analysis complete","pct":65})
             if sse_step_cb:
                 sse_step_cb(1, "JD matched")
@@ -268,11 +328,14 @@ class Orchestrator:
             fut_sim = None
             if not skip_rewrite:
                 if progress_cb: progress_cb({"step":3,"label":"Rewriting changed sections...","pct":75})
+                resume_sections = self._sync_experience_sections(
+                    resume_sections, resume_text, resume_und
+                )
                 fut_rewrite = executor.submit(
                     self.rewriter.run,
                     {
                         "resume_text": resume_text,
-                        "resume_sections": resume_sections,
+                        "resume_sections": self._dump_sections(resume_sections),
                         "gap_analysis": gap_result,
                         "jd_intelligence": jd_intel,
                         "style_fingerprint": None,
@@ -305,7 +368,27 @@ class Orchestrator:
                 try:
                     rewrites = fut_rewrite.result()
                     if rewrites:
-                        rewrites = RewriterValidator().validate_and_fix(rewrites, resume_sections, resume_text)
+                        rewrites = RewriterValidator().validate_and_fix(
+                            rewrites,
+                            self._dump_sections(resume_sections),
+                            resume_text,
+                        )
+                        log_experience_audit(
+                            "post_rewriter_validator",
+                            resume_text,
+                            resume_sections,
+                            rewrites.get("rewrites") if isinstance(rewrites, dict) else rewrites,
+                        )
+                        missing_sections = assert_structural_completeness(
+                            rewrites.get("rewrites", {}),
+                            resume_sections,
+                        )
+                        if missing_sections:
+                            logging.error(
+                                "Structural completeness FAILED — sections missing from "
+                                "rewrites: %s. Docx will be incomplete.",
+                                missing_sections,
+                            )
                     if progress_cb: progress_cb({"step":3,"label":"Resume rewritten successfully","pct":95})
                 except Exception as exc:
                     logging.warning("Rewriter failed: %s. Using gap-based fallback.", exc)

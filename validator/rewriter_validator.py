@@ -26,12 +26,20 @@ from typing import Any
 
 from backend.schemas.common import SectionText, SubEntry
 
-# Import marker helpers from rewriter (or redefine if circular import risk)
-try:
-    from backend.agents.rewriter import _ensure_experience_markers
-except ImportError:
-    def _ensure_experience_markers(text: str, sub_label: str) -> str:  # type: ignore
-        return text
+from validator.experience_audit import (
+    count_experience_markers,
+    detect_ground_truth_entries,
+    ensure_experience_completeness,
+    log_experience_audit,
+    rebuild_experience_rewrites,
+)
+
+from backend.agents.rewriter import (
+    _ensure_experience_markers,
+    _build_content_from_sub_entries,
+    _canonicalize_key,
+    _SUB_ENTRY_SECTIONS as _REWRITER_SUB_ENTRY_SECTIONS,
+)
 
 
 _METRIC_PATTERN    = re.compile(r'\b\d+\.?\d*\s*(%|x|X|\bk\b|\bK\b|Cr\b|L\b|ms\b|\bs\b)')
@@ -43,10 +51,62 @@ _EXPERIENCE_MARKER_RE = re.compile(
 )
 
 # Sections that have sub_entries and need entry-level completeness checks
-_SUB_ENTRY_SECTIONS = ('experience', 'education', 'certifications', 'projects')
+_SUB_ENTRY_SECTIONS = tuple(_REWRITER_SUB_ENTRY_SECTIONS)
 
 # Sections that are flat text (no sub_entries)
 _FLAT_SECTIONS = ('summary', 'skills', 'awards', 'publications', 'extracurriculars')
+
+_CANONICAL_ALIASES: dict[str, list[str]] = {
+    "projects": [
+        "projects & side work",
+        "projects and side work",
+        "side projects",
+        "project work",
+        "key projects",
+        "project_experience",
+        "personal_projects",
+    ],
+    "awards": [
+        "awards & achievements",
+        "awards and achievements",
+        "honours",
+        "honors",
+        "accomplishments",
+        "achievements",
+    ],
+    "experience": [
+        "career history",
+        "employment history",
+        "work history",
+        "professional experience",
+        "work_experience",
+        "professional_experience",
+        "employment",
+    ],
+    "skills": [
+        "technical skills",
+        "core competencies",
+        "key skills",
+        "technical_skills",
+        "core_competencies",
+        "key_skills",
+    ],
+    "summary": [
+        "professional summary",
+        "objective",
+        "profile",
+        "professional_summary",
+    ],
+    "certifications": ["certificates", "credentials"],
+    "education": ["academic background", "academics", "academic_background"],
+}
+
+_RAW_TO_CANONICAL: dict[str, str] = {
+    alias.lower().strip(): canon
+    for canon, aliases in _CANONICAL_ALIASES.items()
+    for alias in aliases
+}
+_RAW_TO_CANONICAL.update({canon: canon for canon in _CANONICAL_ALIASES})
 
 
 def _split_bullets(text: str) -> list[str]:
@@ -130,10 +190,75 @@ def _entry_verbatim_present(entry_text: str, style_text: str) -> bool:
     return bool(entry_norm) and entry_norm in style_norm
 
 
+def _canonical_section_name(raw_key: str) -> str:
+    """Map sectioner/raw section keys to canonical section names."""
+    normalized = raw_key.lower().strip()
+    return _RAW_TO_CANONICAL.get(normalized, normalized)
+
+
+def _variants_have_content(variants: dict[str, Any] | None) -> bool:
+    """True when at least one style variant has meaningful text."""
+    if not isinstance(variants, dict):
+        return False
+    for style in ("balanced", "aggressive", "top_1_percent"):
+        text = str(variants.get(style, "") or "").strip()
+        if len(text) >= 10:
+            return True
+    return False
+
+
+def _variants_richness(variants: dict[str, Any]) -> int:
+    """Max character count across style variants (for merge tie-break)."""
+    return max(
+        len(str(variants.get(style, "") or ""))
+        for style in ("balanced", "aggressive", "top_1_percent")
+    )
+
+
+def collapse_rewrites_to_canonical(rewrites: dict[str, Any]) -> dict[str, dict[str, str]]:
+    """
+    Collapse aliased rewrite keys (e.g. 'projects & side work') into canonical keys.
+
+    When two raw keys map to the same canonical section, keep the richer variant
+    so experience and projects never overwrite each other incorrectly.
+    """
+    collapsed: dict[str, dict[str, str]] = {}
+    for raw_key, variants in rewrites.items():
+        if not isinstance(variants, dict):
+            continue
+        canon = _canonical_section_name(str(raw_key))
+        existing = collapsed.get(canon)
+        if existing is None:
+            collapsed[canon] = variants
+            continue
+        if _variants_richness(variants) > _variants_richness(existing):
+            logging.warning(
+                "RewriterValidator: merging duplicate rewrite key '%s' into '%s' "
+                "(kept richer variant)",
+                raw_key,
+                canon,
+            )
+            collapsed[canon] = variants
+    return collapsed
+
+
+def _get_rewrite_variants(rewrites: dict[str, Any], section_name: str) -> dict[str, str] | None:
+    """Return rewrite variants for a canonical section, including aliased keys."""
+    if section_name in rewrites and isinstance(rewrites[section_name], dict):
+        return rewrites[section_name]
+    for key, value in rewrites.items():
+        if not isinstance(value, dict):
+            continue
+        if _canonical_section_name(str(key)) == section_name:
+            return value
+    return None
+
+
 def _extract_entry_ids(text: str, section: str) -> list[str]:
     """
     Extract the identifiers used for completeness checks per section type.
     For experience: ##COMPANY## markers.
+    For projects: double-newline blocks when >=2; else empty so verbatim fallback runs.
     For others: first line of each entry block (heuristic).
     """
     if section == 'experience':
@@ -143,6 +268,13 @@ def _extract_entry_ids(text: str, section: str) -> list[str]:
         if ids:
             return ids
         return _COMPANY_MARKER_RE.findall(text)
+
+    if section == 'projects':
+        blocks = _split_nonempty_blocks(text)
+        ids_from_blocks = [b.splitlines()[0].strip()[:80] for b in blocks if b]
+        if len(ids_from_blocks) >= 2:
+            return ids_from_blocks
+        return []
 
     # For other sections without markers, split on double newline or individual
     # lines and take first lines. Exact verbatim containment is checked first.
@@ -182,60 +314,9 @@ def _matched_entry_indexes(found_ids: list[str], section_text: SectionText) -> s
 
 
 def _augment_experience_entries(section_text: SectionText, resume_text: str) -> SectionText:
-    """Backfill missing experience entries from raw resume text when possible."""
-    if not resume_text.strip():
-        return section_text
-    try:
-        from validator.resume_understanding_validator import (
-            _detect_sub_entries,
-            _extract_all_sections_from_text,
-            _labels_overlap,
-        )
-    except Exception:
-        return section_text
-
-    detected_sections = _extract_all_sections_from_text(resume_text)
-    raw_exp = detected_sections.get('experience', '')
-    if not raw_exp.strip():
-        return section_text
-
-    detected_blocks = _detect_sub_entries(raw_exp, 'experience')
-    if not detected_blocks:
-        return section_text
-
-    existing = list(section_text.sub_entries or [])
-    existing_labels = [e.label for e in existing]
-    added = False
-    for block in detected_blocks:
-        label = str(block.get('label', '') or '')
-        text = str(block.get('text', '') or '')
-        if not label or not text:
-            continue
-        if any(_labels_overlap(label, l) for l in existing_labels):
-            continue
-        if _entry_verbatim_present(text, section_text.full_text):
-            existing.append(SubEntry(label=label, verbatim_text=text))
-            existing_labels.append(label)
-            added = True
-            continue
-        existing.append(SubEntry(label=label, verbatim_text=text))
-        existing_labels.append(label)
-        added = True
-
-    if not added:
-        return section_text
-
-    merged_full = section_text.full_text.strip()
-    if len(existing) > len(section_text.sub_entries or []):
-        merged_full = '\n\n'.join(
-            e.verbatim_text for e in existing if e.verbatim_text.strip()
-        ) or merged_full
-
-    return SectionText(
-        header=section_text.header,
-        full_text=merged_full,
-        sub_entries=existing,
-    )
+    """Backfill missing experience entries from raw resume text (see experience_audit)."""
+    augmented = ensure_experience_completeness(section_text, resume_text)
+    return augmented if augmented is not None else section_text
 
 
 def _labels_overlap(a: str, b: str) -> bool:
@@ -270,18 +351,47 @@ def _labels_overlap(a: str, b: str) -> bool:
 
 
 def _get_section_text(resume_sections: dict, section_name: str) -> SectionText | None:
-    """Resolve section from resume_sections, handling dict or SectionText."""
+    """
+    Resolve section from resume_sections by canonical name or alias.
+    Handles dict or SectionText values.
+    """
     raw = resume_sections.get(section_name)
     if raw is None:
+        for stored_key, stored_val in resume_sections.items():
+            if _canonicalize_key(stored_key) == section_name:
+                raw = stored_val
+                break
+    if raw is None:
         return None
+    if isinstance(raw, SectionText):
+        return raw
     if isinstance(raw, dict):
         try:
             return SectionText(**raw)
         except Exception:
             return None
-    if isinstance(raw, SectionText):
-        return raw
     return None
+
+
+def assert_structural_completeness(
+    rewrites: dict,
+    resume_sections: dict,
+) -> list[str]:
+    """
+    Return section names present in resume_sections but absent from rewrites.
+
+    Call after validate_and_fix() and before build_final_docx().
+    Does not raise — caller logs or surfaces findings.
+    """
+    missing: list[str] = []
+    for raw_key in resume_sections:
+        canonical = _canonical_section_name(str(raw_key))
+        if canonical in rewrites or raw_key in rewrites:
+            continue
+        section_text = _get_section_text(resume_sections, canonical)
+        if section_text and section_text.full_text.strip():
+            missing.append(canonical)
+    return missing
 
 
 def _repair_sub_entry_section(
@@ -456,8 +566,17 @@ class RewriterValidator:
         all_anomalies: list[str] = []
         all_warnings: list[str] = []
 
-        # ── Process every section that appears in the rewrites ─────────
-        all_section_names = set(rewrites.keys()) | set(resume_sections.keys())
+        log_experience_audit(
+            "rewriter_validator_in",
+            resume_text,
+            resume_sections,
+            rewrites,
+        )
+
+        # Build unified section name set — canonicalize resume_sections keys
+        all_section_names = set(rewrites.keys()) | {
+            _canonicalize_key(k) for k in resume_sections.keys()
+        }
 
         for section_name in all_section_names:
             section_text = _get_section_text(resume_sections, section_name)
@@ -466,18 +585,15 @@ class RewriterValidator:
             if section_name == 'experience':
                 section_text = _augment_experience_entries(section_text, resume_text)
 
-            variants = rewrites.get(section_name)
-            if not variants:
-                # Section exists in original but A4 produced nothing for it
-                # Preserve verbatim for all 3 styles
-                content = section_text.full_text
-                if section_name == 'experience' and section_text.sub_entries:
-                    from backend.agents.rewriter import _ensure_experience_markers
-                    parts = [
-                        _ensure_experience_markers(e.verbatim_text, e.label)
-                        for e in section_text.sub_entries
-                    ]
-                    content = '\n\n'.join(parts)
+            variants = _get_rewrite_variants(rewrites, section_name)
+            if not _variants_have_content(variants):
+                # Section exists in original but A4 produced nothing for it.
+                # Build from sub_entries (Invariant B) — never initialise to full_text.
+                content = _build_content_from_sub_entries(
+                    section_name,
+                    section_text.sub_entries or [],
+                    full_text_fallback=section_text.full_text,
+                )
                 if content.strip():
                     all_anomalies.append(
                         f"{section_name}: completely missing from rewrites — injecting verbatim"
@@ -514,8 +630,39 @@ class RewriterValidator:
 
             rewrites[section_name] = variants
 
+        # ── Experience: force full rebuild when marker count < ground truth ─
+        exp_section = _get_section_text(resume_sections, 'experience')
+        if exp_section and resume_text.strip():
+            exp_section = _augment_experience_entries(exp_section, resume_text)
+            ground_n = len(detect_ground_truth_entries(resume_text))
+            exp_variants = _get_rewrite_variants(rewrites, 'experience')
+            if ground_n > 0 and exp_variants and exp_section.sub_entries:
+                for style in ('balanced', 'aggressive', 'top_1_percent'):
+                    style_text = exp_variants.get(style, '') or ''
+                    marker_n = count_experience_markers(style_text)
+                    if marker_n < len(exp_section.sub_entries):
+                        all_anomalies.append(
+                            f"experience/{style}: {marker_n} markers vs "
+                            f"{len(exp_section.sub_entries)} sub_entries "
+                            f"(ground truth {ground_n}) — rebuilding from sub_entries"
+                        )
+                exp_variants = rebuild_experience_rewrites(
+                    exp_variants,
+                    exp_section,
+                    prefer_rewritten=True,
+                )
+                rewrites['experience'] = exp_variants
+
+        rewrites = collapse_rewrites_to_canonical(rewrites)
         output['rewrites'] = rewrites
         output['styles'] = _build_legacy_styles(rewrites)
+
+        log_experience_audit(
+            "rewriter_validator_out",
+            resume_text,
+            resume_sections,
+            rewrites,
+        )
 
         # ── Log all findings ──────────────────────────────────────────
         if all_anomalies:

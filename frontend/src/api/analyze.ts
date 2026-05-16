@@ -8,7 +8,13 @@ interface ResultEnvelope {
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
-const ANALYZE_TIMEOUT_MS = 60_000;
+
+/** Max idle time (ms) without stream data before aborting. Override via VITE_ANALYZE_TIMEOUT_MS. */
+export const ANALYZE_TIMEOUT_MS = (() => {
+  const raw = import.meta.env.VITE_ANALYZE_TIMEOUT_MS;
+  const parsed = raw !== undefined && raw !== "" ? Number.parseInt(String(raw), 10) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000;
+})();
 
 interface AnalyzeCallbacks {
   onJobCreated?: (jobId: string) => void;
@@ -183,7 +189,11 @@ export async function analyzeResume(
   formData.append("run_sim", "true");
 
   const controller = new AbortController();
-  const timeoutId = window.setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+  let timeoutId = window.setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+  const resetStreamTimeout = (): void => {
+    window.clearTimeout(timeoutId);
+    timeoutId = window.setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
+  };
 
   const headers: Record<string, string> = {};
   if (accessToken) {
@@ -228,6 +238,7 @@ export async function analyzeResume(
       if (done) {
         break;
       }
+      resetStreamTimeout();
       buffer += decoder.decode(value, { stream: true });
       let sep: number;
       while ((sep = buffer.indexOf("\n\n")) >= 0) {
@@ -275,6 +286,11 @@ export async function analyzeResume(
     }
     return finalResult;
   } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(
+        `Analysis timed out after ${Math.round(ANALYZE_TIMEOUT_MS / 1000)}s without a response. Try again.`
+      );
+    }
     if (error instanceof Error) {
       throw error;
     }
