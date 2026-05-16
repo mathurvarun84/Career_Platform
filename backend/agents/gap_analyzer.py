@@ -237,6 +237,51 @@ class GapAnalyzerAgent(BaseAgent):
                         f"GapAnalyzerAgent ({mode}): failed after 2 attempts — {e}"
                     )
 
+    def _build_concrete_instruction(
+        self,
+        gap_type: str,
+        rewrite_instruction: str,
+        verbatim_text: str,
+    ) -> str:
+        """
+        For length/readability gaps, prepend the verbatim target bullet
+        and a concrete word-count target to the instruction.
+        This gives A4 an unambiguous operation instead of a prose hint.
+        Never invented content — only quotes from verbatim_text.
+        """
+        if not verbatim_text:
+            return rewrite_instruction
+
+        length_keywords = {
+            "shorten", "shorter", "readability", "concise",
+            "brief", "verbose", "long", "trim", "reduce",
+        }
+        instruction_lower = rewrite_instruction.lower()
+        is_length_gap = any(kw in instruction_lower for kw in length_keywords)
+
+        if not is_length_gap:
+            return rewrite_instruction
+
+        bullets = [
+            line.strip() for line in verbatim_text.splitlines()
+            if line.strip().startswith(("•", "-", "*"))
+        ]
+        if not bullets:
+            return rewrite_instruction
+
+        longest_bullet = max(bullets, key=lambda b: len(b.split()))
+        word_count = len(longest_bullet.split())
+
+        if word_count <= 20:
+            return rewrite_instruction
+
+        return (
+            f"SHORTEN: The following bullet is {word_count} words. "
+            f"Rewrite to ≤20 words. Keep the core metric. Same voice and tense.\n"
+            f"TARGET BULLET: {longest_bullet}\n"
+            f"ADDITIONAL CONTEXT: {rewrite_instruction}"
+        )
+
     def _enrich_section_gaps(
         self,
         parsed: dict,
@@ -269,6 +314,11 @@ class GapAnalyzerAgent(BaseAgent):
                 sub_label = sub_change.get("sub_label", "")
                 sub_change["original_text"] = self._find_verbatim_text(
                     section_text, sub_label
+                )
+                sub_change["rewrite_instruction"] = self._build_concrete_instruction(
+                    gap_type=sub_change.get("gap_reason", ""),
+                    rewrite_instruction=sub_change.get("rewrite_instruction", ""),
+                    verbatim_text=sub_change.get("original_text", ""),
                 )
 
             enriched_gaps.append(gap)

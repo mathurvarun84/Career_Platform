@@ -857,28 +857,36 @@ class RewriterAgent(BaseAgent):
 
         Fallback: if LLM call fails after retry, returns original verbatim text for all 3 styles.
         """
-        # Prefer caller-supplied verbatim (from sectioner sub_entry) over gap agent's copy
         original_text = original_verbatim or sub.get("original_text", "")
         rewrite_hint = sub.get("rewrite_instruction", "")
         missing_kw = sub.get("missing_keywords", [])
+
+        _LENGTH_KEYWORDS = {
+            "shorten", "shorter", "concise", "trim",
+            "brief", "verbose", "reduce", "≤20", "≤15",
+        }
+        is_shorten_instruction = any(
+            kw in rewrite_hint.lower() for kw in _LENGTH_KEYWORDS
+        )
+        original_word_count = len(original_text.split()) if original_text else 0
 
         prompt = (
             "You are rewriting ONE entry that will be stitched back into the full section.\n"
             f"Section: {section}\n"
             f"Entry label: {sub.get('sub_label', 'unknown')}\n"
-            f"Original entry:\n{original_text}\n\n"
             f"Entry-level instruction: {rewrite_hint}\n"
             f"Section-level instruction: {section_context or 'N/A'}\n"
             f"Missing keywords to add: {', '.join(missing_kw[:10])}\n\n"
+            "ORIGINAL ENTRY TEXT (rewrite this — do not return it unchanged):\n"
+            f"{original_text}\n\n"
             'Return ONLY JSON: {"balanced":"...","aggressive":"...","top_1_percent":"..."}\n'
             "No markdown, no fences, no extra keys. Max 150 words per style.\n"
             "Anti-hallucination: Never invent companies, degrees, metrics, or projects.\n"
             "OUTPUT STRUCTURE FOR EXPERIENCE ENTRIES:\n"
-            "Line 1: Company name and location (e.g. 'Flipkart  Bengaluru, India')\n"
-            "Line 2: Role title and dates (e.g. 'Engineering Manager  2021–present')\n"
+            "Line 1: Company name and location\n"
+            "Line 2: Role title and dates\n"
             "Lines 3+: Bullet points starting with •\n"
             "Last line: Tech Stack: lang1, lang2 (only if present in original)\n"
-            "Do NOT add any other headers or labels.\n"
             "Use placeholders [X%], [N users], [Xms], [INR X Cr] for missing metrics only."
         )
 
@@ -886,11 +894,31 @@ class RewriterAgent(BaseAgent):
             try:
                 raw = self._call_llm(SYSTEM_PROMPT, prompt)
                 parsed = self._parse_json(raw)
-                return SectionRewrite(**parsed)
+                result = SectionRewrite(**parsed)
+
+                if (
+                    is_shorten_instruction
+                    and attempt == 0
+                    and original_word_count > 0
+                ):
+                    output_word_count = len(result.balanced.split())
+                    if output_word_count >= original_word_count * 0.9:
+                        logging.info(
+                            "RewriterAgent: shorten instruction not followed "
+                            "(%d → %d words), retrying sub-entry '%s'",
+                            original_word_count,
+                            output_word_count,
+                            sub.get("sub_id", "unknown"),
+                        )
+                        continue
+
+                return result
+
             except Exception as exc:
                 if attempt == 1:
                     logging.warning(
-                        "RewriterAgent: sub-entry '%s' failed after 2 attempts, using original. Error: %s",
+                        "RewriterAgent: sub-entry '%s' failed after 2 attempts, "
+                        "using original. Error: %s",
                         sub.get("sub_id", "unknown"),
                         exc,
                     )

@@ -96,11 +96,9 @@ _INLINE_HEADER_DATE_SUFFIX_RE = re.compile(
     re.IGNORECASE,
 )
 
-_ROLE_HEADER_HINT_RE = re.compile(
-    r'\b(Engineer|Engineering|Manager|Consultant|Lead|Director|Head|Developer|'
-    r'Analyst|Architect|Intern|Associate|Principal|Staff)\b',
-    re.IGNORECASE,
-)
+# Structural signal: any non-bullet line with a separator between role and company.
+# Do not enumerate role titles — that breaks non-engineering personas.
+_ROLE_HEADER_HINT_RE = re.compile(r'.+[|–—].+')
 
 
 # ─────────────────────────────────────────────
@@ -229,33 +227,34 @@ _COMPANY_BLOCK_PATTERNS = [
 
 # EDUCATION: detects degree block start lines
 _DEGREE_PATTERNS = [
-    r'\b(B\.?Tech|BE|B\.?E|M\.?Tech|ME|M\.?E|MBA|BCA|MCA|BSc|MSc|PhD|B\.?Sc|M\.?Sc'
-    r'|Bachelor|Master|Doctorate|Diploma)\b',
-    r'\b(IIT|IIM|NIT|BITS|VIT|SRM|Pune|Mumbai|Delhi|Bangalore|Hyderabad'
-    r'|Anna|Manipal|Amity|JNTU|GTU)\b.{0,40}\d{4}',
+    # Universal degree abbreviations
+    r'\b(B\.?[A-Z]{1,3}|M\.?[A-Z]{1,3}|PhD|Ph\.D\.?|Doctor\w*|'
+    r'Bachelor\w*|Master\w*|Diploma|Graduate|Postgraduate|Associate)\b',
+    # Institution line: capitalised name + University/College/Institute/School + year
+    r'(?i)(University|College|Institute|School|Academy)\b.{0,60}\d{4}',
+    r'\d{4}.{0,60}(?i)(University|College|Institute|School|Academy)\b',
 ]
 
 # CERTIFICATIONS: detects cert block start lines
 _CERT_PATTERNS = [
-    r'\b(AWS|GCP|Azure|Google|Microsoft|Oracle|Cisco|PMP|CISSP|CKA|Terraform'
-    r'|Kubernetes|Docker|Scrum|ITIL|ISO|SAFe|Agile|PMI|CompTIA)\b',
-    r'Certified\b',
-    r'Certificate\b',
-    r'Certification\b',
-    r'IISc\b',
-    r'University\b',
+    r'Certif\w+\b',        # Certified, Certificate, Certification
+    r'Licen[sc]\w+\b',     # License, Licensed, Licensure
+    r'Accreditat\w+\b',
     r'Pursuing\b',
-    r'\|\s*(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{4}',
-    r'\|\s*\d{4}',
+    r'Completed\b',
+    # Structural: issuer | date  OR  name, date
+    r'\|\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?\d{4}',
+    r'[,\-–—]\s*(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?\d{4}\s*$',
 ]
 
 # PROJECTS: detects project block start lines
 _PROJECT_PATTERNS = [
-    r'^\s*\d+\.\s+[A-Z]',           # "1. Project Name"
-    r'^[A-Z][A-Za-z0-9 _\-]{3,50}:',# "ProjectName:"
-    r'^\*\*[A-Z]',                   # "**ProjectName"
-    r'^#{1,3}\s+[A-Z]',              # "### ProjectName"
-    r'^[A-Z][A-Za-z0-9 _\-]{3,40}\s*[|–—]\s*(React|Node|Python|Java|Go|AWS|GCP|Flutter)',
+    r'^\s*\d+\.\s+[A-Z]',              # "1. Project Name"
+    r'^[A-Z][A-Za-z0-9 _\-]{3,60}:',   # "ProjectName:"
+    r'^\*\*[A-Z]',                      # "**ProjectName"
+    r'^#{1,3}\s+[A-Z]',                 # "### ProjectName"
+    # Title | Anything — no hardcoded tech stack
+    r'^[A-Z][A-Za-z0-9 _\-]{3,60}\s*[|–—]\s*\S',
 ]
 
 
@@ -307,9 +306,6 @@ def _is_pdf_fragment(line: str, prev_line: str) -> bool:
     # Rule 3
     if '|' in s and _FULL_DATE_RE.search(s):
         return False
-    # Role header lines (| + job-title token) are independent units, not bullet tails
-    if '|' in s and _ROLE_HEADER_HINT_RE.search(s):
-        return False
     # Rule 4
     if s[0].islower():
         return True
@@ -331,8 +327,13 @@ def _normalize_experience_section_text(section_text: str) -> str:
     """
     Normalize PDF-extracted experience text before block detection.
 
-    - Splits ``Role | Company — City Sep 2020 – Present`` into two lines.
-    - Collapses tabs to spaces (pdfplumber often preserves tabs).
+    Pass 0 — Fragment rejoining (generic, zero hardcoded strings):
+      Rejoins PDF soft-wrap continuations and split date ranges so that
+      every role header becomes a single complete line before anchor
+      detection runs.
+
+    Pass 1 — Existing normalization (unchanged):
+      Splits inline-date headers, collapses whitespace.
     """
     # ── Pass 0: rejoin PDF line fragments ────────────────────────────
     raw_lines = section_text.splitlines()
@@ -392,12 +393,21 @@ def _is_experience_date_anchor_line(line: str) -> bool:
     return bool(_ROLE_HEADER_HINT_RE.search(s))
 
 
-_ROLE_HEADER_LINE_RE = re.compile(
-    r'^(?:Engineering Manager|Head of Engineering|Senior Consultant|'
-    r'Tech Consultant|Lead Software Engineer|Software Engineer|'
-    r'Principal Engineer|Staff Engineer|Director|VP|CTO)\b.{0,120}$',
-    re.IGNORECASE,
-)
+def _is_role_header_line(line: str) -> bool:
+    """True when a line structurally looks like a role/company header."""
+    s = line.strip()
+    if not s or s.startswith(('•', '-', '*', '·', '●')):
+        return False
+    if len(s) > 160:
+        return False
+    if _ROLE_HEADER_HINT_RE.search(s):
+        return True
+    if re.search(r'\s(?:at|@)\s+[A-Z]', s):
+        return True
+    # Role title and company on one line separated by wide space
+    if re.match(r'^[A-Z][^\n]{2,80}\s{2,}[A-Z]', s):
+        return True
+    return False
 
 
 def _detect_experience_by_role_headers(section_text: str) -> list[dict]:
@@ -405,10 +415,7 @@ def _detect_experience_by_role_headers(section_text: str) -> list[dict]:
     Detect experience entry boundaries by role-title header lines.
     Used when date-range detection finds fewer than 2 blocks.
 
-    Matches lines like:
-      "Engineering Manager  Flipkart"
-      "Engineering Manager | Apttus (via Altran — ...) — Bengaluru, KANov 2018 –"
-      "Head of Engineering | SmartVizX — Bengaluru, KA"
+    Matches lines with structural role|company separators or Role  Company spacing.
 
     Returns list of {'label': str, 'text': str} dicts.
     """
@@ -421,7 +428,7 @@ def _detect_experience_by_role_headers(section_text: str) -> list[dict]:
             continue
         if s.startswith(('•', '-', '*')):
             continue
-        if _ROLE_HEADER_LINE_RE.match(s):
+        if _is_role_header_line(s):
             block_starts.append(i)
 
     if len(block_starts) < 2:
@@ -452,11 +459,11 @@ def _detect_experience_by_date_ranges(section_text: str) -> list[dict]:
       3. Use the identified header line as the block start.
       4. Split the section text into blocks at those start positions.
 
-    This handles the very common Indian resume format where company names appear
-    in mixed case on their own line (not matched by the all-caps Pattern 3), e.g.:
+    This handles resumes where company names appear on their own line (not matched
+    by the all-caps Pattern 3), e.g.:
 
-        Flipkart
-        Engineering Manager  |  Bengaluru  |  Jan 2022 – Present
+        Acme Corp
+        Product Manager  |  Remote  |  Jan 2022 – Present
         • Led a team of 12…
 
     Returns list of {'label': str, 'text': str} dicts, same shape as
@@ -481,7 +488,7 @@ def _detect_experience_by_date_ranges(section_text: str) -> list[dict]:
     # For each date-range line, walk back to find the topmost header line.
     # Walk backward: stop at a blank line, a bullet, or another date range.
     # Update block_start on every valid header line so the topmost company name
-    # line (e.g. "Flipkart") becomes the start even when a role title sits
+    # line (e.g. company name alone) becomes the start even when a role title sits
     # between it and the date line.
     block_starts: list[int] = []
     for date_idx in date_line_indices:
@@ -604,10 +611,13 @@ def _detect_sub_entries(section_text: str, section_type: str) -> list[dict]:
 def _labels_overlap(a: str, b: str) -> bool:
     """True if two label strings share enough tokens to be the same entry."""
     stopwords = {
-        "engineer", "engineering", "manager", "senior", "lead", "software",
-        "consultant", "developer", "architect", "principal", "staff",
-        "bengaluru", "bangalore", "india", "remote", "hybrid", "onsite",
-        "company", "experience", "payroll", "altran",
+        # Locations only — do NOT include role titles
+        "india", "remote", "hybrid", "onsite",
+        "bangalore", "bengaluru", "mumbai", "delhi",
+        "hyderabad", "chennai", "pune", "gurugram", "noida",
+        # Structural filler only
+        "company", "experience", "via", "consulting", "engagement",
+        "present", "current",
     }
 
     def normalized(s: str) -> str:
@@ -671,6 +681,16 @@ def _block_already_present(block: dict, existing_entries: list[dict]) -> bool:
 # Skills-specific checks
 # ─────────────────────────────────────────────
 
+def _skill_like_tokens(text: str, min_len: int = 3) -> list[str]:
+    """Comma/line-separated tokens that look like skills or tools (persona-agnostic)."""
+    return [
+        t.strip() for t in re.split(r'[,\n|•\-]+', text)
+        if len(t.strip()) >= min_len
+        and not t.strip().isdigit()
+        and re.match(r'^[A-Za-z]', t.strip())
+    ]
+
+
 # Common skills category headers seen in Indian resumes
 _SKILLS_CATEGORY_HEADERS = re.compile(
     r'(?i)^(languages?|frontend|backend|databases?|cloud|tools?|frameworks?'
@@ -697,14 +717,7 @@ def _validate_skills_section(
         anomalies.append("skills: full_text is empty despite section being present")
         return anomalies
 
-    # Count recognisable skill tokens (camelCase, acronyms, known names)
-    skill_tokens = re.findall(
-        r'\b([A-Z][a-z]+[A-Z][a-zA-Z]*|[A-Z]{2,}|'
-        r'React|Node|Python|Java|Go|Rust|Swift|Kotlin|TypeScript|JavaScript|'
-        r'AWS|GCP|Azure|Docker|Kubernetes|Kafka|Redis|MongoDB|PostgreSQL|MySQL'
-        r'|Django|FastAPI|Spring|Rails|Flutter|TensorFlow|PyTorch)\b',
-        section_text
-    )
+    skill_tokens = _skill_like_tokens(section_text, min_len=3)
     if len(skill_tokens) < 3:
         anomalies.append(
             f"skills: only {len(skill_tokens)} skill tokens detected in full_text — "
@@ -972,17 +985,12 @@ def _validate_projects_section(
         anomalies.append("projects: full_text empty — injecting from detected text")
         section_data['full_text'] = raw_proj_text
 
-    # Tech stack presence in each project (warning only)
-    _TECH_SIGNAL = re.compile(
-        r'\b(React|Node|Python|Java|Go|AWS|GCP|Azure|Docker|Kubernetes|'
-        r'Flutter|Swift|Kotlin|TypeScript|JavaScript|Django|Spring|Rails|'
-        r'MongoDB|PostgreSQL|MySQL|Redis|Kafka|TensorFlow|PyTorch)\b'
-    )
+    # Delimited skill/tool tokens in each project (warning only)
     for entry in section_data.get('sub_entries', []):
-        if not _TECH_SIGNAL.search(entry.get('verbatim_text', '')):
+        if len(_skill_like_tokens(entry.get('verbatim_text', ''), min_len=2)) < 2:
             anomalies.append(
-                f"projects: entry '{entry.get('label', '')[:40]}' has no tech stack "
-                "mention — user should add technologies used"
+                f"projects: entry '{entry.get('label', '')[:40]}' has few skill/tool "
+                "tokens — user should add technologies or tools used"
             )
 
     return section_data, anomalies
@@ -1244,13 +1252,7 @@ class ResumeUnderstandingValidator:
         if sections.get('skills') and not output.get('tech_stack'):
             skills_full = sections['skills'].get('full_text', '') \
                 if isinstance(sections['skills'], dict) else ''
-            detected_techs = re.findall(
-                r'\b(React|Node\.?js|Python|Java|Go|Rust|TypeScript|JavaScript|'
-                r'AWS|GCP|Azure|Docker|Kubernetes|Kafka|Redis|MongoDB|PostgreSQL|'
-                r'MySQL|Django|FastAPI|Spring|Flutter|TensorFlow|PyTorch|'
-                r'Terraform|Ansible|Jenkins|Git|GraphQL|gRPC)\b',
-                skills_full
-            )
+            detected_techs = _skill_like_tokens(skills_full, min_len=2)
             if detected_techs:
                 all_anomalies.append(
                     f"tech_stack empty but {len(detected_techs)} techs detected "

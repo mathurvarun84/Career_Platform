@@ -41,6 +41,7 @@ class SectionResult:
     changes_made: List[str]
     keywords_added: List[str]
     decision: str = ""
+    actually_changed: bool = True
 
 # ---------------------------------------------------------------------------
 # Helper utilities
@@ -128,8 +129,15 @@ def run_gap_session(
             changes_made=s.get("changes_made", []),
             keywords_added=s.get("keywords_added", []),
         )
+        sec.actually_changed = sec.rewritten.strip() != sec.original.strip()
 
         console.print(f"\n[bold]{sec.name}[/bold]")
+
+        if not sec.actually_changed:
+            console.print(
+                f"[yellow]⚠ [{sec.name.upper()}] Rewriter returned unchanged text "
+                f"— fix was not applied.[/yellow]"
+            )
 
         table = Table(show_header=True, header_style="bold magenta")
         table.add_column("ORIGINAL", style="red")
@@ -159,6 +167,7 @@ def run_gap_session(
             if choice == "E":
                 edited_text = _edit_section(sec.rewritten)
                 sec.rewritten = edited_text
+                sec.actually_changed = sec.rewritten.strip() != sec.original.strip()
                 sec.decision = "edited"
                 break
             console.print("[red]Invalid choice, please enter A, R or E.[/red]")
