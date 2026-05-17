@@ -322,6 +322,7 @@ class Orchestrator:
         rewrites = None
         eval_gap = None
         sim_result = None
+        patches_raw = []
         with ThreadPoolExecutor(max_workers=3) as executor:
             fut_rewrite = None
             fut_eval = None
@@ -367,6 +368,7 @@ class Orchestrator:
             if fut_rewrite:
                 try:
                     rewrites = fut_rewrite.result()
+                    patches_raw = (rewrites or {}).get("patches", [])
                     if rewrites:
                         rewrites = RewriterValidator().validate_and_fix(
                             rewrites,
@@ -393,6 +395,7 @@ class Orchestrator:
                 except Exception as exc:
                     logging.warning("Rewriter failed: %s. Using gap-based fallback.", exc)
                     rewrites = self._build_gap_fallback_rewrites(gap_result)
+                    patches_raw = []
 
             if fut_eval:
                 try:
@@ -452,6 +455,26 @@ class Orchestrator:
         if sse_step_cb:
             sse_step_cb(3, "Insights ready")
 
+        # Classify and deduplicate patches
+        classified_patches = []
+        if patches_raw:
+            try:
+                from engine.patch_engine import PatchEngine, classify_patch
+                from backend.schemas.common import ResumePatch
+
+                for p in patches_raw:
+                    try:
+                        patch = ResumePatch(**p)
+                        classify_patch(patch)
+                        classified_patches.append(patch)
+                    except Exception as e:
+                        logging.warning("Invalid patch skipped: %s", e)
+
+                classified_patches = PatchEngine.dedup([p for p in classified_patches])
+            except Exception as exc:
+                logging.warning("Patch classification failed: %s", exc)
+                classified_patches = []
+
         return {
             "ats": ats_result,
             "resume": resume_und,
@@ -461,4 +484,5 @@ class Orchestrator:
             "percentile": percentile,
             "positioning": positioning,
             "jd_intelligence": jd_intel,
+            "patches": [p.model_dump() if hasattr(p, "model_dump") else p for p in classified_patches],
         }

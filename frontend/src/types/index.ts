@@ -141,6 +141,33 @@ export interface PercentileResult {
   percentile: number;
 }
 
+export type PatchOp =
+  | "replace_text" | "insert_keyword" | "shorten_bullet"
+  | "reorder_bullets" | "add_metric" | "add_bullet";
+
+export type PatchRisk = "safe" | "needs_confirmation";
+export type PatchStatus = "pending" | "applied" | "rejected" | "rolled_back";
+
+export interface ResumePatch {
+  patch_id: string;
+  gap_id: string;
+  section: string;
+  sub_entry_label: string;
+  op: PatchOp;
+  original_text: string;
+  replacement_text: string;
+  keyword?: string;
+  proposed_text?: string;
+  risk: PatchRisk;
+  hallucination_risk: boolean;
+  issue_detected: string;
+  fix_rationale: string;
+  status: PatchStatus;
+  score_before?: number;
+  score_after?: number;
+  score_delta?: number;
+}
+
 export interface AnalysisResult {
   job_id: string;
   ats: ATSResult;
@@ -150,6 +177,7 @@ export interface AnalysisResult {
   sim: SimResult | null;
   percentile: PercentileResult | null;
   positioning: PositioningResult | null;
+  patches?: ResumePatch[];
 }
 
 export interface SSEProgressEvent {

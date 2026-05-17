@@ -2,6 +2,7 @@ import axios, { AxiosError } from "axios";
 
 import type {
   AnalysisResult,
+  ATSResult,
   GapCloseRequest,
   GapCloseResponse,
   HistoryResponse,
@@ -157,6 +158,48 @@ export const getHistory = async (userId: string): Promise<HistoryResponse> => {
   const response = await axiosInstance.get<HistoryResponse>("/api/history", {
     params: { user_id: userId },
   });
+  return response.data;
+};
+
+export interface ApplyPatchesResponse {
+  applied: string[];
+  rejected: string[];
+  resume_text: string;
+  score: ATSResult;
+}
+
+export const applyPatches = async (
+  jobId: string,
+  patchIds: string[],
+  userConfirmed = false,
+): Promise<ApplyPatchesResponse> => {
+  const response = await axiosInstance.post<ApplyPatchesResponse>(
+    "/api/patches/apply",
+    {
+      job_id: jobId,
+      patch_ids: patchIds,
+      user_confirmed: userConfirmed,
+    }
+  );
+  return response.data;
+};
+
+export interface RollbackResponse {
+  resume_text: string;
+  score: ATSResult;
+}
+
+export const rollbackPatch = async (
+  jobId: string,
+  patchId: string = "all",
+): Promise<RollbackResponse> => {
+  const response = await axiosInstance.post<RollbackResponse>(
+    "/api/patches/rollback",
+    {
+      job_id: jobId,
+      patch_id: patchId,
+    }
+  );
   return response.data;
 };
 

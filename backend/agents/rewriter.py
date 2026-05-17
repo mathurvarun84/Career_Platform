@@ -354,6 +354,7 @@ class RewriterAgent(BaseAgent):
             for k, v in resume_sections_raw.items()
         }
         rewrites: Dict[str, Dict[str, str]] = {}
+        all_patches: list[dict] = []
 
         gap_analysis = (
             inp.gap_analysis.model_dump()
@@ -386,7 +387,9 @@ class RewriterAgent(BaseAgent):
             }
             for future in as_completed(futures):
                 section = futures[future]
-                rewrites[section] = future.result()
+                rewrite_dict, patches = future.result()
+                rewrites[section] = rewrite_dict
+                all_patches.extend(patches)
 
         from validator.rewriter_validator import collapse_rewrites_to_canonical
 
@@ -448,6 +451,7 @@ class RewriterAgent(BaseAgent):
         return {
             "rewrites": rewrites,
             "styles": self._build_legacy_styles(rewrites),
+            "patches": all_patches,
         }
 
     def _rewrite_section_from_gap(
@@ -455,8 +459,11 @@ class RewriterAgent(BaseAgent):
         section: str,
         gap: dict,
         resume_sections: Dict[str, SectionText],
-    ) -> dict:
-        """Compute one section rewrite from one section gap."""
+    ) -> tuple[dict, list[dict]]:
+        """
+        Compute one section rewrite from one section gap.
+        Returns: (section_rewrite_dict, patches_list)
+        """
         section_text = self._resolve_section_text(resume_sections, section)
         original_content = section_text.full_text if section_text else ""
         if not original_content:
@@ -476,16 +483,16 @@ class RewriterAgent(BaseAgent):
                         len(section_text.sub_entries),
                         content.count(COMPANY_HEADER_START),
                     )
-                return SectionRewrite(
+                return (SectionRewrite(
                     balanced=content or f"[{section} section unavailable]",
                     aggressive=content or f"[{section} section unavailable]",
                     top_1_percent=content or f"[{section} section unavailable]",
-                ).model_dump()
-            return SectionRewrite(
+                ).model_dump(), [])
+            return (SectionRewrite(
                 balanced=original_content or f"[{section} section unavailable]",
                 aggressive=original_content or f"[{section} section unavailable]",
                 top_1_percent=original_content or f"[{section} section unavailable]",
-            ).model_dump()
+            ).model_dump(), [])
 
         sub_changes = gap.get("sub_changes")
         if sub_changes:
@@ -513,7 +520,7 @@ class RewriterAgent(BaseAgent):
                 section, [], gap, section_text
             )
 
-        return self._rewrite_monolithic(section, original_content, gap)
+        return (self._rewrite_monolithic(section, original_content, gap), [])
 
     def _build_sub_change_map(
         self,
@@ -597,7 +604,7 @@ class RewriterAgent(BaseAgent):
         sub_changes: list,
         gap: dict,
         section_text: SectionText | None,
-    ) -> dict:
+    ) -> tuple[dict, list[dict]]:
         """
         Rewrites a section entry-by-entry.
 
@@ -609,8 +616,12 @@ class RewriterAgent(BaseAgent):
           - Find matching sub_change by entry_index (preferred) or fuzzy label.
           - If no match or needs_change=False → verbatim copy, zero LLM.
           - If needs_change=True → focused LLM call for this ONE entry.
+
+        Returns:
+            Tuple of (section_rewrite_dict, patches_list).
         """
         sep = "\n\n"
+        collected_patches: list[dict] = []
 
         # If no sub_entries in sectioner data, fall back to the sub_changes list
         # (degraded mode — gap agent labels used as entry source)
@@ -630,9 +641,14 @@ class RewriterAgent(BaseAgent):
                     stitched_a.append(text)
                     stitched_t.append(text)
                 else:
-                    entry_rw = self._rewrite_sub_entry(
+                    entry_rw, patch_raw = self._rewrite_sub_entry(
                         section, sub, gap.get("rewrite_instruction", ""), original_text
                     )
+                    if patch_raw:
+                        patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
+                        patch_raw.setdefault("section", section)
+                        patch_raw.setdefault("sub_entry_label", sub.get("sub_label", ""))
+                        collected_patches.append(patch_raw)
                     if section == "experience":
                         stitched_b.append(_ensure_experience_markers(entry_rw.balanced, sub.get("sub_label", "")))
                         stitched_a.append(_ensure_experience_markers(entry_rw.aggressive, sub.get("sub_label", "")))
@@ -642,11 +658,11 @@ class RewriterAgent(BaseAgent):
                         stitched_a.append(entry_rw.aggressive)
                         stitched_t.append(entry_rw.top_1_percent)
             fallback = _build_content_from_sub_entries(section, [], full_text_fallback=f"[{section} rewrite unavailable]")
-            return SectionRewrite(
+            return (SectionRewrite(
                 balanced=sep.join(stitched_b) or fallback,
                 aggressive=sep.join(stitched_a) or fallback,
                 top_1_percent=sep.join(stitched_t) or fallback,
-            ).model_dump()
+            ).model_dump(), collected_patches)
 
         # Build annotation map: entry_index → sub_change
         sub_change_map: dict[int, dict] = {}
@@ -698,7 +714,12 @@ class RewriterAgent(BaseAgent):
                 continue
 
             # needs_change=True → LLM rewrite
-            entry_rw = self._rewrite_sub_entry(section, sub, gap.get("rewrite_instruction", ""), verbatim)
+            entry_rw, patch_raw = self._rewrite_sub_entry(section, sub, gap.get("rewrite_instruction", ""), verbatim)
+            if patch_raw:
+                patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
+                patch_raw.setdefault("section", section)
+                patch_raw.setdefault("sub_entry_label", entry.label)
+                collected_patches.append(patch_raw)
 
             if section == "experience":
                 stitched_b.append(_ensure_experience_markers(entry_rw.balanced, entry.label))
@@ -730,11 +751,11 @@ class RewriterAgent(BaseAgent):
             fallback = _fallback_from_sub_entries(section, section_text, sep=sep)
             balanced = aggressive = top = fallback or f"[{section} rewrite unavailable]"
 
-        return SectionRewrite(
+        return (SectionRewrite(
             balanced=balanced,
             aggressive=aggressive,
             top_1_percent=top,
-        ).model_dump()
+        ).model_dump(), collected_patches)
 
     def _rewrite_with_sub_changes_ordered(
         self,
@@ -843,7 +864,7 @@ class RewriterAgent(BaseAgent):
         sub: dict,
         section_context: str,
         original_verbatim: str = "",
-    ) -> SectionRewrite:
+    ) -> tuple[SectionRewrite, dict | None]:
         """
         Rewrites a SINGLE resume sub-entry with a focused LLM call.
 
@@ -853,7 +874,8 @@ class RewriterAgent(BaseAgent):
             section_context: Section-level rewrite instruction for additional context.
 
         Returns:
-            SectionRewrite with balanced, aggressive, top_1_percent rewrites for this entry only.
+            Tuple of (SectionRewrite, patch_dict or None).
+            patch_dict contains: op, original_text, replacement_text, issue_detected, fix_rationale.
 
         Fallback: if LLM call fails after retry, returns original verbatim text for all 3 styles.
         """
@@ -879,7 +901,7 @@ class RewriterAgent(BaseAgent):
             f"Missing keywords to add: {', '.join(missing_kw[:10])}\n\n"
             "ORIGINAL ENTRY TEXT (rewrite this — do not return it unchanged):\n"
             f"{original_text}\n\n"
-            'Return ONLY JSON: {"balanced":"...","aggressive":"...","top_1_percent":"..."}\n'
+            'Return ONLY JSON: {"balanced":"...","aggressive":"...","top_1_percent":"...","patch":{...}}\n'
             "No markdown, no fences, no extra keys. Max 150 words per style.\n"
             "Anti-hallucination: Never invent companies, degrees, metrics, or projects.\n"
             "OUTPUT STRUCTURE FOR EXPERIENCE ENTRIES:\n"
@@ -887,7 +909,21 @@ class RewriterAgent(BaseAgent):
             "Line 2: Role title and dates\n"
             "Lines 3+: Bullet points starting with •\n"
             "Last line: Tech Stack: lang1, lang2 (only if present in original)\n"
-            "Use placeholders [X%], [N users], [Xms], [INR X Cr] for missing metrics only."
+            "Use placeholders [X%], [N users], [Xms], [INR X Cr] for missing metrics only.\n\n"
+            "ALSO return a \"patch\" field:\n"
+            "{\n"
+            '  "patch": {\n'
+            '    "op": "replace_text",\n'
+            '    "original_text": "exact verbatim quote you changed — character-for-character",\n'
+            '    "replacement_text": "<same as balanced output>",\n'
+            '    "issue_detected": "one sentence: what was wrong",\n'
+            '    "fix_rationale": "one sentence: what you changed and why"\n'
+            "  }\n"
+            "}\n"
+            "Rules for patch.original_text:\n"
+            "- MUST be a verbatim substring of the original entry text given above\n"
+            "- If you changed multiple sentences, quote all as one contiguous string\n"
+            "- If you cannot identify the exact changed portion, set original_text to empty string"
         )
 
         for attempt in range(2):
@@ -895,6 +931,12 @@ class RewriterAgent(BaseAgent):
                 raw = self._call_llm(SYSTEM_PROMPT, prompt)
                 parsed = self._parse_json(raw)
                 result = SectionRewrite(**parsed)
+                patch_raw = parsed.get("patch")
+
+                # Validate: original_text must exist verbatim in the original entry
+                if patch_raw and patch_raw.get("original_text"):
+                    if patch_raw["original_text"] not in (original_text or ""):
+                        patch_raw = None  # reject invalid patch
 
                 if (
                     is_shorten_instruction
@@ -912,7 +954,7 @@ class RewriterAgent(BaseAgent):
                         )
                         continue
 
-                return result
+                return result, patch_raw
 
             except Exception as exc:
                 if attempt == 1:
@@ -926,7 +968,7 @@ class RewriterAgent(BaseAgent):
                         balanced=original_text or f"[{section} entry unavailable]",
                         aggressive=original_text or f"[{section} entry unavailable]",
                         top_1_percent=original_text or f"[{section} entry unavailable]",
-                    )
+                    ), None
 
     def _rewrite_monolithic(self, section: str, original_content: str, gap: dict) -> dict:
         """

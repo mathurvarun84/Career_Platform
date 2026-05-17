@@ -137,6 +137,19 @@ class GapCloseRequest(BaseModel):
     style: str = "balanced"
 
 
+class ApplyPatchesRequest(BaseModel):
+    """Apply patches request."""
+    job_id: str
+    patch_ids: list[str]
+    user_confirmed: bool = False
+
+
+class RollbackRequest(BaseModel):
+    """Rollback patches request."""
+    job_id: str
+    patch_id: str = "all"
+
+
 def _json_event(payload: dict) -> str:
     """Serialize one SSE data event."""
     return f"data: {json.dumps(payload, default=str)}\n\n"
@@ -474,3 +487,85 @@ def reset_limit(user_id: str = None) -> dict:
         return {"success": True, "user_id": user_id, "uploads_this_month": 0}
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/patches/apply")
+async def apply_patches(req: ApplyPatchesRequest):
+    """Apply patches to resume text and return updated text + rescored result."""
+    job = _require_job(req.job_id)
+    resume_text = job.get("resume_text", "")
+    patches_raw = job.get("result", {}).get("patches", [])
+    jd_text = job.get("jd_text")
+
+    from engine.patch_engine import PatchEngine, rescore
+    from backend.schemas.common import ResumePatch
+
+    engine = PatchEngine(resume_text)
+    all_patches = {p["patch_id"]: ResumePatch(**p) for p in patches_raw}
+
+    applied, rejected = [], []
+    for pid in req.patch_ids:
+        patch = all_patches.get(pid)
+        if not patch:
+            continue
+        if patch.risk == "needs_confirmation" and not req.user_confirmed:
+            rejected.append(pid)
+            continue
+        if engine.apply(patch):
+            applied.append(pid)
+        else:
+            rejected.append(pid)
+
+    score = rescore(engine, jd_text)
+    updated_text = engine.get_current_text()
+
+    # Persist updated text and patch states back to job cache
+    job["resume_text_patched"] = updated_text
+    for p in patches_raw:
+        if p["patch_id"] in applied:
+            p["status"] = "applied"
+        elif p["patch_id"] in rejected:
+            p["status"] = "rejected"
+    _persist_job(req.job_id)
+
+    return {
+        "applied": applied,
+        "rejected": rejected,
+        "resume_text": updated_text,
+        "score": score,
+    }
+
+
+@app.post("/api/patches/rollback")
+async def rollback_patch(req: RollbackRequest):
+    """Rollback one or all patches and return updated text + rescored result."""
+    job = _require_job(req.job_id)
+    resume_text = job.get("resume_text", "")
+    patches_raw = job.get("result", {}).get("patches", [])
+    jd_text = job.get("jd_text")
+
+    from engine.patch_engine import PatchEngine, rescore
+    from backend.schemas.common import ResumePatch
+
+    # Reconstruct engine from original text + re-apply all still-applied patches
+    # except the rolled-back one
+    patches_to_keep = [
+        ResumePatch(**p) for p in patches_raw
+        if p["status"] == "applied" and p["patch_id"] != req.patch_id
+    ] if req.patch_id != "all" else []
+
+    engine = PatchEngine(resume_text)
+    engine.apply_batch(patches_to_keep)
+
+    score = rescore(engine, jd_text)
+    updated_text = engine.get_current_text()
+
+    # Update status
+    for p in patches_raw:
+        if req.patch_id == "all" or p["patch_id"] == req.patch_id:
+            if p["status"] == "applied":
+                p["status"] = "rolled_back"
+    job["resume_text_patched"] = updated_text
+    _persist_job(req.job_id)
+
+    return {"resume_text": updated_text, "score": score}

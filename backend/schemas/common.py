@@ -132,3 +132,51 @@ class SectionText(BaseModel):
 class ResumeSections(BaseModel):
     """Full structured decomposition of a resume into verbatim sections."""
     sections: List[SectionText] = Field(..., description="All sections found in the resume")
+
+
+class PatchOp(str, Enum):
+    """Patch operation types."""
+    REPLACE_TEXT = "replace_text"
+    INSERT_KEYWORD = "insert_keyword"
+    SHORTEN_BULLET = "shorten_bullet"
+    REORDER_BULLETS = "reorder_bullets"
+    ADD_METRIC = "add_metric"
+    ADD_BULLET = "add_bullet"
+
+
+class PatchRisk(str, Enum):
+    """Risk classification for patches."""
+    SAFE = "safe"
+    NEEDS_CONFIRMATION = "needs_confirmation"
+
+
+class ResumePatch(BaseModel):
+    """Surgical patch operation on resume text with rollback capability."""
+    patch_id: str = Field(default_factory=lambda: __import__('uuid').uuid4().__str__()[:8])
+
+    gap_id: str = ""
+    section: str = ""
+    sub_entry_label: str = ""
+
+    op: PatchOp
+    original_text: str = ""
+    replacement_text: str = ""
+    keyword: str = ""
+    insert_after_text: str = ""
+    target_text: str = ""
+    max_words: int = 20
+    priority_keywords: list[str] = Field(default_factory=list)
+    proposed_text: str = ""
+
+    risk: PatchRisk = PatchRisk.SAFE
+    hallucination_risk: bool = False
+
+    issue_detected: str = ""
+    fix_rationale: str = ""
+
+    status: str = "pending"
+    applied_at: str | None = None
+
+    score_before: int | None = None
+    score_after: int | None = None
+    score_delta: int | None = None

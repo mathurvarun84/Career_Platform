@@ -232,7 +232,7 @@ _DEGREE_PATTERNS = [
     r'Bachelor\w*|Master\w*|Diploma|Graduate|Postgraduate|Associate)\b',
     # Institution line: capitalised name + University/College/Institute/School + year
     r'(?i)(University|College|Institute|School|Academy)\b.{0,60}\d{4}',
-    r'\d{4}.{0,60}(?i)(University|College|Institute|School|Academy)\b',
+    r'(?i)\d{4}.{0,60}(University|College|Institute|School|Academy)\b',
 ]
 
 # CERTIFICATIONS: detects cert block start lines
