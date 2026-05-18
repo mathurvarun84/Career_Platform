@@ -17,7 +17,7 @@ from typing import Any, Dict, Generator
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from backend.auth import get_current_user_id
 from backend.agents.jd_fetcher import JDFetcherAgent
@@ -148,6 +148,15 @@ class RollbackRequest(BaseModel):
     """Rollback patches request."""
     job_id: str
     patch_id: str = "all"
+
+
+class ValidateRewriteRequest(BaseModel):
+    """Validate a user's rewritten resume section."""
+    job_id: str
+    change_id: int
+    user_rewrite: str = Field(..., description="User's rewritten text")
+    section: str = Field(default="", description="Section being rewritten (optional)")
+    sub_location: str = Field(default="", description="Sub-location within section (optional)")
 
 
 def _json_event(payload: dict) -> str:
@@ -519,14 +528,16 @@ def reset_limit(user_id: str = None) -> dict:
 async def apply_patches(req: ApplyPatchesRequest):
     """Apply patches to resume text and return updated text + rescored result."""
     job = _require_job(req.job_id)
-    resume_text = job.get("resume_text", "")
+    # Use patched version if patches were already applied, otherwise use original
+    resume_text = job.get("resume_text_patched") or job.get("resume_text", "")
     patches_raw = job.get("result", {}).get("patches", [])
     jd_text = job.get("jd_text")
+    resume_sections = job.get("result", {}).get("resume", {}).get("resume_sections", {})
 
     from engine.patch_engine import PatchEngine, rescore
     from backend.schemas.common import ResumePatch
 
-    engine = PatchEngine(resume_text)
+    engine = PatchEngine(resume_text, resume_sections=resume_sections)
     all_patches = {p["patch_id"]: ResumePatch(**p) for p in patches_raw}
 
     applied, rejected = [], []
@@ -569,6 +580,7 @@ async def rollback_patch(req: RollbackRequest):
     resume_text = job.get("resume_text", "")
     patches_raw = job.get("result", {}).get("patches", [])
     jd_text = job.get("jd_text")
+    resume_sections = job.get("result", {}).get("resume", {}).get("resume_sections", {})
 
     from engine.patch_engine import PatchEngine, rescore
     from backend.schemas.common import ResumePatch
@@ -580,7 +592,7 @@ async def rollback_patch(req: RollbackRequest):
         if p["status"] == "applied" and p["patch_id"] != req.patch_id
     ] if req.patch_id != "all" else []
 
-    engine = PatchEngine(resume_text)
+    engine = PatchEngine(resume_text, resume_sections=resume_sections)
     engine.apply_batch(patches_to_keep)
 
     score = rescore(engine, jd_text)
@@ -595,3 +607,134 @@ async def rollback_patch(req: RollbackRequest):
     _persist_job(req.job_id)
 
     return {"resume_text": updated_text, "score": score}
+
+
+@app.post("/api/validate-rewrite")
+def validate_rewrite(req: ValidateRewriteRequest):
+    """Validate a user's rewritten resume section against the JD.
+
+    Re-runs Gap Analyzer to compute the gap score after the rewrite,
+    then compares against the original gap score to determine if the
+    rewrite successfully closed the gap.
+
+    Returns a validation badge (CLOSED/PARTIAL/STILL_OPEN) with feedback.
+    """
+    from datetime import datetime
+    from backend.schemas.common import RewriteValidation, ValidationStatus
+    from memory.session_store import get_agent_output
+
+    job = _require_job(req.job_id)
+    resume_text = job.get("resume_text", "")
+    if not resume_text:
+        raise HTTPException(status_code=400, detail="Resume text not available")
+
+    result = job.get("result", {})
+    gap_analysis = result.get("gap") or {}
+    jd_intel = result.get("jd_intelligence") or {}
+    resume_und = result.get("resume") or {}
+    jd_text = job.get("jd_text", "")
+
+    # Input validation
+    if not req.user_rewrite or not req.user_rewrite.strip():
+        raise HTTPException(status_code=400, detail="Rewrite cannot be empty")
+    if not gap_analysis or not jd_intel:
+        raise HTTPException(status_code=400, detail="Gap analysis not available for this job")
+
+    try:
+        # Construct resume sections with the user's rewrite for one section/sub-entry
+        resume_sections = {}
+        if isinstance(resume_und, dict):
+            from backend.schemas.common import SectionText
+            raw = resume_und.get("resume_sections", {})
+            resume_sections = {
+                k: SectionText(**v) if isinstance(v, dict) else v
+                for k, v in raw.items()
+            }
+
+        # Splice the user's rewrite into the appropriate section
+        section_gaps = gap_analysis.get("section_gaps", [])
+        matched_gap = None
+        for gap in section_gaps:
+            if gap.get("section") == req.section:
+                matched_gap = gap
+                break
+
+        if matched_gap and matched_gap.get("needs_change"):
+            # Update the section text with the user's rewrite
+            section_name = req.section
+            sec_obj = resume_sections.get(section_name)
+            if sec_obj:
+                # For single-entry sections (summary, skills), replace full_text
+                if not matched_gap.get("sub_changes"):
+                    if hasattr(sec_obj, "model_dump"):
+                        sec_obj.full_text = req.user_rewrite
+                    else:
+                        sec_obj["full_text"] = req.user_rewrite
+
+        # Re-run Agent 3 (Gap Analyzer) to recompute gap score
+        from backend.agents.gap_analyzer import GapAnalyzerAgent
+
+        gap_agent = GapAnalyzerAgent()
+        revalidation_result = gap_agent.run({
+            "resume_understanding": resume_und,
+            "jd_intelligence": jd_intel,
+            "resume_text": resume_text,
+            "resume_sections": {
+                k: v.model_dump() if hasattr(v, "model_dump") else v
+                for k, v in resume_sections.items()
+            },
+            "jd_text": jd_text,
+            "mode": "evaluate",
+        })
+
+        # Extract gap scores (0-100 scale)
+        original_score = gap_analysis.get("jd_match_score_before", 0) / 100.0
+        new_score = revalidation_result.get("jd_match_score_before", 0) / 100.0
+        delta = original_score - new_score if original_score > 0 else 0
+
+        # Determine validation status
+        if delta >= 0.7:
+            status = ValidationStatus.CLOSED
+            feedback = "Gap closed! Keywords now present and impact signal clear."
+        elif delta >= 0.3:
+            status = ValidationStatus.PARTIAL
+            feedback = "Partial improvement. Consider adding more context or metrics."
+        else:
+            status = ValidationStatus.STILL_OPEN
+            feedback = "Gap still significant. Review missing keywords below."
+
+        # Extract remaining missing keywords
+        missing_kw = revalidation_result.get("missing_keywords", [])
+
+        validation = RewriteValidation(
+            change_id=req.change_id,
+            original_gap_score=original_score,
+            post_rewrite_gap_score=new_score,
+            delta=delta,
+            status=status,
+            feedback=feedback,
+            missing_keywords=missing_kw,
+            timestamp=datetime.utcnow().isoformat(),
+        )
+
+        # Persist validation to session_store for future reference
+        user_id = job.get("user_id") or "anonymous"
+        run_id = job.get("run_id") or req.job_id[:8]
+        try:
+            from memory.session_store import save_agent_output
+            save_agent_output(
+                user_id,
+                run_id,
+                f"rewrite_validation_{req.change_id}",
+                validation.model_dump(),
+            )
+        except Exception as e:
+            logger.warning("Failed to persist validation to session_store: %s", e)
+
+        return validation.model_dump()
+
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Validation failed for job %s, change %s", req.job_id, req.change_id)
+        raise HTTPException(status_code=500, detail=f"Validation failed: {str(exc)}")
