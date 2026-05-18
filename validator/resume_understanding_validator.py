@@ -1089,32 +1089,32 @@ class ResumeUnderstandingValidator:
                 len(detected_blocks),
             )
 
-            # When deterministic detection finds more entries than A1, prefer it
-            # as the ordered source of truth (preserves chronological order).
-            if len(detected_blocks) > len(existing_entries):
-                all_anomalies.append(
-                    f"experience: A1 had {len(existing_entries)} entries, "
-                    f"detected {len(detected_blocks)} — using detected blocks"
-                )
-                existing_entries = [
-                    {'label': b['label'], 'verbatim_text': b['text']}
-                    for b in detected_blocks
-                ]
-            else:
-                missing_blocks = [
-                    b for b in detected_blocks
-                    if not _block_already_present(b, existing_entries)
-                ]
-                if missing_blocks:
+            # A1 is the source of truth — it used an LLM to extract sub_entries.
+            # Regex (_detect_sub_entries) is only a fallback for when A1 failed.
+            if len(existing_entries) > 0:
+                # A1 returned entries — trust them. Log if regex disagrees but
+                # do NOT overwrite. Regex misses non-standard date formats.
+                if len(detected_blocks) != len(existing_entries):
                     all_anomalies.append(
-                        f"experience: A1 missing {len(missing_blocks)} companies: "
-                        f"{[b['label'][:50] for b in missing_blocks]}"
+                        f"experience: A1={len(existing_entries)} entries, "
+                        f"regex={len(detected_blocks)} — keeping A1 (source of truth)"
                     )
-                    for block in missing_blocks:
-                        existing_entries.append({
-                            'label': block['label'],
-                            'verbatim_text': block['text'],
-                        })
+            else:
+                # A1 returned 0 entries — it failed. Fall back to regex.
+                if detected_blocks:
+                    all_anomalies.append(
+                        f"experience: A1 returned 0 entries — "
+                        f"falling back to regex ({len(detected_blocks)} blocks found)"
+                    )
+                    existing_entries = [
+                        {'label': b['label'], 'verbatim_text': b['text']}
+                        for b in detected_blocks
+                    ]
+                else:
+                    all_anomalies.append(
+                        "experience: both A1 and regex returned 0 entries — "
+                        "section may be missing or unparseable"
+                    )
 
             exp_data['sub_entries'] = _dedupe_entries(existing_entries)
             all_texts = [

@@ -227,7 +227,12 @@ class GapAnalyzerAgent(BaseAgent):
                 # Post-process in gap_closer mode: backfill original_content/original_text
                 # from sectioner data and normalize missing fields
                 if mode == "gap_closer":
-                    parsed = self._enrich_section_gaps(parsed, resume_sections)
+                    parsed = self._enrich_section_gaps(
+                        parsed,
+                        resume_sections,
+                        resume_analysis=resume_analysis,
+                        jd_analysis=jd_analysis or {},
+                    )
 
                 output = output_model(**parsed)
                 return output.model_dump()
@@ -282,10 +287,84 @@ class GapAnalyzerAgent(BaseAgent):
             f"ADDITIONAL CONTEXT: {rewrite_instruction}"
         )
 
+    def _section_has_content(self, section_text: Optional[SectionText]) -> bool:
+        """True when sectioner/A1 provided non-empty section text."""
+        if not section_text:
+            return False
+        return bool((section_text.full_text or "").strip())
+
+    def _ensure_missing_summary_gap(
+        self,
+        enriched_gaps: list[dict],
+        resume_sections: Dict[str, SectionText],
+        resume_analysis: dict,
+        jd_analysis: dict,
+    ) -> list[dict]:
+        """
+        When the resume has no summary block, force a summary gap so A4 creates one.
+
+        LLM gap output often sets needs_change=false for missing summary; auto-added
+        canonical gaps do the same. This post-step overrides that when JD is present.
+        """
+        if not jd_analysis:
+            return enriched_gaps
+
+        summary_text = resume_sections.get("summary")
+        has_content = self._section_has_content(summary_text)
+        has_summary_flag = bool(resume_analysis.get("has_summary", False))
+        if has_summary_flag and has_content:
+            return enriched_gaps
+
+        role = str(jd_analysis.get("role_title") or "the target role").strip()
+        must_kw = [
+            str(k).strip()
+            for k in (jd_analysis.get("must_have_skills") or [])[:6]
+            if str(k).strip()
+        ]
+        kw_hint = ", ".join(must_kw) if must_kw else "relevant JD keywords"
+        default_instruction = (
+            f"Write a new 3-5 sentence professional summary tailored to {role}. "
+            f"Weave in: {kw_hint}. Use only facts from experience and skills — "
+            "do not invent companies, roles, or metrics."
+        )
+
+        found = False
+        for gap in enriched_gaps:
+            if gap.get("section") != "summary":
+                continue
+            found = True
+            if not has_content:
+                gap["needs_change"] = True
+                gap["present_in_resume"] = False
+                gap["original_content"] = ""
+                if not str(gap.get("gap_reason") or "").strip():
+                    gap["gap_reason"] = "Resume has no professional summary section"
+                if not str(gap.get("rewrite_instruction") or "").strip():
+                    gap["rewrite_instruction"] = default_instruction
+                if not gap.get("missing_keywords") and must_kw:
+                    gap["missing_keywords"] = must_kw[:5]
+            break
+
+        if not found:
+            enriched_gaps.append({
+                "section": "summary",
+                "needs_change": True,
+                "gap_reason": "Resume has no professional summary section",
+                "missing_keywords": must_kw[:5],
+                "rewrite_instruction": default_instruction,
+                "original_content": "",
+                "present_in_resume": False,
+                "sub_changes": [],
+            })
+
+        return enriched_gaps
+
     def _enrich_section_gaps(
         self,
         parsed: dict,
         resume_sections: Dict[str, SectionText],
+        resume_analysis: dict | None = None,
+        jd_analysis: dict | None = None,
     ) -> dict:
         """
         Backfills original_content on SectionGap and original_text on SubLocationChange
@@ -352,6 +431,20 @@ class GapAnalyzerAgent(BaseAgent):
         parsed["priority_fixes"] = [
             str(f).strip() for f in (parsed.get("priority_fixes") or []) if str(f).strip()
         ]
+        parsed["sections_changed"] = [
+            g["section"] for g in enriched_gaps if g.get("needs_change")
+        ]
+        parsed["sections_unchanged"] = [
+            g["section"] for g in enriched_gaps if not g.get("needs_change")
+        ]
+
+        enriched_gaps = self._ensure_missing_summary_gap(
+            enriched_gaps,
+            resume_sections,
+            resume_analysis or {},
+            jd_analysis or {},
+        )
+        parsed["section_gaps"] = enriched_gaps
         parsed["sections_changed"] = [
             g["section"] for g in enriched_gaps if g.get("needs_change")
         ]

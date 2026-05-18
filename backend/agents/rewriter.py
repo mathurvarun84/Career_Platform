@@ -104,26 +104,41 @@ _CO_LOC_SEP_RE = _re.compile(r'\s{2,}|\s*[,]\s+(?=[A-Z])')
 
 def _parse_experience_header_from_verbatim(text: str) -> dict[str, str]:
     """
-    Extract company, role, location, and dates from the first 4 non-empty lines
+    Extract company, role, location, and dates from the first non-empty lines
     of an experience entry's verbatim text.
 
-    Works for any resume format — does not assume a specific delimiter convention.
+    Fixed-format path (LLM output):
+      Line 0: COMPANY_NAME_ONLY
+      Line 1: Role Title | Location | Start_Date – End_Date
 
-    Strategy:
-      - Scan all header lines (up to 4) for a date range pattern.
-      - Whichever line contains the date range is the role line.
-      - The line(s) before it are the company/location line(s).
-      - Everything after the date on the role line (stripped) is discarded.
-      - Everything before the date on the role line is the role title.
+    Legacy-format fallback (original verbatim resume text):
+      Scans up to 4 lines for a date-range pattern; whichever line has dates
+      is treated as the role line, preceding line(s) as company/location.
 
     Returns dict with keys: company, role, location, dates (all str, "" if not found).
     """
-    lines = [l.strip() for l in text.splitlines() if l.strip()][:3]
+    lines = [l.strip() for l in text.splitlines() if l.strip()][:4]
     company = role = location = dates = ""
 
     if not lines:
         return dict(company=company, role=role, location=location, dates=dates)
 
+    # Fixed-format path: Line 1 must contain a date range
+    if len(lines) >= 2 and _DATE_RANGE_RE.search(lines[1]):
+        company = lines[0]
+        role_line = lines[1]
+        date_match = _DATE_RANGE_RE.search(role_line)
+        dates = date_match.group(0).strip()
+        role_part = role_line[:date_match.start()].strip().rstrip("|–—-").strip()
+        if " | " in role_part:
+            parts = role_part.split(" | ", 1)
+            role = parts[0].strip()
+            location = parts[1].strip()
+        else:
+            role = role_part
+        return dict(company=company, role=role, location=location, dates=dates)
+
+    # Legacy-format fallback: scan all lines for the date range
     date_line_idx = -1
     date_match = None
     for i, line in enumerate(lines):
@@ -205,6 +220,24 @@ def _build_content_from_sub_entries(
     return full_text_fallback
 
 
+def _line_is_experience_header(s: str, is_first_nonbullet: bool) -> bool:
+    """
+    Return True when s is a structural header line in a fixed-format experience entry.
+
+    Fixed format: Line 0 = company name only, Line 1 = role | location | dates.
+      - Bullet lines are never headers.
+      - A line containing a date range is the role/date header (Line 1).
+      - The very first non-empty non-bullet line is the company header (Line 0).
+    """
+    if not s or s.startswith(('•', '-', '*', 'Tech Stack')):
+        return False
+    if _DATE_RANGE_RE.search(s):
+        return True
+    if is_first_nonbullet:
+        return True
+    return False
+
+
 def _ensure_experience_markers(text: str, sub_label: str) -> str:
     """
     Wraps an experience sub-entry in structural markers for the docx writer.
@@ -251,13 +284,21 @@ def _ensure_experience_markers(text: str, sub_label: str) -> str:
     ro_dt  = f"{role} | {dates}"       if dates    else role
     header = f"{COMPANY_HEADER_START}{co_loc}{COMPANY_ROLE_START}{ro_dt}{HEADER_END}"
 
-    # Strip the header lines from body to avoid duplication in the docx
-    # Scan up to 4 lines — covers company line + role+date line
+    # Strip the header lines from body to avoid duplication in the docx.
+    # Uses _line_is_experience_header() — format-aware, handles fixed (LLM) and
+    # legacy (verbatim) formats. Blank lines are skipped without breaking the scan.
     text_lines = text.splitlines()
     content_start = 0
+    first_nonbullet_found = False
     for i, line in enumerate(text_lines[:4]):
         s = line.strip()
-        if s and not s.startswith(('•', '-', '*', 'Tech Stack')):
+        if not s:
+            continue
+        is_bullet = s.startswith(('•', '-', '*', 'Tech Stack'))
+        is_first = not first_nonbullet_found and not is_bullet
+        if _line_is_experience_header(s, is_first):
+            if is_first:
+                first_nonbullet_found = True
             content_start = i + 1
         else:
             break
@@ -266,20 +307,17 @@ def _ensure_experience_markers(text: str, sub_label: str) -> str:
     return f"{header}\n{content}"
 
 
-SYSTEM_PROMPT = """You are a resume rewriter specialising in software engineering resumes.
+SYSTEM_PROMPT = """You are rewriting a SINGLE resume entry. You will receive exactly one entry's text.
 
-You will be given ONE resume entry at a time. Your job is to rewrite only that entry.
+RULES:
+1. Rewrite ONLY the entry you are given. Do NOT add entries from other companies or roles.
+2. Return ONLY valid JSON. No markdown, no backticks, no explanation before or after.
+3. Max 150 words per style variant. Be specific and impact-focused.
+4. Never invent companies, roles, degrees, metrics, or dates not present in the original.
+5. Use placeholders [X%], [N users], [Xms] ONLY for metrics the original left blank.
+6. Output JSON must be parseable by Python json.loads() with zero post-processing.
 
-HARD RULES:
-1. Rewrite ONLY the entry you are given. Never add, infer, or reproduce any other entry.
-2. Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
-3. Max 150 words per style. Be dense, not verbose.
-4. Never invent companies, degrees, titles, or metrics that are not in the original text.
-5. If a metric is missing, use a placeholder: [X%], [N users], [Xms]. Never fabricate a number.
-6. The JSON must be parseable by Python json.loads() with zero post-processing.
-7. Never leave a string unterminated.
-
-Output format — exactly these four keys, nothing else:
+Output format — exactly these 4 keys, nothing else:
 {"balanced": "...", "aggressive": "...", "top_1_percent": "...", "patch": {...}}
 """
 
@@ -358,6 +396,9 @@ class RewriterAgent(BaseAgent):
             gap["section"] = section
             unique_gaps.append((section, gap))
 
+        resume_text = inp.resume_text or normalized_input.get("resume_text", "")
+        jd_intelligence = inp.jd_intelligence or normalized_input.get("jd_intelligence")
+
         with ThreadPoolExecutor(max_workers=6) as executor:
             futures = {
                 executor.submit(
@@ -365,6 +406,8 @@ class RewriterAgent(BaseAgent):
                     section,
                     gap,
                     resume_sections,
+                    resume_text,
+                    jd_intelligence,
                 ): section
                 for section, gap in unique_gaps
             }
@@ -442,6 +485,8 @@ class RewriterAgent(BaseAgent):
         section: str,
         gap: dict,
         resume_sections: Dict[str, SectionText],
+        resume_text: str = "",
+        jd_intelligence: dict | None = None,
     ) -> tuple[dict, list[dict]]:
         """
         Compute one section rewrite from one section gap.
@@ -452,7 +497,15 @@ class RewriterAgent(BaseAgent):
         if not original_content:
             original_content = gap.get("original_content", "")
 
-        if not gap.get("needs_change", gap.get("must_rewrite", True)):
+        needs_change = gap.get("needs_change", gap.get("must_rewrite", True))
+        if (
+            section == "summary"
+            and not (original_content or "").strip()
+            and gap.get("present_in_resume") is False
+        ):
+            needs_change = True
+
+        if not needs_change:
             logging.info("RewriterAgent: copying verbatim section '%s'", section)
             if section_text and section in _SUB_ENTRY_SECTIONS and section_text.sub_entries:
                 content = _build_content_from_sub_entries(
@@ -503,7 +556,56 @@ class RewriterAgent(BaseAgent):
                 section, [], gap, section_text
             )
 
-        return (self._rewrite_monolithic(section, original_content, gap), [])
+        return (
+            self._rewrite_monolithic(
+                section,
+                original_content,
+                gap,
+                resume_text=resume_text,
+                jd_intelligence=jd_intelligence,
+            ),
+            [],
+        )
+
+    def _build_add_summary_prompt(
+        self,
+        gap: dict,
+        jd_intelligence: dict | None,
+        resume_text: str,
+    ) -> str:
+        """Prompt when the resume has no summary — write one from scratch."""
+        jd = jd_intelligence or {}
+        role = str(jd.get("role_title") or "the target role").strip()
+        must_have = ", ".join(
+            str(k) for k in (jd.get("must_have_skills") or [])[:8] if str(k).strip()
+        ) or "none"
+        nice_have = ", ".join(
+            str(k) for k in (jd.get("nice_to_have_skills") or [])[:5] if str(k).strip()
+        ) or "none"
+        instruction = (
+            gap.get("rewrite_instruction")
+            or "Write a JD-tailored professional summary."
+        )
+        missing_kw = ", ".join((gap.get("missing_keywords") or [])[:10]) or "none"
+        resume_excerpt = (resume_text or "")[:3500].strip() or "[Resume text unavailable]"
+
+        return (
+            "TASK: The resume has NO professional summary section. "
+            "Write a NEW summary from scratch.\n\n"
+            "RULES:\n"
+            "- 3-5 sentences, first person, present tense, 80-120 words total\n"
+            "- Use ONLY employers, roles, technologies, and achievements from the resume excerpt\n"
+            "- Never invent companies, degrees, titles, or metrics\n"
+            "- Use [X%], [N users], [Xms] only for metrics genuinely absent\n"
+            f"- Target role (JD): {role}\n"
+            f"- Must-have skills (JD): {must_have}\n"
+            f"- Nice-to-have skills (JD): {nice_have}\n"
+            f"- Rewrite instruction: {instruction}\n"
+            f"- Keywords to weave in: {missing_kw}\n\n"
+            f"RESUME EXCERPT (source of truth):\n{resume_excerpt}\n\n"
+            'Return ONLY JSON: {"balanced":"...","aggressive":"...","top_1_percent":"..."}\n'
+            "No markdown, no fences, no extra keys."
+        )
 
     def _build_sub_change_map(
         self,
@@ -886,11 +988,13 @@ class RewriterAgent(BaseAgent):
             f"Section context: {section_context or 'N/A'}\n"
             f"Keywords to weave in: {', '.join(missing_kw[:10]) or 'none'}\n\n"
 
-            "OUTPUT STRUCTURE (experience entries only):\n"
-            "  Line 1: Company name and location (copy verbatim from original)\n"
-            "  Line 2: Role title and dates (copy verbatim from original)\n"
-            "  Lines 3+: Bullet points starting with •\n"
-            "  Last line: Tech Stack: ... (only if present in original — do not add one)\n\n"
+            "OUTPUT STRUCTURE FOR EXPERIENCE ENTRIES — MANDATORY FORMAT:\n"
+            "Line 1: COMPANY_NAME_ONLY (no location, no dates, no separators)\n"
+            "Line 2: Role Title | Location | Start_Date – End_Date\n"
+            "Lines 3+: Bullet points, each starting with • \n"
+            "Last line (optional): Tech Stack: lang1, lang2 — include ONLY if present in original\n"
+            "CRITICAL: Line 1 must be the company name alone. Never put dates on Line 1.\n"
+            "CRITICAL: Never add information not present in the original entry.\n\n"
 
             "RULES:\n"
             "- Do NOT output any other company, role, or entry — only the one above\n"
@@ -954,7 +1058,15 @@ class RewriterAgent(BaseAgent):
                         top_1_percent=original_text or f"[{section} entry unavailable]",
                     ), None
 
-    def _rewrite_monolithic(self, section: str, original_content: str, gap: dict) -> dict:
+    def _rewrite_monolithic(
+        self,
+        section: str,
+        original_content: str,
+        gap: dict,
+        *,
+        resume_text: str = "",
+        jd_intelligence: dict | None = None,
+    ) -> dict:
         """
         Rewrites a whole section monolithically (fallback when no sub_changes available).
 
@@ -969,19 +1081,24 @@ class RewriterAgent(BaseAgent):
             Dict with balanced, aggressive, top_1_percent keys.
         """
         if section == "summary":
-            prompt = (
-                "Rewrite this professional summary. "
-                "Write 3-5 sentences covering: "
-                "(1) current role and org scope, "
-                "(2) core technical expertise with 2-3 specific technologies, "
-                "(3) key career achievement with a metric, "
-                "(4) value the candidate brings to the next role. "
-                "First person. Present tense. No evaluation labels. "
-                'Return ONLY JSON: {"balanced":"...","aggressive":"...","top_1_percent":"..."}\n\n'
-                f"Original summary:\n{original_content}\n\n"
-                f"Instruction: {gap.get('rewrite_instruction', 'Strengthen this summary.')}\n"
-                f"Missing keywords: {', '.join((gap.get('missing_keywords') or [])[:10])}"
-            )
+            if not (original_content or "").strip():
+                prompt = self._build_add_summary_prompt(
+                    gap, jd_intelligence, resume_text
+                )
+            else:
+                prompt = (
+                    "Rewrite this professional summary. "
+                    "Write 3-5 sentences covering: "
+                    "(1) current role and org scope, "
+                    "(2) core technical expertise with 2-3 specific technologies, "
+                    "(3) key career achievement with a metric, "
+                    "(4) value the candidate brings to the next role. "
+                    "First person. Present tense. No evaluation labels. "
+                    'Return ONLY JSON: {"balanced":"...","aggressive":"...","top_1_percent":"..."}\n\n'
+                    f"Original summary:\n{original_content}\n\n"
+                    f"Instruction: {gap.get('rewrite_instruction', 'Strengthen this summary.')}\n"
+                    f"Missing keywords: {', '.join((gap.get('missing_keywords') or [])[:10])}"
+                )
         else:
             prompt = (
                 "Rewrite this resume section using the instruction below.\n"
@@ -1007,10 +1124,16 @@ class RewriterAgent(BaseAgent):
                         "RewriterAgent: section '%s' failed, using fallback. Error: %s",
                         section, exc,
                     )
+                    fallback = original_content
+                    if section == "summary" and not (fallback or "").strip():
+                        fallback = (
+                            f"[{section} rewrite unavailable — "
+                            "re-run analysis with resume + JD]"
+                        )
                     return SectionRewrite(
-                        balanced=original_content or f"[{section} rewrite unavailable]",
-                        aggressive=original_content or f"[{section} rewrite unavailable]",
-                        top_1_percent=original_content or f"[{section} rewrite unavailable]",
+                        balanced=fallback or f"[{section} rewrite unavailable]",
+                        aggressive=fallback or f"[{section} rewrite unavailable]",
+                        top_1_percent=fallback or f"[{section} rewrite unavailable]",
                     ).model_dump()
 
     def _resolve_sub_text(self, section_text: SectionText | None, sub_label: str) -> str:

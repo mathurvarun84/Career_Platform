@@ -43,7 +43,22 @@ from backend.agents.rewriter import (
 
 
 _METRIC_PATTERN    = re.compile(r'\b\d+\.?\d*\s*(%|x|X|\bk\b|\bK\b|Cr\b|L\b|ms\b|\bs\b)')
-_PLACEHOLDER_RE    = re.compile(r'\[[A-Z][A-Z0-9_]{2,}\]')
+_PLACEHOLDER_RE = re.compile(
+    r"""
+    \[
+    (?:
+        [A-Z][A-Z0-9_]{2,}      # [ALL_CAPS] — original pattern
+      | X%                       # [X%]
+      | N\s+\w+                  # [N users], [N customers]
+      | \w+/\w+                  # [feature/module]
+      | INR\s+X\s+\w+           # [INR X Cr]
+      | Xms                      # [Xms]
+      | \d*[A-Za-z]+\d*%?       # [Xk], [30%], [X]
+    )
+    \]
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
 _COMPANY_MARKER_RE = re.compile(r'##COMPANY##(.*?)(?:##ROLE##|##END_HEADER##)')
 _EXPERIENCE_MARKER_RE = re.compile(
     r'##COMPANY##(.*?)##ROLE##(.*?)##END_HEADER##',
@@ -419,11 +434,26 @@ def _repair_sub_entry_section(
 
         for entry_idx, entry in enumerate(section_text.sub_entries):
             orig_label = entry.label
-            if (
-                entry_idx in matched_indexes
-                or _entry_verbatim_present(entry.verbatim_text, style_text)
-            ):
+            if entry_idx in matched_indexes:
                 continue  # entry present — ok
+
+            # Guard: check if the first meaningful token of the entry label already
+            # appears in the style text — if so, the entry is present but matching failed.
+            # Do NOT inject verbatim on top of existing rewritten content.
+            # Uses only the first meaningful token (company name) as the discriminator;
+            # generic tokens like "Role" or "Engineer" appear in every entry and must be
+            # excluded to avoid false positives.
+            label_tokens = [
+                t.lower() for t in re.split(r'[\s|–—(),.\-]+', orig_label)
+                if len(t) > 3
+            ]
+            style_text_lower = _normalize_presence_text(style_text)
+            if label_tokens and label_tokens[0] in style_text_lower:
+                logging.info(
+                    "%s/%s: entry '%s' not matched by label but token found in text — skipping injection",
+                    section_name, style, orig_label[:50]
+                )
+                continue
 
             anomalies.append(
                 f"{section_name}/{style}: missing entry '{orig_label[:50]}' — injecting verbatim"
@@ -582,8 +612,6 @@ class RewriterValidator:
             section_text = _get_section_text(resume_sections, section_name)
             if not section_text:
                 continue
-            if section_name == 'experience':
-                section_text = _augment_experience_entries(section_text, resume_text)
 
             variants = _get_rewrite_variants(rewrites, section_name)
             if not _variants_have_content(variants):
@@ -630,13 +658,15 @@ class RewriterValidator:
 
             rewrites[section_name] = variants
 
-        # ── Experience: force full rebuild when marker count < ground truth ─
+        # ── Experience: per-style rebuild when marker count < sub_entries ──
         exp_section = _get_section_text(resume_sections, 'experience')
         if exp_section and resume_text.strip():
+            # Single augmentation call — result reused for both repair and rebuild
             exp_section = _augment_experience_entries(exp_section, resume_text)
             ground_n = len(detect_ground_truth_entries(resume_text))
             exp_variants = _get_rewrite_variants(rewrites, 'experience')
             if ground_n > 0 and exp_variants and exp_section.sub_entries:
+                repaired_variants = dict(exp_variants)
                 for style in ('balanced', 'aggressive', 'top_1_percent'):
                     style_text = exp_variants.get(style, '') or ''
                     marker_n = count_experience_markers(style_text)
@@ -644,14 +674,15 @@ class RewriterValidator:
                         all_anomalies.append(
                             f"experience/{style}: {marker_n} markers vs "
                             f"{len(exp_section.sub_entries)} sub_entries "
-                            f"(ground truth {ground_n}) — rebuilding from sub_entries"
+                            f"(ground truth {ground_n}) — rebuilding"
                         )
-                exp_variants = rebuild_experience_rewrites(
-                    exp_variants,
-                    exp_section,
-                    prefer_rewritten=True,
-                )
-                rewrites['experience'] = exp_variants
+                        single_style_rebuilt = rebuild_experience_rewrites(
+                            {style: style_text},
+                            exp_section,
+                            prefer_rewritten=True,
+                        )
+                        repaired_variants[style] = single_style_rebuilt[style]
+                rewrites['experience'] = repaired_variants
 
         rewrites = collapse_rewrites_to_canonical(rewrites)
         output['rewrites'] = rewrites

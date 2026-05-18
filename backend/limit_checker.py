@@ -3,12 +3,40 @@
 from __future__ import annotations
 
 import logging
+import os
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import HTTPException
+
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_REPO_ROOT / ".env")
 
 logger = logging.getLogger(__name__)
 
-FREE_TIER_MONTHLY_LIMIT = 2
+_DEFAULT_FREE_TIER_MONTHLY_LIMIT = 2
+
+
+def _free_tier_monthly_limit() -> int:
+    """Monthly analysis cap for free tier (from FREE_TIER_MONTHLY_LIMIT in .env)."""
+    raw = (os.getenv("FREE_TIER_MONTHLY_LIMIT") or "").strip()
+    if not raw:
+        return _DEFAULT_FREE_TIER_MONTHLY_LIMIT
+    try:
+        value = int(raw)
+        if value < 1:
+            raise ValueError("must be >= 1")
+        return value
+    except ValueError:
+        logger.warning(
+            "Invalid FREE_TIER_MONTHLY_LIMIT=%r; using default %d",
+            raw,
+            _DEFAULT_FREE_TIER_MONTHLY_LIMIT,
+        )
+        return _DEFAULT_FREE_TIER_MONTHLY_LIMIT
+
+
+FREE_TIER_MONTHLY_LIMIT = _free_tier_monthly_limit()
 
 
 def _get_or_create_usage_row(db, user_id: str) -> dict:
