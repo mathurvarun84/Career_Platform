@@ -11,6 +11,7 @@ Uses Anthropic Claude via the Anthropic SDK (provider='anthropic').
 import json
 import logging
 
+from backend.few_shot_prompts import build_recruiter_role_addendum
 from .base_agent import BaseAgent
 
 
@@ -266,12 +267,15 @@ def _build_weakness_injection(
 def _build_system_prompt(
     active_personas: dict,
     weakness_injection: dict | None = None,
+    role_family: str = "ENGINEERING",
 ) -> str:
     prompt = """You are a recruiter evaluation system simulating 5 different recruiter personas
-assessing an Indian software engineering candidate's resume.
+assessing an Indian candidate's resume.
 
 For each persona, evaluate the resume independently using that persona's specific priorities and biases.
-
+"""
+    prompt += build_recruiter_role_addendum(role_family)
+    prompt += """
 PERSONAS:
 """
     for i, (name, text) in enumerate(active_personas.items(), 1):
@@ -367,6 +371,11 @@ class RecruiterSimulatorAgent(BaseAgent):
         resume_text = input_dict.get("resume_text", "")
         resume_sections = input_dict.get("resume_sections", {})
         jd_intelligence = input_dict.get("jd_intelligence")
+        role_family = str(
+            input_dict.get("role_family")
+            or input_dict.get("resume_understanding", {}).get("role_family")
+            or "ENGINEERING"
+        ).upper()
         conditional_name, conditional_prompt = _select_conditional_persona(resume_text, resume_sections)
         active_personas = {**PERSONA_PROMPTS, conditional_name: conditional_prompt}
 
@@ -399,7 +408,9 @@ class RecruiterSimulatorAgent(BaseAgent):
         else:
             user_message += "\n\nNO JOB DESCRIPTION - evaluate against general market."
 
-        system_prompt = _build_system_prompt(active_personas, weakness_injection)
+        system_prompt = _build_system_prompt(
+            active_personas, weakness_injection, role_family=role_family
+        )
         raw_response = self._call_llm(system_prompt, user_message)
         parsed = self._parse_json(raw_response)
 

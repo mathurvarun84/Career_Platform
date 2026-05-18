@@ -33,6 +33,7 @@ NEW YORK UNIVERSITY | Masters of Science in Computer Science | 2021 | GPA 3.83
 A1_OUTPUT_NO_SUMMARY = {
     "has_summary": False,
     "seniority": "senior",
+    "role_family": "ENGINEERING",
     "experience_years": 7,
     "tech_stack": ["Java", "SQL", "JavaScript", "AWS"],
     "domains": ["enterprise software", "billing"],

@@ -5,10 +5,21 @@ Input: raw resume text (pre-cleaned by parser.py)
 Output: structured resume data for downstream agents
 """
 
+from typing import List, Literal, Optional
+
 from pydantic import BaseModel, Field
-from typing import List, Optional
 
 from .common import Seniority, ResumeSection
+
+RoleFamily = Literal[
+    "ENGINEERING",
+    "PRODUCT",
+    "MARKETING",
+    "DATA_ANALYST",
+    "HR",
+    "FINANCE",
+    "DESIGN",
+]
 
 
 class ResumeUnderstandingInput(BaseModel):
@@ -44,6 +55,10 @@ class ResumeUnderstandingOutput(BaseModel):
     improvement_areas: List[str] = Field(..., description="top 3 actionable fixes even without a JD")
     keyword_density_verdict: str = Field(..., description="\"low\"|\"medium\"|\"high\" keyword density verdict")
     formatting_signals: List[str] = Field(..., description="formatting issues inferred from text (e.g. \"no summary section\", \"bullets missing\")")
+    role_family: RoleFamily = Field(
+        ...,
+        description="Detected role family for role-aware downstream agents",
+    )
 
 
 class ResumeHealthOutput(BaseModel):

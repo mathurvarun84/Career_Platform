@@ -1,16 +1,16 @@
 # Graph Report - Career_Platform  (2026-05-18)
 
 ## Corpus Check
-- 109 files · ~90,293 words
+- 114 files · ~96,882 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2083 nodes · 2773 edges · 418 communities (128 shown, 290 thin omitted)
-- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 350 edges (avg confidence: 0.7)
+- 2205 nodes · 2979 edges · 426 communities (133 shown, 293 thin omitted)
+- Extraction: 87% EXTRACTED · 13% INFERRED · 0% AMBIGUOUS · INFERRED: 382 edges (avg confidence: 0.71)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `582a3d37`
+- Built from commit: `c2015d9b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -139,6 +139,7 @@
 - [[_COMMUNITY_Community 121|Community 121]]
 - [[_COMMUNITY_Community 122|Community 122]]
 - [[_COMMUNITY_Community 123|Community 123]]
+- [[_COMMUNITY_Community 124|Community 124]]
 - [[_COMMUNITY_Community 125|Community 125]]
 - [[_COMMUNITY_Community 126|Community 126]]
 - [[_COMMUNITY_Community 127|Community 127]]
@@ -146,16 +147,15 @@
 - [[_COMMUNITY_Community 129|Community 129]]
 - [[_COMMUNITY_Community 130|Community 130]]
 - [[_COMMUNITY_Community 131|Community 131]]
+- [[_COMMUNITY_Community 133|Community 133]]
 - [[_COMMUNITY_Community 134|Community 134]]
+- [[_COMMUNITY_Community 135|Community 135]]
+- [[_COMMUNITY_Community 136|Community 136]]
+- [[_COMMUNITY_Community 137|Community 137]]
+- [[_COMMUNITY_Community 138|Community 138]]
 - [[_COMMUNITY_Community 139|Community 139]]
-- [[_COMMUNITY_Community 146|Community 146]]
+- [[_COMMUNITY_Community 142|Community 142]]
 - [[_COMMUNITY_Community 147|Community 147]]
-- [[_COMMUNITY_Community 148|Community 148]]
-- [[_COMMUNITY_Community 149|Community 149]]
-- [[_COMMUNITY_Community 150|Community 150]]
-- [[_COMMUNITY_Community 151|Community 151]]
-- [[_COMMUNITY_Community 152|Community 152]]
-- [[_COMMUNITY_Community 153|Community 153]]
 - [[_COMMUNITY_Community 154|Community 154]]
 - [[_COMMUNITY_Community 155|Community 155]]
 - [[_COMMUNITY_Community 156|Community 156]]
@@ -420,137 +420,145 @@
 - [[_COMMUNITY_Community 415|Community 415]]
 - [[_COMMUNITY_Community 416|Community 416]]
 - [[_COMMUNITY_Community 417|Community 417]]
+- [[_COMMUNITY_Community 418|Community 418]]
+- [[_COMMUNITY_Community 419|Community 419]]
+- [[_COMMUNITY_Community 420|Community 420]]
+- [[_COMMUNITY_Community 421|Community 421]]
+- [[_COMMUNITY_Community 422|Community 422]]
+- [[_COMMUNITY_Community 423|Community 423]]
+- [[_COMMUNITY_Community 424|Community 424]]
+- [[_COMMUNITY_Community 425|Community 425]]
 
 ## God Nodes (most connected - your core abstractions)
-1. `SectionText` - 34 edges
-2. `JDFetcherAgent` - 33 edges
-3. `RewriterAgent` - 30 edges
-4. `TestJDFetcherFetch` - 25 edges
-5. `Orchestrator` - 24 edges
-6. `useResumeStore` - 23 edges
-7. `JDFetchResult` - 22 edges
-8. `PatchEngine` - 22 edges
-9. `RewriterValidator` - 22 edges
-10. `Generated from: Upload page (pixel-perfect, production approved)` - 20 edges
+1. `Orchestrator` - 37 edges
+2. `SectionText` - 36 edges
+3. `JDFetcherAgent` - 33 edges
+4. `RewriterAgent` - 31 edges
+5. `TestJDFetcherFetch` - 25 edges
+6. `useWindowSize()` - 24 edges
+7. `useResumeStore` - 23 edges
+8. `RewriterValidator` - 23 edges
+9. `JDFetchResult` - 22 edges
+10. `PatchEngine` - 22 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `test_pdf_fragment_rejoin_finds_seven_experience_blocks()` --calls--> `_detect_experience_by_date_ranges()`  [INFERRED]
   test_pdf_experience_fragment_rejoin.py → validator/resume_understanding_validator.py
+- `test_placeholder_fallback_to_balanced()` --calls--> `_check_placeholder_bleed()`  [INFERRED]
+  test_rewriter_bugfixes.py → validator/rewriter_validator.py
 - `test_experience_never_monolithic_without_sub_entries()` --calls--> `RewriterAgent`  [INFERRED]
   test_rewriter_bugfixes.py → backend/agents/rewriter.py
 - `read_upload()` --calls--> `parse_resume()`  [INFERRED]
   app.py → parser.py
 - `_export_to_docx()` --calls--> `_build_docx()`  [INFERRED]
   gap_session.py → engine/resume_builder.py
-- `_dedupe_sub_entries()` --calls--> `SectionText`  [INFERRED]
-  orchestrator.py → backend/schemas/common.py
 
 ## Hyperedges (group relationships)
 - **Backend Runtime Stack Form** — claude_backend_stack, requirements_python_dependencies, runtime_python_3_11_9 [INFERRED 0.85]
 - **Frontend API Contract Implemented** — claude_api_endpoints_contract, api_contract_analysis_result_schema, readme_fastapi_backend [INFERRED 0.85]
 - **Visual Design Language Participation** — design_system_color_palette, design_system_button_3d_effect, hero_layered_3d_card_illustration [INFERRED 0.75]
 
-## Communities (418 total, 290 thin omitted)
+## Communities (426 total, 293 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.05
-Nodes (42): Agent contract, Anti-hallucination (A4 rewriter — enforced in prompt), API endpoints, ATS scoring (deterministic, 0-100), Backend Stack, Before every Day prompt, verify, Benchmarks (data/benchmarks.json), code:block1 (resume_platform/) (+34 more)
+Nodes (42): get_db(), Supabase client singleton for backend persistence., Singleton Supabase client using service_role_key., check_upload_limit(), _free_tier_monthly_limit(), _get_or_create_usage_row(), get_upload_usage(), Upload limit enforcement for free tier. (+34 more)
 
 ### Community 1 - "Community 1"
+Cohesion: 0.05
+Nodes (42): Agent contract, Anti-hallucination (A4 rewriter — enforced in prompt), API endpoints, ATS scoring (deterministic, 0-100), Backend Stack, Before every Day prompt, verify, Benchmarks (data/benchmarks.json), code:block1 (resume_platform/) (+34 more)
+
+### Community 2 - "Community 2"
 Cohesion: 0.09
 Nodes (25): ATSProvider, classify_url(), ATS provider classifier.  Detects which Applicant Tracking System (ATS) is hos, Hosting ATS provider for a job posting URL., Classify a job posting URL by its hosting ATS.      Pure string-matching — no, _build_queries(), _Candidate, _compute_confidence() (+17 more)
 
-### Community 2 - "Community 2"
+### Community 3 - "Community 3"
 Cohesion: 0.08
 Nodes (35): _add_horizontal_rule(), _edit_section(), _export_to_docx(), Interactive gap-closing helper.  This module is purely terminal-interface and do, Open an editor for the user to modify the provided text.      Parameters     ---, Create a comprehensive r-sum- document with gap analysis metadata.      The stru, Insert a horizontal line using an XML border.      The function mutates the last, Run the interactive gap-closing session.      Parameters     ----------     gap_ (+27 more)
 
-### Community 3 - "Community 3"
-Cohesion: 0.09
-Nodes (32): JDIntelligenceAgent, Agent 2: Job Description Analyst.      Extracts hiring intent and skill requir, Analyze a job description and extract hiring intent.          Args:, main(), Enum, HiddenSignal, JDIntelligenceInput, JDIntelligenceOutput (+24 more)
-
 ### Community 4 - "Community 4"
-Cohesion: 0.07
-Nodes (25): ANALYZE_TIMEOUT_MS, AnalyzeCallbacks, analyzeResume(), extractLimitReached(), fetchUsageLimit(), LimitReachedInfo, normalizeAnalysisResult(), parseHttpLimitResponse() (+17 more)
+Cohesion: 0.09
+Nodes (20): AuthGateScreen(), AuthGateTab, INPUT_BASE_STYLE, AuthModal(), AuthModalProps, AuthTab, INPUT_BASE_STYLE, RequireAuth() (+12 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.09
-Nodes (19): AuthGateScreen(), AuthGateTab, INPUT_BASE_STYLE, AuthModal(), AuthModalProps, AuthTab, INPUT_BASE_STYLE, RequireAuth() (+11 more)
+Nodes (24): DataSourceNotice(), ChartPoint, ProgressPoint, ProgressTracking(), getBadgeStyle(), getShortlistColor(), PersonaCard(), RecruiterSimulation() (+16 more)
 
 ### Community 6 - "Community 6"
-Cohesion: 0.1
-Nodes (33): _assert_varun_experience_complete(), Tests for experience_audit ground-truth backfill and rebuild., End-to-end: partial A1 → backfill → rewriter (verbatim) → validator.      All, End-to-end: partial A1 → backfill → rewriter (1 entry LLM) → validator → DOCX., Shared assertions for Varun 7-entry experience output., test_ensure_completeness_backfills_partial_a1(), test_rewriter_skips_monolithic_when_sub_entries_exist(), test_validator_rebuilds_partial_rewrite() (+25 more)
+Cohesion: 0.07
+Nodes (33): _build_content_from_sub_entries(), _company_looks_like_date(), _ensure_experience_markers(), _fallback_from_sub_entries(), _line_is_experience_header(), _parse_experience_header_from_verbatim(), RewriterAgent - Agent 4 of the Resume Intelligence Platform.  Surgical sub-loc, Extract company, role, location, and dates from the first 4 non-empty lines (+25 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.1
-Nodes (23): DataSourceNotice(), ChartPoint, ProgressPoint, ProgressTracking(), getBadgeStyle(), getShortlistColor(), PersonaCard(), RecruiterSimulation() (+15 more)
+Cohesion: 0.09
+Nodes (23): ANALYZE_TIMEOUT_MS, AnalyzeCallbacks, analyzeResume(), extractLimitReached(), fetchUsageLimit(), LimitReachedInfo, normalizeAnalysisResult(), parseHttpLimitResponse() (+15 more)
 
 ### Community 8 - "Community 8"
-Cohesion: 0.09
-Nodes (21): getHistory(), MOCK_ANALYSIS_RESULT, MOCK_HISTORY, MOCK_SSE_EVENTS, ActionableChange, ATSBreakdown, HistoryEntry, HistoryResponse (+13 more)
-
-### Community 9 - "Community 9"
-Cohesion: 0.07
-Nodes (29): get_db(), Supabase client singleton for backend persistence., Singleton Supabase client using service_role_key., check_upload_limit(), _get_or_create_usage_row(), get_upload_usage(), Upload limit enforcement for free tier., Return usage_limits row for user, creating a zeroed row if missing. (+21 more)
-
-### Community 10 - "Community 10"
 Cohesion: 0.1
 Nodes (26): _original(), read_upload(), _add_horizontal_rule(), _edit_section(), _export_to_docx(), Interactive gap-closing helper.  This module is purely terminal-interface and do, Open an editor for the user to modify the provided text.      Parameters     ---, Create a comprehensive r-sum- document with gap analysis metadata.      The stru (+18 more)
 
-### Community 11 - "Community 11"
+### Community 9 - "Community 9"
 Cohesion: 0.09
-Nodes (21): _dedupe_resume_sections(), _dedupe_sub_entries(), Orchestrator, Orchestrator module for Resume Intelligence Platform V2., Extract resume sections available directly in A1 output., Convert SectionText mapping to plain dictionaries., Backfill experience sub_entries from raw resume and log counts.          Must, Extract resume sections available directly in A1 output. (+13 more)
+Nodes (22): alwaysEnabledTabs, disabledBeforeAnalysis, TabNav(), tabs, ResumeStoreState, ActionableChange, ATSBreakdown, HistoryRun (+14 more)
+
+### Community 10 - "Community 10"
+Cohesion: 0.09
+Nodes (18): GapAnalyzerAgent, Agent 3 — Gap Analyzer.      Compares structured resume data (from Agent 1) ag, Agent 3 — Gap Analyzer.      Compares structured resume data (from Agent 1) ag, Entry point for Agent 3 — supports two modes.          Args:             inpu, Entry point for Agent 3 — supports two modes.          Args:             inpu, Backfills original_content on SectionGap and original_text on SubLocationChange, For length/readability gaps, prepend the verbatim target bullet         and a c, For length/readability gaps, prepend the verbatim target bullet         and a c (+10 more)
+
+### Community 11 - "Community 11"
+Cohesion: 0.1
+Nodes (22): Keep schema-bounded LLM lists from failing validation., Keep schema-bounded LLM lists from failing validation., Keep schema-bounded LLM lists from failing validation., Keep schema-bounded LLM lists from failing validation., Agent 1: Resume Parser.      Extracts structured data from raw resume text for, Agent 1: Resume Parser.      Extracts structured data from raw resume text for, Extract structured data from a resume, including seniority health signals., Extract structured data from a resume, including seniority health signals. (+14 more)
 
 ### Community 12 - "Community 12"
+Cohesion: 0.1
+Nodes (22): BaseModel, ActionableChange, ChangeLocation, DetailedEvalOutput, GapAnalyzerInput, GapAnalyzerOutput, OverallAssessment, Pydantic schemas for Agent 3 - Gap Analyzer. (+14 more)
+
+### Community 13 - "Community 13"
+Cohesion: 0.11
+Nodes (21): ApplyPatchesRequest, GapCloseRequest, Gap close request payload., Gap close request payload., Gap close request payload., Apply patches request., Rollback patches request., RollbackRequest (+13 more)
+
+### Community 14 - "Community 14"
 Cohesion: 0.12
 Nodes (26): _bullet(), _content_key(), _emit_bullet_line(), _is_placeholder_text(), _normal(), Remove leading bullet markers; List Bullet style adds its own., List Bullet paragraph with placeholder guard., List Bullet paragraph with placeholder guard. (+18 more)
 
-### Community 13 - "Community 13"
+### Community 15 - "Community 15"
+Cohesion: 0.11
+Nodes (23): _build_system_prompt(), build_few_shot_block(), build_recruiter_role_addendum(), build_role_gap_addendum(), detect_role_family(), get_gap_patterns(), get_role_context(), RIP V2 — Role-Aware Few-Shot Prompt Library =================================== (+15 more)
+
+### Community 16 - "Community 16"
 Cohesion: 0.1
 Nodes (18): applyPatches(), ApplyPatchesResponse, axiosInstance, downloadResumeReport(), FastAPIErrorDetail, FastAPIErrorResponse, getResult(), getResumeDownloadUrl() (+10 more)
 
-### Community 14 - "Community 14"
+### Community 17 - "Community 17"
+Cohesion: 0.14
+Nodes (22): main(), Enum, CompanyType, Config, GapSeverity, GapType, PatchOp, PatchRisk (+14 more)
+
+### Community 18 - "Community 18"
 Cohesion: 0.09
 Nodes (24): _add_contact_line(), _build_docx(), Set font color on a docx run via w:color element., Build the .docx document with exact color/font styling.      Args:         candi, Build the .docx document with exact color/font styling.      Args:         candi, Build the .docx document with exact color/font styling.      Args:         ca, Add contact text with blue color for links (containing @ or URL-like tokens)., Add contact text with blue color for links (containing @ or URL-like tokens). (+16 more)
 
-### Community 15 - "Community 15"
-Cohesion: 0.09
-Nodes (17): ActionableFixes(), atsSectionMap, canonicalSections, derivePriority(), dimensionIndexMap, DimensionKey, fallbackDimensionMeta, FilterValue (+9 more)
-
-### Community 16 - "Community 16"
-Cohesion: 0.09
-Nodes (23): _block_already_present(), _dedupe_detected_blocks(), _labels_overlap(), _normalize_entry_text(), True if two label strings share enough tokens to be the same entry., Normalize entry text for duplicate and containment checks., True when a detected raw block is already represented in sub_entries., Detects sub-entries within a section block using type-specific patterns.     Ret (+15 more)
-
-### Community 17 - "Community 17"
+### Community 19 - "Community 19"
 Cohesion: 0.16
 Nodes (17): _normalize_url(), SerperClient - Thin wrapper around Serper Dev Google Search API., Call Serper and return top organic results., Run multiple searches and deduplicate by normalized URL., SearchResult, SerperClient, _mock_response(), test_tc_s_01_search_returns_search_results() (+9 more)
 
-### Community 18 - "Community 18"
+### Community 20 - "Community 20"
+Cohesion: 0.09
+Nodes (17): ActionableFixes(), atsSectionMap, canonicalSections, derivePriority(), dimensionIndexMap, DimensionKey, fallbackDimensionMeta, FilterValue (+9 more)
+
+### Community 21 - "Community 21"
+Cohesion: 0.1
+Nodes (22): assert_structural_completeness(), _canonical_section_name(), _get_section_text(), Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names. (+14 more)
+
+### Community 22 - "Community 22"
 Cohesion: 0.1
 Nodes (20): code:text (.), code:bash (cp .env.example .env), code:env (OPENAI_API_KEY=...), code:bash (python -m venv .venv), code:bash (source .venv/bin/activate), code:bash (streamlit run app.py), code:bash (uvicorn backend.main:app --reload), code:bash (cd frontend) (+12 more)
 
-### Community 19 - "Community 19"
+### Community 23 - "Community 23"
 Cohesion: 0.16
 Nodes (19): _collect_issues(), _count_syllables(), _extract_missing_jd_keywords(), _gap_reason(), generate_dimension_details(), _is_formatting_issue(), ATS Scoring Engine — deterministic resume quality scorer.  Scores a resume on fo, Generate per-dimension detail objects with benchmark and gap explanation.      T (+11 more)
 
-### Community 20 - "Community 20"
-Cohesion: 0.11
-Nodes (20): assert_structural_completeness(), _canonical_section_name(), _get_section_text(), Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., True when an unchanged entry already exists in a style variant., Map sectioner/raw section keys to canonical section names. (+12 more)
-
-### Community 21 - "Community 21"
-Cohesion: 0.12
-Nodes (19): _company_looks_like_date(), _ensure_experience_markers(), _line_is_experience_header(), _parse_experience_header_from_verbatim(), RewriterAgent - Agent 4 of the Resume Intelligence Platform.  Surgical sub-loc, Extract company, role, location, and dates from the first 4 non-empty lines, Extract company, role, location, and dates from the first 4 non-empty lines, True when parsed company is actually a date/location line. (+11 more)
-
-### Community 22 - "Community 22"
-Cohesion: 0.15
-Nodes (15): Keep schema-bounded LLM lists from failing validation., Keep schema-bounded LLM lists from failing validation., Keep schema-bounded LLM lists from failing validation., Agent 1: Resume Parser.      Extracts structured data from raw resume text for, Extract structured data from a resume, including seniority health signals., ResumeUnderstandingAgent, Pydantic schemas for Agent 1 — Resume Understanding.  Input: raw resume text (, Input contract for Agent 1. resume_text must be pre-cleaned by parser.py. (+7 more)
-
-### Community 23 - "Community 23"
-Cohesion: 0.13
-Nodes (9): PatchEngine, Revert a single patch. Restores text to pre-patch snapshot., Full reset to original., For SHORTEN_BULLET: the actual shortened text must be in replacement_text., Move bullets containing priority_keywords to the top of their block., Recalculate _modified_ranges after a rollback., Applies patches as surgical text operations. All ops reversible.     Thread-safe, Apply one patch. Returns True if applied, False if skipped/rejected. (+1 more)
-
 ### Community 24 - "Community 24"
-Cohesion: 0.11
-Nodes (19): 11. TAB NAVIGATION (TabNav.tsx — locked), 13. SCORE / METRIC CARD PATTERN (Overview tab), 15. RECRUITER PERSONA CARD PATTERN (Recruiter tab), 17. CRITICAL RULES (enforce on every page), 18. ADDING A NEW PAGE — CHECKLIST, 19. HOW TO USE THIS FILE IN CLAUDE CODE, 1. PAGE STRUCTURE (every page follows this), 2. TOPBAR (locked — do not change) (+11 more)
+Cohesion: 0.16
+Nodes (10): getHistory(), MOCK_ANALYSIS_RESULT, MOCK_HISTORY, MOCK_SSE_EVENTS, queryClient, AnalysisResult, HistoryResponse, SSEProgressEvent (+2 more)
 
 ### Community 25 - "Community 25"
 Cohesion: 0.19
@@ -561,376 +569,396 @@ Cohesion: 0.11
 Nodes (10): client(), _load_main_module(), Tests for JD Fetcher Agent — JD Auto-Fetch Feature Tests cover: unit, integratio, Tests for ATS-first Serper query construction., Tests for Haiku JSON parsing helpers., Tests for heuristic JD confidence scoring., test_real_fetch_api(), TestComputeConfidence (+2 more)
 
 ### Community 27 - "Community 27"
+Cohesion: 0.13
+Nodes (9): PatchEngine, Revert a single patch. Restores text to pre-patch snapshot., Full reset to original., For SHORTEN_BULLET: the actual shortened text must be in replacement_text., Move bullets containing priority_keywords to the top of their block., Recalculate _modified_ranges after a rollback., Applies patches as surgical text operations. All ops reversible.     Thread-safe, Apply one patch. Returns True if applied, False if skipped/rejected. (+1 more)
+
+### Community 28 - "Community 28"
+Cohesion: 0.11
+Nodes (19): 10. SECTION HEADER PATTERN (reuse on every tab), 11. TAB NAVIGATION (TabNav.tsx — locked), 14. BEFORE/AFTER DIFF CARD PATTERN (Fixes tab), 15. RECRUITER PERSONA CARD PATTERN (Recruiter tab), 17. CRITICAL RULES (enforce on every page), 18. ADDING A NEW PAGE — CHECKLIST, 19. HOW TO USE THIS FILE IN CLAUDE CODE, 1. PAGE STRUCTURE (every page follows this) (+11 more)
+
+### Community 29 - "Community 29"
 Cohesion: 0.11
 Nodes (19): _extract_section_content(), _get_structured_value(), _normalize_key(), Extract text content for a section from structured resume dict.      Handles lis, Extract text content for a section from structured resume dict.      Handles lis, Read a canonical structured section, accepting common aliases., Read a canonical structured section, accepting common aliases., Extract text content for a section from structured resume dict.      Handles lis (+11 more)
 
-### Community 28 - "Community 28"
-Cohesion: 0.14
-Nodes (17): Simulate pdfplumber output: role + dates on ONE line (tab or space), plus long b, Full Varun resume block must yield exactly 7 experience sub-entries., test_ground_truth_detects_seven_entries(), test_pdf_merged_header_lines_detect_seven_not_bullets(), test_varun_experience_ground_truth_seven_entries(), count_experience_markers(), count_sub_entries(), detect_ground_truth_entries() (+9 more)
-
-### Community 29 - "Community 29"
-Cohesion: 0.12
-Nodes (18): collapse_rewrites_to_canonical(), _get_rewrite_variants(), Max character count across style variants (for merge tie-break)., Max character count across style variants (for merge tie-break)., Collapse aliased rewrite keys (e.g. 'projects & side work') into canonical keys., Collapse aliased rewrite keys (e.g. 'projects & side work') into canonical keys., Max character count across style variants (for merge tie-break)., Return rewrite variants for a canonical section, including aliased keys. (+10 more)
-
 ### Community 30 - "Community 30"
-Cohesion: 0.12
-Nodes (16): Regression tests for rewriter/parser/validator bugfixes., test_experience_never_monolithic_without_sub_entries(), test_parse_docx_skips_duplicate_bullet_normal(), test_placeholder_fallback_to_balanced(), test_strip_unfilled_placeholders(), _check_placeholder_bleed(), _count_remaining_placeholders(), Strip unfilled [PLACEHOLDER] tokens from all style variants. (+8 more)
+Cohesion: 0.14
+Nodes (17): _make_resume_sections(), Tests for no-JD summary generation and rewrite path. Run: pytest tests/test_no_, Rewriter reads either 'gaps' or 'section_gaps' — both must be present., Oracle mention in weaknesses must produce sub_changes for Oracle entry., All canonical sections must appear in section_gaps., Every gap dict must have a 'section' key for the rewriter to canonicalize., Frontend smoke test: verify that the gap_result shape produced by     _build_no, Full pipeline: upload resume without JD, verify summary appears in rewrites. (+9 more)
 
 ### Community 31 - "Community 31"
-Cohesion: 0.12
-Nodes (17): _coerce_section_dict(), _coerce_sections(), _company_key_from_label(), _empty_section(), ResumeUnderstandingValidator — post-processes A1 output.  Validates and repair, Return a SectionText-compatible dict for a canonical section., Normalize dict/Pydantic section values into plain SectionText-compatible dicts., Return a SectionText-compatible dict for a canonical section. (+9 more)
+Cohesion: 0.14
+Nodes (17): _assert_varun_experience_complete(), Tests for experience_audit ground-truth backfill and rebuild., Simulate pdfplumber output: role + dates on ONE line (tab or space), plus long b, Full Varun resume block must yield exactly 7 experience sub-entries., Simulate A1 returning only 2 entries; validator must restore all 7., End-to-end: partial A1 → backfill → rewriter (verbatim) → validator.      All, End-to-end: partial A1 → backfill → rewriter (1 entry LLM) → validator → DOCX., Shared assertions for Varun 7-entry experience output. (+9 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.12
-Nodes (18): build_final_docx(), merge_structured_with_parsed_header(), Build a complete download-ready resume docx., Build a complete download-ready resume docx., Single authoritative experience renderer.      Dispatch:       1. ##COMPANY## ma, Single authoritative experience renderer.      Dispatch:       1. ##COMPANY##, Agent 1 `resume` dict often lacks top-level name/title/contact; parser extracts, Agent 1 `resume` dict often lacks top-level name/title/contact; parser extracts (+10 more)
+Cohesion: 0.16
+Nodes (18): test_ensure_completeness_backfills_partial_a1(), test_rewriter_skips_monolithic_when_sub_entries_exist(), Validator must append the 4 unchanged entries when A4 returns only 2., Validator must append the 4 unchanged entries when A4 returns only 2., Single-line education entries already present must not be appended again., Single-line education entries already present must not be appended again., Two roles at same company: only one targeted — both rows must appear., Two roles at same company: only one targeted — both rows must appear. (+10 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.12
-Nodes (16): _mock_llm_json(), Verify Agent 4 merges gap-analysis sub_changes with ALL sectioner SubEntries.  R, End-to-end: rewrites blob → build_final_docx lists every company., Minimal valid SectionRewrite JSON for one entry., Minimal valid SectionRewrite JSON keyed to the entry under rewrite., Flat award sections should not render duplicate entries., Flat award sections should not render duplicate entries., Two roles at same company: only one targeted — both rows must appear. (+8 more)
+Cohesion: 0.14
+Nodes (12): UpgradeModalProps, TOP_COMPANIES, TOP_ROLES_BY_GROUP, FetchJDResult, ACCEPTED_EXTENSIONS, extractDomain(), formatFetchTime(), FreshnessPill() (+4 more)
 
 ### Community 34 - "Community 34"
-Cohesion: 0.15
-Nodes (13): _build_system_prompt(), _build_weakness_injection(), _extract_missing_evidence(), _find_weakest_dimension(), Agent 5 - Recruiter Simulator.  Simulates 4 fixed recruiter personas plus 1 co, Select the 5th persona based on resume content signals.     Returns (persona_na, Identify the ATS dimension with the largest gap from its benchmark.      Retur, Return a short, concrete description of what is missing for the given dimension. (+5 more)
-
-### Community 35 - "Community 35"
-Cohesion: 0.15
-Nodes (11): GapAnalyzerAgent, Agent 3 — Gap Analyzer.      Compares structured resume data (from Agent 1) ag, Entry point for Agent 3 — supports two modes.          Args:             inpu, Backfills original_content on SectionGap and original_text on SubLocationChange, For length/readability gaps, prepend the verbatim target bullet         and a c, Backfills original_content on SectionGap and original_text on SubLocationChange, Builds a human-readable JD text string from JD analysis dict.          Used as, Looks up verbatim text from a section's sub_entry by sub_label.          Args: (+3 more)
-
-### Community 36 - "Community 36"
-Cohesion: 0.16
-Nodes (14): BaseModel, ActionableChange, ChangeLocation, DetailedEvalOutput, GapAnalyzerOutput, OverallAssessment, Pydantic schemas for Agent 3 - Gap Analyzer., A single sub-entry within a multi-entry resume section (e.g. one company in Expe (+6 more)
-
-### Community 37 - "Community 37"
 Cohesion: 0.13
 Nodes (16): Entry point. Runs all section validators and returns repaired A1 output., Entry point. Runs all section validators and returns repaired A1 output., Entry point. Runs all section validators and returns repaired A1 output., Entry point. Runs all section validators and returns repaired A1 output., Returns list of anomaly descriptions for the skills section.     Checks:     1., Returns list of anomaly descriptions for the skills section.     Checks:     1., Comma/line-separated tokens that look like skills or tools (persona-agnostic)., Returns list of anomaly descriptions for the skills section.     Checks:     1. (+8 more)
 
-### Community 38 - "Community 38"
+### Community 35 - "Community 35"
+Cohesion: 0.12
+Nodes (17): _matched_entry_indexes(), _normalize_presence_text(), Normalize text for conservative containment/presence checks., Normalize text for conservative containment/presence checks., Normalize text for conservative containment/presence checks., Normalize text for conservative containment/presence checks., Normalize text for conservative containment/presence checks., Normalize text for conservative containment/presence checks. (+9 more)
+
+### Community 36 - "Community 36"
 Cohesion: 0.15
-Nodes (11): Converts the LLM's list output into a dict keyed by canonical section name., Converts the LLM's list output into a dict keyed by canonical section name., Extracts a resume into canonical sections with verbatim text and sub-entries., Extracts a resume into canonical sections with verbatim text and sub-entries., Entry point for Agent Sectioner.          Args:             input_dict: Must, Entry point for Agent Sectioner.          Args:             input_dict: Must, Builds the user prompt with full resume text and canonical section mapping., Builds the user prompt with full resume text and canonical section mapping. (+3 more)
+Nodes (16): test_strip_unfilled_placeholders(), _build_legacy_styles(), _check_placeholder_bleed(), _count_remaining_placeholders(), RewriterValidator — post-processes A4 (Rewriter) output for ALL sections.  Val, Strip unfilled [PLACEHOLDER] tokens from all style variants., Strip unfilled [PLACEHOLDER] tokens from all style variants., Strip unfilled [PLACEHOLDER] tokens from all style variants. (+8 more)
+
+### Community 37 - "Community 37"
+Cohesion: 0.12
+Nodes (17): Skills comma-list and awards should render as list bullets., Skills comma-list and awards should render as list bullets., test_docx_skills_and_awards_render_as_list_items(), build_final_docx(), build_resume_docx(), Build a complete download-ready resume docx., Build a complete download-ready resume docx., Build a complete download-ready resume docx. (+9 more)
+
+### Community 38 - "Community 38"
+Cohesion: 0.12
+Nodes (15): Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available), Prompt when the resume has no summary — write one from scratch., Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available) (+7 more)
 
 ### Community 39 - "Community 39"
 Cohesion: 0.12
-Nodes (14): _check_invented_metrics(), Warning-only check for metrics present in rewrite but not in original., Warning-only check for metrics present in rewrite but not in original., Warning-only check for metrics present in rewrite but not in original., Warning-only check for metrics present in rewrite but not in original., Warning-only check for metrics present in rewrite but not in original., Backfill missing experience entries when marker count is below expectation., Backfill missing experience entries when marker count is below expectation. (+6 more)
+Nodes (16): _canonicalize_key(), Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map. (+8 more)
 
 ### Community 40 - "Community 40"
-Cohesion: 0.12
-Nodes (16): _extract_all_sections_from_text(), _normalize_spaced_heading(), For sections with no sub_entries structure (awards, publications, extracurricula, For sections with no sub_entries structure (awards, publications, extracurricula, For sections with no sub_entries structure (awards, publications, extracurricula, For sections with no sub_entries structure (awards, publications, extracurricula, Collapse spaced-character headings to their solid form.      Handles PDF-extra, Collapse spaced-character headings to their solid form.      Handles PDF-extract (+8 more)
+Cohesion: 0.15
+Nodes (12): Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis. (+4 more)
 
 ### Community 41 - "Community 41"
-Cohesion: 0.14
-Nodes (15): fetch_jd(), Stream analysis progress as SSE; final payload includes full result JSON., Return current job status and result for polling fallback., Accepts company name and role title.     Returns extracted JD text via LLM + we, Return current job status and result for polling fallback., Return current job status and result for polling fallback., Return current job status and result for polling fallback., Accepts company name and role title.     Returns extracted JD text via LLM + we (+7 more)
+Cohesion: 0.15
+Nodes (12): Converts the LLM's list output into a dict keyed by canonical section name., Converts the LLM's list output into a dict keyed by canonical section name., Extracts a resume into canonical sections with verbatim text and sub-entries., Extracts a resume into canonical sections with verbatim text and sub-entries., Entry point for Agent Sectioner.          Args:             input_dict: Must, Entry point for Agent Sectioner.          Args:             input_dict: Must, Builds the user prompt with full resume text and canonical section mapping., Builds the user prompt with full resume text and canonical section mapping. (+4 more)
 
 ### Community 42 - "Community 42"
-Cohesion: 0.15
-Nodes (9): ActionItem, detailFallbackMeta, detailOrder, EvaluationDashboard(), EvaluationDashboardProps, getDimensionDetails(), ScoreCardProps, useCountUp() (+1 more)
+Cohesion: 0.13
+Nodes (16): fetch_jd(), Stream analysis progress as SSE; final payload includes full result JSON., Return current job status and result for polling fallback., Accepts company name and role title.     Returns extracted JD text via LLM + we, Return current job status and result for polling fallback., Return current job status and result for polling fallback., Return current job status and result for polling fallback., Accepts company name and role title.     Returns extracted JD text via LLM + we (+8 more)
 
 ### Community 43 - "Community 43"
-Cohesion: 0.14
-Nodes (15): _matched_entry_indexes(), _normalize_presence_text(), Normalize text for conservative containment/presence checks., Normalize text for conservative containment/presence checks., Normalize text for conservative containment/presence checks., Normalize text for conservative containment/presence checks., Normalize text for conservative containment/presence checks., Normalize text for conservative containment/presence checks. (+7 more)
+Cohesion: 0.13
+Nodes (16): _block_already_present(), _dedupe_detected_blocks(), _normalize_entry_text(), Normalize entry text for duplicate and containment checks., True when a detected raw block is already represented in sub_entries., Normalize entry text for duplicate and containment checks., True when a detected raw block is already represented in sub_entries., Normalize entry text for duplicate and containment checks. (+8 more)
 
 ### Community 44 - "Community 44"
 Cohesion: 0.14
-Nodes (15): _ensure_experience_markers(), _extract_entry_ids(), Extract the identifiers used for completeness checks per section type.     For e, Extract the identifiers used for completeness checks per section type.     For e, Extract the identifiers used for completeness checks per section type.     For, Extract the identifiers used for completeness checks per section type.     For e, Extract the identifiers used for completeness checks per section type.     For e, Extract the identifiers used for completeness checks per section type.     For e (+7 more)
+Nodes (15): _coerce_section_dict(), _coerce_sections(), _empty_section(), ResumeUnderstandingValidator — post-processes A1 output.  Validates and repair, Return a SectionText-compatible dict for a canonical section., Normalize dict/Pydantic section values into plain SectionText-compatible dicts., Return a SectionText-compatible dict for a canonical section., Return a SectionText-compatible dict for a canonical section. (+7 more)
 
 ### Community 45 - "Community 45"
-Cohesion: 0.13
-Nodes (8): Exception, Dry-run validation of JDFetcherAgent with fully mocked dependencies. Run: python, run_validation(), Raised when Serper requests fail., SerperError, Validate backend constants mirror frontend selection data., Validate backend constants mirror frontend selection data., TestJDFetchData
+Cohesion: 0.12
+Nodes (15): Persona-generic sub-entry detection — synthetic resumes, no real files., test_detect_sub_entries_persona_generic(), _detect_sub_entries(), Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Detects sub-entries within a section block using type-specific patterns.     Ret, Detects sub-entries within a section block using type-specific patterns.     Ret, Detects sub-entries within a section block using type-specific patterns.     Re, Detects sub-entries within a section block using type-specific patterns.     Ret (+7 more)
 
 ### Community 46 - "Community 46"
-Cohesion: 0.13
-Nodes (15): _is_bullet_line(), Render experience section. Content can be a list of role dicts (verbatim)     or, Render experience section. Content can be a list of role dicts (verbatim)     or, Render experience section. Content can be a list of role dicts (verbatim)     or, Render a text block (summary, skills, education, etc.).     Handles both string, Render experience section. Content can be a list of role dicts (verbatim)     o, Render a text block (summary, skills, education, etc.).     Handles both string, Render a text block (summary, skills, education, etc.).     Handles both string (+7 more)
+Cohesion: 0.12
+Nodes (16): _extract_all_sections_from_text(), _normalize_spaced_heading(), For sections with no sub_entries structure (awards, publications, extracurricula, For sections with no sub_entries structure (awards, publications, extracurricula, For sections with no sub_entries structure (awards, publications, extracurricula, For sections with no sub_entries structure (awards, publications, extracurricula, Collapse spaced-character headings to their solid form.      Handles PDF-extra, Collapse spaced-character headings to their solid form.      Handles PDF-extract (+8 more)
 
 ### Community 47 - "Community 47"
 Cohesion: 0.13
-Nodes (12): Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry. (+4 more)
+Nodes (15): _dedupe_experience_marker_bodies(), _dedupe_repeated_lines(), Remove exact duplicate nonempty lines while preserving order., Remove exact duplicate nonempty lines while preserving order., Remove exact duplicate nonempty lines while preserving order., Remove exact duplicate nonempty lines while preserving order., Remove exact duplicate nonempty lines while preserving order., Remove exact duplicate nonempty lines while preserving order. (+7 more)
 
 ### Community 48 - "Community 48"
+Cohesion: 0.13
+Nodes (16): _ensure_experience_markers(), _extract_entry_ids(), Extract the identifiers used for completeness checks per section type.     For e, Extract the identifiers used for completeness checks per section type.     For e, Extract the identifiers used for completeness checks per section type.     For, Extract the identifiers used for completeness checks per section type.     For e, Extract the identifiers used for completeness checks per section type.     For e, Extract the identifiers used for completeness checks per section type.     For e (+8 more)
+
+### Community 49 - "Community 49"
+Cohesion: 0.12
+Nodes (13): Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry., Maps each sub_change to the integer index of its matching sub_entry. (+5 more)
+
+### Community 50 - "Community 50"
+Cohesion: 0.13
+Nodes (8): Exception, Dry-run validation of JDFetcherAgent with fully mocked dependencies. Run: python, run_validation(), Raised when Serper requests fail., SerperError, Validate backend constants mirror frontend selection data., Validate backend constants mirror frontend selection data., TestJDFetchData
+
+### Community 51 - "Community 51"
+Cohesion: 0.13
+Nodes (15): _is_bullet_line(), Render experience section. Content can be a list of role dicts (verbatim)     or, Render experience section. Content can be a list of role dicts (verbatim)     or, Render experience section. Content can be a list of role dicts (verbatim)     or, Render a text block (summary, skills, education, etc.).     Handles both string, Render experience section. Content can be a list of role dicts (verbatim)     o, Render a text block (summary, skills, education, etc.).     Handles both string, Render a text block (summary, skills, education, etc.).     Handles both string (+7 more)
+
+### Community 52 - "Community 52"
+Cohesion: 0.13
+Nodes (14): Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a section entry-by-entry.          INVARIANT: iterates section_text.s, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args: (+6 more)
+
+### Community 53 - "Community 53"
 Cohesion: 0.22
 Nodes (13): _decode_supabase_token(), _decode_with_jwks(), _decode_with_legacy_secret(), _fetch_jwks(), _find_jwk(), get_current_user_id(), _get_jwks(), Supabase JWT verification for FastAPI dependencies. (+5 more)
 
-### Community 49 - "Community 49"
+### Community 54 - "Community 54"
+Cohesion: 0.15
+Nodes (13): _build_weakness_injection(), _extract_missing_evidence(), _find_weakest_dimension(), Agent 5 - Recruiter Simulator.  Simulates 4 fixed recruiter personas plus 1 co, Select the 5th persona based on resume content signals.     Returns (persona_na, Select the 5th persona based on resume content signals.     Returns (persona_na, Identify the ATS dimension with the largest gap from its benchmark.      Retur, Identify the ATS dimension with the largest gap from its benchmark.      Retur (+5 more)
+
+### Community 55 - "Community 55"
 Cohesion: 0.21
 Nodes (11): apply_patches(), _persist_job(), FastAPI backend for Resume Intelligence Platform V2., Apply patches to resume text and return updated text + rescored result., Apply patches to resume text and return updated text + rescored result., Apply patches to resume text and return updated text + rescored result., Rollback one or all patches and return updated text + rescored result., Rollback one or all patches and return updated text + rescored result. (+3 more)
 
-### Community 50 - "Community 50"
-Cohesion: 0.19
-Nodes (10): TOP_COMPANIES, TOP_ROLES_BY_GROUP, FetchJDResult, ACCEPTED_EXTENSIONS, extractDomain(), formatFetchTime(), FreshnessPill(), FreshnessPillProps (+2 more)
-
-### Community 51 - "Community 51"
-Cohesion: 0.14
-Nodes (14): _dedupe_repeated_lines(), Remove exact duplicate nonempty lines while preserving order., Remove exact duplicate nonempty lines while preserving order., Remove exact duplicate nonempty lines while preserving order., Remove exact duplicate nonempty lines while preserving order., Remove exact duplicate nonempty lines while preserving order., Remove exact duplicate nonempty lines while preserving order., For flat sections (summary, skills, awards, publications, extracurriculars): (+6 more)
-
-### Community 52 - "Community 52"
+### Community 56 - "Community 56"
 Cohesion: 0.14
 Nodes (14): _detect_experience_by_date_ranges(), _is_experience_date_anchor_line(), _is_role_header_line(), True when a line is a job date-range anchor (not a long bullet with stray digits, Fallback experience entry detector using date-range lines as block anchors., True when a line is a job date-range anchor (not a long bullet with stray digits, True when a line is a job date-range anchor (not a long bullet with stray digits, True when a line is a job date-range anchor (not a long bullet with stray digits (+6 more)
 
-### Community 53 - "Community 53"
-Cohesion: 0.15
-Nodes (13): _company(), _format_paragraph_runs(), Deterministic resume builder for Gap Closer output.  Exact style match to refe, Bold company name line., Bold company name line., Italic role + gray dates., Italic role + gray dates., Bold company name line. (+5 more)
-
-### Community 54 - "Community 54"
-Cohesion: 0.14
-Nodes (13): Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a section entry-by-entry.          INVARIANT: iterates section_text.s, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args:, Rewrites a SINGLE resume sub-entry with a focused LLM call.          Args: (+5 more)
-
-### Community 55 - "Community 55"
-Cohesion: 0.14
-Nodes (13): Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Resolve a section by canonical name, then by alias map., Rewrites a section entry-by-entry.          INVARIANT: iterates section_text.s (+5 more)
-
-### Community 56 - "Community 56"
-Cohesion: 0.14
-Nodes (13): Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available), Rewrites a whole section monolithically (fallback when no sub_changes available) (+5 more)
-
 ### Community 57 - "Community 57"
-Cohesion: 0.21
-Nodes (5): BaseAgent, Return a concise exception string including root cause details., Return True for OpenAI model families that reject max_tokens., Attempt to repair JSON truncated mid-stream by the LLM.         Closes untermin, Remove a trailing `"key":` (and the comma preceding it) when there is no
+Cohesion: 0.15
+Nodes (14): _entry_verbatim_present(), True when an unchanged entry already exists in a style variant., True when an unchanged entry already exists in a style variant., True when an unchanged entry already exists in a style variant., True when an unchanged entry already exists in a style variant., True when at least one style variant has meaningful text., True when at least one style variant has meaningful text., True when at least one style variant has meaningful text. (+6 more)
 
 ### Community 58 - "Community 58"
 Cohesion: 0.15
-Nodes (13): _augment_experience_entries(), _labels_overlap(), Backfill missing experience entries from raw resume text when possible., Shared token ratio check for label matching., Backfill missing experience entries from raw resume text when possible., Backfill missing experience entries from raw resume text (see experience_audit)., Backfill missing experience entries from raw resume text (see experience_audit)., Shared token ratio check for label matching. (+5 more)
+Nodes (14): _augment_experience_entries(), _labels_overlap(), Backfill missing experience entries from raw resume text when possible., Shared token ratio check for label matching., Backfill missing experience entries from raw resume text when possible., Backfill missing experience entries from raw resume text (see experience_audit)., Backfill missing experience entries from raw resume text (see experience_audit)., Shared token ratio check for label matching. (+6 more)
 
 ### Community 59 - "Community 59"
 Cohesion: 0.15
-Nodes (13): _entry_verbatim_present(), True when an unchanged entry already exists in a style variant., True when an unchanged entry already exists in a style variant., True when an unchanged entry already exists in a style variant., True when an unchanged entry already exists in a style variant., True when at least one style variant has meaningful text., True when at least one style variant has meaningful text., True when at least one style variant has meaningful text. (+5 more)
+Nodes (13): _company(), _format_paragraph_runs(), Deterministic resume builder for Gap Closer output.  Exact style match to refe, Bold company name line., Bold company name line., Italic role + gray dates., Italic role + gray dates., Bold company name line. (+5 more)
 
 ### Community 60 - "Community 60"
-Cohesion: 0.22
-Nodes (5): JDFetchResult, Wire contract with /api/fetch-jd and the frontend. Do not rename., Tests for the FastAPI endpoint., Tests for the FastAPI endpoint., TestFetchJDEndpoint
+Cohesion: 0.14
+Nodes (13): Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``. (+5 more)
 
 ### Community 61 - "Community 61"
-Cohesion: 0.15
-Nodes (12): Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry. (+4 more)
+Cohesion: 0.14
+Nodes (13): Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry., Return true when two sub-entry labels refer to the same original entry. (+5 more)
 
 ### Community 62 - "Community 62"
-Cohesion: 0.15
-Nodes (12): Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``., Stitch sub_changes in the same order as ``section_text.sub_entries``. (+4 more)
+Cohesion: 0.18
+Nodes (10): _dedupe_resume_sections(), _dedupe_sub_entries(), Orchestrator module for Resume Intelligence Platform V2., Convert SectionText mapping to plain dictionaries., Backfill experience sub_entries from raw resume and log counts.          Must, Remove duplicate SubEntry rows (same label + first-line fingerprint)., Dedupe sub_entries for sections that use per-entry lists., Convert SectionText mapping to plain dictionaries. (+2 more)
 
 ### Community 63 - "Community 63"
-Cohesion: 0.15
-Nodes (12): _canonicalize_key(), Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis., Entry point for Agent 4 — rewrites resume sections based on gap analysis. (+4 more)
+Cohesion: 0.21
+Nodes (9): Orchestrator, Build gap_result from A1 output alone (no JD).         Delegates to _build_no_j, Build section_gaps from A1's improvement_areas and weaknesses         when no J, When has_summary=False, summary gap must have needs_change=True., Add quantified metrics to Oracle bullets' must route to experience., Add professional summary section' must route to summary., test_build_no_jd_gaps_summary_missing_is_needs_change(), test_improvement_areas_route_to_experience() (+1 more)
 
 ### Community 64 - "Community 64"
-Cohesion: 0.27
-Nodes (9): FetchJDResponse, test_tc_e_01_fetch_jd_found(), test_tc_e_02_fetch_jd_multiple(), test_tc_e_03_fetch_jd_not_found(), test_tc_e_04_fetch_jd_error_status(), test_tc_e_07_direct_url_is_passed_to_agent(), test_tc_e_08_response_matches_schema_fields(), test_tc_e_09_input_whitespace_is_stripped() (+1 more)
+Cohesion: 0.15
+Nodes (12): Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names. (+4 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.17
-Nodes (11): ExperienceRewrite, ProjectRewrite, Pydantic schemas for Agent 4 — Rewriter.  Input: original resume text, gap ana, Structured rewrite of a single project entry., Rewritten bullets for a single role., Skills grouped by category for consistent ATS keyword extraction., Complete resume rewrite for one style., All three rewrite styles for the candidate's resume sections.      gap_session (+3 more)
+Cohesion: 0.21
+Nodes (5): BaseAgent, Return a concise exception string including root cause details., Return True for OpenAI model families that reject max_tokens., Attempt to repair JSON truncated mid-stream by the LLM.         Closes untermin, Remove a trailing `"key":` (and the comma preceding it) when there is no
 
 ### Community 66 - "Community 66"
 Cohesion: 0.18
-Nodes (12): _analyze_event_stream(), ApplyPatchesRequest, _json_event(), Serialize one SSE data event., Serialize one SSE data event., Serialize one SSE data event., Apply patches request., Worker thread pushes SSE payloads; main generator yields JSON lines. (+4 more)
+Nodes (9): Agent 5 - Recruiter Simulator.      Evaluates a candidate's resume through the, Agent 5 - Recruiter Simulator.      Evaluates a candidate's resume through the, Evaluate resume through 5 recruiter personas.          Args:             inpu, Evaluate resume through 5 recruiter personas.          Args:             inpu, Formats resume as a clean labelled document for persona evaluation.         Use, Formats resume as a clean labelled document for persona evaluation.         Use, Aggregates flip_conditions from rejecting personas into a ranked fix list., Aggregates flip_conditions from rejecting personas into a ranked fix list. (+1 more)
 
 ### Community 67 - "Community 67"
-Cohesion: 0.17
-Nodes (12): _dedupe_entries(), Remove duplicate section sub_entries while preserving first occurrence., Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Remove duplicate section sub_entries while preserving first occurrence., Remove duplicate section sub_entries while preserving first occurrence., Remove duplicate section sub_entries while preserving first occurrence., Remove duplicate section sub_entries while preserving first occurrence., Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count (+4 more)
+Cohesion: 0.21
+Nodes (10): JDIntelligenceAgent, Agent 2: Job Description Analyst.      Extracts hiring intent and skill requir, Analyze a job description and extract hiring intent.          Args:, HiddenSignal, JDIntelligenceInput, JDIntelligenceOutput, Pydantic schemas for Agent 2 — JD Intelligence.  Input: raw job description te, A single implicit signal extracted from JD language. (+2 more)
 
 ### Community 68 - "Community 68"
-Cohesion: 0.17
-Nodes (12): _detect_experience_by_role_headers(), Detect experience entry boundaries by role-title header lines.     Used when dat, Detect experience entry boundaries by role-title header lines.     Used when dat, Detect experience entry boundaries by role-title header lines.     Used when da, Detect experience entry boundaries by role-title header lines.     Used when dat, Detect experience entry boundaries by role-title header lines.     Used when dat, Returns (repaired_full_text, anomalies).     Checks:     1. full_text non-empty, Returns (repaired_full_text, anomalies).     Checks:     1. full_text non-empty (+4 more)
+Cohesion: 0.22
+Nodes (5): JDFetchResult, Wire contract with /api/fetch-jd and the frontend. Do not rename., Tests for the FastAPI endpoint., Tests for the FastAPI endpoint., TestFetchJDEndpoint
+
+### Community 69 - "Community 69"
+Cohesion: 0.15
+Nodes (13): _dedupe_entries(), Remove duplicate section sub_entries while preserving first occurrence., Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Remove duplicate section sub_entries while preserving first occurrence., Remove duplicate section sub_entries while preserving first occurrence., Remove duplicate section sub_entries while preserving first occurrence., Remove duplicate section sub_entries while preserving first occurrence., Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count (+5 more)
 
 ### Community 70 - "Community 70"
-Cohesion: 0.17
-Nodes (11): Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names., Map sectioner/raw section keys to canonical section names. (+3 more)
+Cohesion: 0.15
+Nodes (13): Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      Run, Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      R, Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      Run, Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      Run, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      Run, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count (+5 more)
 
 ### Community 71 - "Community 71"
 Cohesion: 0.17
-Nodes (11): Compute one section rewrite from one section gap., Compute one section rewrite from one section gap., Compute one section rewrite from one section gap., Compute one section rewrite from one section gap., Compute one section rewrite from one section gap.         Returns: (section_rew, Compute one section rewrite from one section gap., Compute one section rewrite from one section gap.         Returns: (section_rew, Compute one section rewrite from one section gap.         Returns: (section_rew (+3 more)
+Nodes (13): collapse_rewrites_to_canonical(), Max character count across style variants (for merge tie-break)., Max character count across style variants (for merge tie-break)., Collapse aliased rewrite keys (e.g. 'projects & side work') into canonical keys., Collapse aliased rewrite keys (e.g. 'projects & side work') into canonical keys., Max character count across style variants (for merge tie-break)., Max character count across style variants (for merge tie-break)., Collapse aliased rewrite keys (e.g. 'projects & side work') into canonical keys. (+5 more)
 
 ### Community 72 - "Community 72"
-Cohesion: 0.17
-Nodes (11): Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a section entry-by-entry.          INVARIANT: iterates section_text.s, Rewrites a section entry-by-entry.          INVARIANT: iterates section_text.s, Rewrites a section entry-by-entry.          INVARIANT: iterates section_text.s (+3 more)
+Cohesion: 0.15
+Nodes (12): Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a section entry-by-entry using sub_changes from the gap analysis., Rewrites a section entry-by-entry.          INVARIANT: iterates section_text.s, Rewrites a section entry-by-entry.          INVARIANT: iterates section_text.s, Rewrites a section entry-by-entry.          INVARIANT: iterates section_text.s (+4 more)
 
 ### Community 73 - "Community 73"
-Cohesion: 0.22
-Nodes (6): Agent 5 - Recruiter Simulator.      Evaluates a candidate's resume through the, Initialize Agent 5 with claude-haiku-4-5-20251001, 6000 max tokens, Anthropic pr, RecruiterSimulatorAgent, RewriterAgent, BaseAgent, test_experience_with_sub_entries_uses_per_entry_path()
+Cohesion: 0.15
+Nodes (12): Compute one section rewrite from one section gap., Compute one section rewrite from one section gap., Compute one section rewrite from one section gap., Compute one section rewrite from one section gap., Compute one section rewrite from one section gap.         Returns: (section_rew, Compute one section rewrite from one section gap., Compute one section rewrite from one section gap.         Returns: (section_rew, Compute one section rewrite from one section gap.         Returns: (section_rew (+4 more)
 
 ### Community 74 - "Community 74"
-Cohesion: 0.27
-Nodes (10): _ensure_users_dir(), load_session(), Memory layer – per‑user JSON store.  Stores session history, tracks runs, and ke, Return a fresh session scaffold for the given user_id., Load the JSON session file for *user_id*.      Returns an empty scaffold if the, Persist *session_data* for *user_id*.      Args:         user_id: Identifier for, Append *run_result* to the user's session history.      Maintains a maximum of 5, save_session() (+2 more)
-
-### Community 75 - "Community 75"
-Cohesion: 0.18
-Nodes (10): Base URL, Endpoints, GET /api/download/{docx_id}, GET /api/history, GET /api/result/{job_id}, GET /api/stream/{job_id}, POST /api/analyze, POST /api/gap-close (+2 more)
+Cohesion: 0.17
+Nodes (11): ExperienceRewrite, ProjectRewrite, Pydantic schemas for Agent 4 — Rewriter.  Input: original resume text, gap ana, Structured rewrite of a single project entry., Rewritten bullets for a single role., Skills grouped by category for consistent ATS keyword extraction., Complete resume rewrite for one style., All three rewrite styles for the candidate's resume sections.      gap_session (+3 more)
 
 ### Community 76 - "Community 76"
+Cohesion: 0.17
+Nodes (12): _detect_experience_by_role_headers(), Detect experience entry boundaries by role-title header lines.     Used when dat, Detect experience entry boundaries by role-title header lines.     Used when dat, Detect experience entry boundaries by role-title header lines.     Used when da, Detect experience entry boundaries by role-title header lines.     Used when dat, Detect experience entry boundaries by role-title header lines.     Used when dat, Returns (repaired_full_text, anomalies).     Checks:     1. full_text non-empty, Returns (repaired_full_text, anomalies).     Checks:     1. full_text non-empty (+4 more)
+
+### Community 77 - "Community 77"
+Cohesion: 0.17
+Nodes (11): _check_invented_metrics(), Warning-only check for metrics present in rewrite but not in original., Warning-only check for metrics present in rewrite but not in original., Warning-only check for metrics present in rewrite but not in original., Warning-only check for metrics present in rewrite but not in original., Warning-only check for metrics present in rewrite but not in original., Warning-only check for metrics present in rewrite but not in original., Backfill missing experience entries when marker count is below expectation. (+3 more)
+
+### Community 78 - "Community 78"
+Cohesion: 0.18
+Nodes (11): If A1 has only 3 entries, validator should backfill from raw resume text., If A1 has only 3 entries, validator should backfill from raw resume text., test_validator_backfills_experience_from_resume_text(), Validates and repairs A4 (Rewriter) output for ALL canonical sections.      Chec, Validates and repairs A4 (Rewriter) output for ALL canonical sections.      Chec, Validates and repairs A4 (Rewriter) output for ALL canonical sections.      Ch, Validates and repairs A4 (Rewriter) output for ALL canonical sections.      Chec, Validates and repairs A4 (Rewriter) output for ALL canonical sections.      Ch (+3 more)
+
+### Community 79 - "Community 79"
+Cohesion: 0.25
+Nodes (10): count_experience_markers(), count_sub_entries(), _ensure_experience_markers(), log_experience_audit(), Experience section audit — counts entries at each pipeline stage and backfills f, Rebuild all three style variants from sub_entries when marker count is low., Log experience entry counts at a pipeline stage. Returns summary dict for tests., Count ##COMPANY##…##END_HEADER## blocks in rewrite output. (+2 more)
+
+### Community 80 - "Community 80"
+Cohesion: 0.18
+Nodes (10): _mock_llm_json(), Verify Agent 4 merges gap-analysis sub_changes with ALL sectioner SubEntries.  R, End-to-end: rewrites blob → build_final_docx lists every company., Minimal valid SectionRewrite JSON for one entry., Minimal valid SectionRewrite JSON keyed to the entry under rewrite., Flat award sections should not render duplicate entries., Flat award sections should not render duplicate entries., End-to-end: rewrites blob → build_final_docx lists every company. (+2 more)
+
+### Community 81 - "Community 81"
+Cohesion: 0.18
+Nodes (5): ABC, BaseAgent - Abstract base class for all AI agents in the Resume Intelligence Pla, GapAnalyzerAgent - Agent 3 of the Resume Intelligence Platform.  Compares stru, JDIntelligenceAgent - Agent 2 of the Resume Intelligence Platform.  Analyzes a, ResumeUnderstandingAgent - Agent 1 of the Resume Intelligence Platform.  Analy
+
+### Community 82 - "Community 82"
 Cohesion: 0.18
 Nodes (3): _agent_with_mocks(), Tests for prompt construction., TestJDFetcherBuildPrompt
 
-### Community 77 - "Community 77"
-Cohesion: 0.18
-Nodes (11): _build_content_from_sub_entries(), _fallback_from_sub_entries(), Build section content string exclusively from sub_entries.     Falls back to fu, Rebuild section content from sub_entries only (no full_text)., Build section content string exclusively from sub_entries.     Falls back to fu, Rebuild section content from sub_entries only (no full_text)., Rebuild section content from sub_entries only (no full_text)., Build section content string exclusively from sub_entries.     Falls back to fu (+3 more)
-
-### Community 78 - "Community 78"
-Cohesion: 0.2
-Nodes (5): ABC, BaseAgent - Abstract base class for all AI agents in the Resume Intelligence Pla, GapAnalyzerAgent - Agent 3 of the Resume Intelligence Platform.  Compares stru, JDIntelligenceAgent - Agent 2 of the Resume Intelligence Platform.  Analyzes a, ResumeUnderstandingAgent - Agent 1 of the Resume Intelligence Platform.  Analy
-
-### Community 79 - "Community 79"
-Cohesion: 0.2
-Nodes (9): Simple verification test for RewriterAgent improvements.  This test verifies the, Test that __init__ sets the correct model, max_tokens, and provider., Test that the system prompt includes explicit length requirements., Test that the user message includes explicit length instructions., Test that _validate_rewrite_depth method exists and checks content depth., test_content_depth_validation(), test_init_parameters(), test_system_prompt_length_requirements() (+1 more)
-
-### Community 80 - "Community 80"
-Cohesion: 0.2
-Nodes (9): Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args: (+1 more)
-
-### Community 81 - "Community 81"
-Cohesion: 0.22
-Nodes (9): GapCloseRequest, health(), Explicit health endpoint for Railway and uptime probes., Explicit health endpoint for Railway and uptime probes., Explicit health endpoint for Railway and uptime probes., Explicit health endpoint for Railway and uptime probes., Gap close request payload., Gap close request payload. (+1 more)
-
-### Community 82 - "Community 82"
-Cohesion: 0.22
-Nodes (9): download(), Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job. (+1 more)
-
 ### Community 83 - "Community 83"
-Cohesion: 0.22
-Nodes (9): Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events. (+1 more)
+Cohesion: 0.27
+Nodes (10): _ensure_users_dir(), load_session(), Memory layer – per‑user JSON store.  Stores session history, tracks runs, and ke, Return a fresh session scaffold for the given user_id., Load the JSON session file for *user_id*.      Returns an empty scaffold if the, Persist *session_data* for *user_id*.      Args:         user_id: Identifier for, Append *run_result* to the user's session history.      Maintains a maximum of 5, save_session() (+2 more)
 
 ### Community 84 - "Community 84"
-Cohesion: 0.22
-Nodes (9): 6. CARD SYSTEM, Alert / Warning Cards, code:block6 (background: #ffffff), code:block7 (background: #ffffff), code:block8 (background: #ffffff), code:block9 (Left border accent: 4px solid [color]), Feature / Info Cards, Main Container Card (+1 more)
+Cohesion: 0.18
+Nodes (10): Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args:, Entry point. Repairs and returns corrected rewriter output.          Args: (+2 more)
 
 ### Community 85 - "Community 85"
-Cohesion: 0.22
-Nodes (9): 9. FORM ELEMENTS, code:block16 (border: 1.5px solid #e5e7eb), code:block17 (border: 2px dashed #d1d5db (default)), code:block18 (display: flex, alignItems: flex-start, gap: 10px), code:block19 (display: flex, alignItems: center, gap: 8px), Drop Zone, Hint Bar, Privacy / Info Box (+1 more)
+Cohesion: 0.18
+Nodes (10): Base URL, Endpoints, GET /api/download/{docx_id}, GET /api/history, GET /api/result/{job_id}, GET /api/stream/{job_id}, POST /api/analyze, POST /api/gap-close (+2 more)
 
 ### Community 86 - "Community 86"
-Cohesion: 0.22
-Nodes (8): Persona-generic sub-entry detection — synthetic resumes, no real files., test_detect_sub_entries_persona_generic(), _detect_sub_entries(), Detects sub-entries within a section block using type-specific patterns.     Ret, Detects sub-entries within a section block using type-specific patterns.     Ret, Detects sub-entries within a section block using type-specific patterns.     Re, Detects sub-entries within a section block using type-specific patterns.     Ret, Detects sub-entries within a section block using type-specific patterns.     Ret
+Cohesion: 0.18
+Nodes (11): merge_structured_with_parsed_header(), Single authoritative experience renderer.      Dispatch:       1. ##COMPANY## ma, Single authoritative experience renderer.      Dispatch:       1. ##COMPANY##, Agent 1 `resume` dict often lacks top-level name/title/contact; parser extracts, Agent 1 `resume` dict often lacks top-level name/title/contact; parser extracts, Single authoritative experience renderer.      Dispatch:       1. ##COMPANY## ma, Single authoritative experience renderer.      Dispatch:       1. ##COMPANY## ma, Agent 1 `resume` dict often lacks top-level name/title/contact; parser extracts (+3 more)
 
 ### Community 87 - "Community 87"
 Cohesion: 0.22
-Nodes (9): Simulate A1 returning only 2 entries; validator must restore all 7., test_varun_a1_validator_restores_all_seven_entries(), Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      Run, Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      R, Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      Run, Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      Run, Validates and repairs A1 (ResumeUnderstanding) output for ALL sections.      Run, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count (+1 more)
+Nodes (10): _analyze_event_stream(), _json_event(), Serialize one SSE data event., Serialize one SSE data event., Serialize one SSE data event., Worker thread pushes SSE payloads; main generator yields JSON lines., Worker thread pushes SSE payloads; main generator yields JSON lines., Worker thread pushes SSE payloads; main generator yields JSON lines. (+2 more)
 
 ### Community 88 - "Community 88"
+Cohesion: 0.2
+Nodes (9): Simple verification test for RewriterAgent improvements.  This test verifies the, Test that __init__ sets the correct model, max_tokens, and provider., Test that the system prompt includes explicit length requirements., Test that the user message includes explicit length instructions., Test that _validate_rewrite_depth method exists and checks content depth., test_content_depth_validation(), test_init_parameters(), test_system_prompt_length_requirements() (+1 more)
+
+### Community 89 - "Community 89"
+Cohesion: 0.22
+Nodes (9): download(), Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job., Download a generated resume docx for a completed job. (+1 more)
+
+### Community 90 - "Community 90"
+Cohesion: 0.22
+Nodes (9): Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events., Stream job progress as Server-Sent Events. (+1 more)
+
+### Community 91 - "Community 91"
 Cohesion: 0.22
 Nodes (9): _is_pdf_fragment(), _normalize_experience_section_text(), Normalize PDF-extracted experience text before block detection.      - Splits ``, Returns True when `line` is a PDF soft-wrap fragment that belongs     to the en, Returns True when `line` is a PDF soft-wrap fragment that belongs     to the end, Returns True when `line` is a PDF soft-wrap fragment that belongs     to the end, Normalize PDF-extracted experience text before block detection.      Pass 0 —, Normalize PDF-extracted experience text before block detection.      - Splits `` (+1 more)
 
-### Community 89 - "Community 89"
+### Community 92 - "Community 92"
 Cohesion: 0.31
 Nodes (8): _add_paragraph(), _build_corrupted_varun_docx(), _company_in_label(), corrupted_docx_path(), Regression: corrupted Varun-style DOCX (split bullets, missing date lines).  A, Match company tokens after parser camelCase spacing (e.g. SmartVizX → Smart Viz, Build a DOCX that mirrors structural corruption:      - List Bullet vs Normal, test_corrupted_docx_parser_and_validator()
 
-### Community 90 - "Community 90"
-Cohesion: 0.25
-Nodes (7): PersonaVerdict, Pydantic schemas for Agent 5 — Recruiter Simulator.  Input: resume text and/or, Shortlist decision and reasoning from a single recruiter persona.      each pe, Input contract for Agent 5., Aggregate recruiter simulation across all 10 personas.      shortlist_rate is, RecruiterSimInput, RecruiterSimOutput
-
-### Community 91 - "Community 91"
-Cohesion: 0.25
-Nodes (8): gap_close(), Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites.
-
-### Community 92 - "Community 92"
-Cohesion: 0.25
-Nodes (8): analyze(), Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON.
-
 ### Community 93 - "Community 93"
-Cohesion: 0.25
-Nodes (5): classify_patch(), PatchEngine — deterministic patch applicator with rollback and audit trail.  No, Rescore using existing deterministic ats_scorer. Zero LLM calls., Classify patch as SAFE or NEEDS_CONFIRMATION. Never calls LLM., rescore()
+Cohesion: 0.22
+Nodes (9): _company_key_from_label(), _labels_overlap(), True if two label strings share enough tokens to be the same entry., Detects sub-entries within a section block using type-specific patterns.     Ret, True if two label strings share enough tokens to be the same entry., True if two label strings share enough tokens to be the same entry., True if two label strings share enough tokens to be the same entry., Extract a company-identifying key from an experience header label. (+1 more)
 
 ### Community 94 - "Community 94"
-Cohesion: 0.25
-Nodes (8): Admin/dev endpoint: reset user's monthly upload counter. Useful for testing., Accepts company name and role title.     Returns extracted JD text via LLM + we, Admin/dev endpoint: reset user's monthly upload counter. Useful for testing., Admin/dev endpoint: reset user's monthly upload counter. Useful for testing., Admin/dev endpoint: reset user's monthly upload counter. Useful for testing., Admin/dev endpoint: reset user's monthly upload counter. Useful for testing., Admin/dev endpoint: reset user's monthly upload counter. Useful for testing., reset_limit()
+Cohesion: 0.22
+Nodes (9): Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines. (+1 more)
 
 ### Community 95 - "Community 95"
-Cohesion: 0.25
-Nodes (3): ErrorBoundary, ErrorBoundaryProps, ErrorBoundaryState
+Cohesion: 0.22
+Nodes (9): 9. FORM ELEMENTS, code:block16 (border: 1.5px solid #e5e7eb), code:block17 (border: 2px dashed #d1d5db (default)), code:block18 (display: flex, alignItems: flex-start, gap: 10px), code:block19 (display: flex, alignItems: center, gap: 8px), Drop Zone, Hint Bar, Privacy / Info Box (+1 more)
 
 ### Community 96 - "Community 96"
-Cohesion: 0.29
-Nodes (7): _build_legacy_styles(), _dedupe_experience_marker_bodies(), RewriterValidator — post-processes A4 (Rewriter) output for ALL sections.  Val, Dedupe repeated lines inside each experience marker block., Dedupe repeated lines inside each experience marker block., Dedupe repeated lines inside each experience marker block., _split_bullets()
+Cohesion: 0.22
+Nodes (9): 6. CARD SYSTEM, Alert / Warning Cards, code:block6 (background: #ffffff), code:block7 (background: #ffffff), code:block8 (background: #ffffff), code:block9 (Left border accent: 4px solid [color]), Feature / Info Cards, Main Container Card (+1 more)
 
 ### Community 97 - "Community 97"
 Cohesion: 0.25
-Nodes (8): Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., Split a section into nonempty blocks, falling back to lines., _split_nonempty_blocks()
+Nodes (3): E2E smoke test for JD Auto-Fetch. Run manually: pytest backend/tests/test_jd_fet, Live API tests — only run when API keys are available., TestJDFetcherE2E
 
 ### Community 98 - "Community 98"
 Cohesion: 0.25
-Nodes (3): E2E smoke test for JD Auto-Fetch. Run manually: pytest backend/tests/test_jd_fet, Live API tests — only run when API keys are available., TestJDFetcherE2E
+Nodes (5): classify_patch(), PatchEngine — deterministic patch applicator with rollback and audit trail.  No, Rescore using existing deterministic ats_scorer. Zero LLM calls., Classify patch as SAFE or NEEDS_CONFIRMATION. Never calls LLM., rescore()
 
 ### Community 99 - "Community 99"
-Cohesion: 0.57
-Nodes (6): get_company_tier_from_score(), get_positioning_statement(), _load_bands(), _percentile_label(), _rank_rationale(), Career positioning engine — NO LLM. Pure Python + static JSON.
+Cohesion: 0.25
+Nodes (8): analyze(), Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON., Stream analysis progress as SSE; final payload includes full result JSON.
 
 ### Community 100 - "Community 100"
+Cohesion: 0.25
+Nodes (8): gap_close(), Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites., Run gap-close rewrite for an existing job and cache rewrites.
+
+### Community 101 - "Community 101"
+Cohesion: 0.25
+Nodes (3): ErrorBoundary, ErrorBoundaryProps, ErrorBoundaryState
+
+### Community 102 - "Community 102"
+Cohesion: 0.25
+Nodes (8): For flat sections (summary, skills, awards, publications, extracurriculars):, For flat sections (summary, skills, awards, publications, extracurriculars):, For flat sections (summary, skills, awards, publications, extracurriculars):, For flat sections (summary, skills, awards, publications, extracurriculars):, For flat sections (summary, skills, awards, publications, extracurriculars):, For flat sections (summary, skills, awards, publications, extracurriculars):, For flat sections (summary, skills, awards, publications, extracurriculars):, _repair_flat_section()
+
+### Community 103 - "Community 103"
+Cohesion: 0.25
+Nodes (8): _get_rewrite_variants(), Return rewrite variants for a canonical section, including aliased keys., Return rewrite variants for a canonical section, including aliased keys., Collapse aliased rewrite keys (e.g. 'projects & side work') into canonical keys., Return rewrite variants for a canonical section, including aliased keys., Return rewrite variants for a canonical section, including aliased keys., Return rewrite variants for a canonical section, including aliased keys., Return rewrite variants for a canonical section, including aliased keys.
+
+### Community 104 - "Community 104"
 Cohesion: 0.43
 Nodes (6): get_percentile(), _interpolate_percentile(), load_benchmarks(), _percentile_label(), Loads percentile benchmarks from data/benchmarks.json.      Returns:          di, Converts ATS score to percentile rank using benchmarks.      Parameters:
 
-### Community 101 - "Community 101"
-Cohesion: 0.29
-Nodes (7): 7. BUTTON SYSTEM (3D effect — apply everywhere), code:block10 (background: file ? '#6366f1' : '#f3f4f6'), code:block11 (background: #6366f1, color: #ffffff), code:block12 (fontSize: 13px, fontWeight: 700, color: #6366f1), Primary Button (full width, e.g. Analyze Resume), Secondary Button (e.g. TopBar Download Report), Tertiary / Ghost (e.g. Change file link)
-
-### Community 102 - "Community 102"
-Cohesion: 0.29
-Nodes (7): 8. PILL / BADGE SYSTEM, code:block13 (display: flex, alignItems: center, gap: 8px), code:block14 (display: inline-flex, alignItems: center, gap: 7px), code:block15 (borderRadius: 999px, padding: 4px 12px), Demo Mode Badge, Feature Pills (top of page), Status Badge (success/error/warning)
-
-### Community 103 - "Community 103"
-Cohesion: 0.29
-Nodes (7): Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries cou, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, _validate_projects_section()
-
-### Community 104 - "Community 104"
-Cohesion: 0.29
-Nodes (7): Returns anomaly descriptions for summary section.     Checks:     1. full_text n, Returns anomaly descriptions for summary section.     Checks:     1. full_text n, Returns anomaly descriptions for summary section.     Checks:     1. full_text n, Returns anomaly descriptions for summary section.     Checks:     1. full_text, Returns anomaly descriptions for summary section.     Checks:     1. full_text n, Returns anomaly descriptions for summary section.     Checks:     1. full_text n, _validate_summary_section()
-
 ### Community 105 - "Community 105"
-Cohesion: 0.29
-Nodes (7): Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries cou, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, Returns (repaired_section_data, anomalies).     Checks:     1. sub_entries count, _validate_education_section()
+Cohesion: 0.57
+Nodes (6): get_company_tier_from_score(), get_positioning_statement(), _load_bands(), _percentile_label(), _rank_rationale(), Career positioning engine — NO LLM. Pure Python + static JSON.
 
 ### Community 106 - "Community 106"
 Cohesion: 0.29
-Nodes (7): _detect_title(), Extract title from contact line if present., Extract title from contact line if present., Extract title from contact line if present., Extract title from contact line if present., Extract title from contact line if present., Extract title from contact line if present.
+Nodes (5): Regression tests for rewriter/parser/validator bugfixes., test_experience_never_monolithic_without_sub_entries(), test_experience_with_sub_entries_uses_per_entry_path(), test_parse_docx_skips_duplicate_bullet_normal(), test_placeholder_fallback_to_balanced()
 
 ### Community 107 - "Community 107"
 Cohesion: 0.29
-Nodes (7): _is_unavailable_content(), Detect internal placeholder strings that should not be rendered., Detect internal placeholder strings that should not be rendered., Detect internal placeholder strings that should not be rendered., Detect internal placeholder strings that should not be rendered., Detect internal placeholder strings that should not be rendered., Detect internal placeholder strings that should not be rendered.
+Nodes (7): Returns anomaly descriptions for summary section.     Checks:     1. full_text n, Returns anomaly descriptions for summary section.     Checks:     1. full_text n, Returns anomaly descriptions for summary section.     Checks:     1. full_text n, Returns anomaly descriptions for summary section.     Checks:     1. full_text, Returns anomaly descriptions for summary section.     Checks:     1. full_text n, Returns anomaly descriptions for summary section.     Checks:     1. full_text n, _validate_summary_section()
 
 ### Community 108 - "Community 108"
 Cohesion: 0.29
-Nodes (7): build_resume_docx(), Alias for build_final_docx (kept for backward compatibility)., Alias for build_final_docx (kept for backward compatibility)., Alias for build_final_docx (kept for backward compatibility)., Alias for build_final_docx (kept for backward compatibility)., Alias for build_final_docx (kept for backward compatibility)., Alias for build_final_docx (kept for backward compatibility).
+Nodes (7): 8. PILL / BADGE SYSTEM, code:block13 (display: flex, alignItems: center, gap: 8px), code:block14 (display: inline-flex, alignItems: center, gap: 7px), code:block15 (borderRadius: 999px, padding: 4px 12px), Demo Mode Badge, Feature Pills (top of page), Status Badge (success/error/warning)
 
 ### Community 109 - "Community 109"
-Cohesion: 0.33
-Nodes (4): Rollback patches request., RollbackRequest, AlternativeRole, FetchJDRequest
+Cohesion: 0.29
+Nodes (7): 7. BUTTON SYSTEM (3D effect — apply everywhere), code:block10 (background: file ? '#6366f1' : '#f3f4f6'), code:block11 (background: #6366f1, color: #ffffff), code:block12 (fontSize: 13px, fontWeight: 700, color: #6366f1), Primary Button (full width, e.g. Analyze Resume), Secondary Button (e.g. TopBar Download Report), Tertiary / Ghost (e.g. Change file link)
 
 ### Community 110 - "Community 110"
-Cohesion: 0.4
-Nodes (5): extract_fingerprint(), Style fingerprint extractor.  Analyzes a user's session history and produces a s, Truncate *text* to *limit* characters without cutting in the middle of a word., Return a concise style fingerprint.      The fingerprint is a single sentence of, _truncate()
+Cohesion: 0.29
+Nodes (7): _detect_title(), Extract title from contact line if present., Extract title from contact line if present., Extract title from contact line if present., Extract title from contact line if present., Extract title from contact line if present., Extract title from contact line if present.
 
 ### Community 111 - "Community 111"
-Cohesion: 0.33
-Nodes (5): code:js (export default defineConfig([), code:js (// eslint.config.js), Expanding the ESLint configuration, React Compiler, React + TypeScript + Vite
+Cohesion: 0.29
+Nodes (7): _is_unavailable_content(), Detect internal placeholder strings that should not be rendered., Detect internal placeholder strings that should not be rendered., Detect internal placeholder strings that should not be rendered., Detect internal placeholder strings that should not be rendered., Detect internal placeholder strings that should not be rendered., Detect internal placeholder strings that should not be rendered.
 
 ### Community 112 - "Community 112"
 Cohesion: 0.4
-Nodes (5): _get_allowed_origins(), Resolve CORS origins from environment with safe localhost defaults., Resolve CORS origins from environment with safe localhost defaults., Resolve CORS origins from environment with safe localhost defaults., Resolve CORS origins from environment with safe localhost defaults.
+Nodes (5): extract_fingerprint(), Style fingerprint extractor.  Analyzes a user's session history and produces a s, Truncate *text* to *limit* characters without cutting in the middle of a word., Return a concise style fingerprint.      The fingerprint is a single sentence of, _truncate()
 
 ### Community 113 - "Community 113"
+Cohesion: 0.33
+Nodes (5): code:js (export default defineConfig([), code:js (// eslint.config.js), Expanding the ESLint configuration, React Compiler, React + TypeScript + Vite
+
+### Community 114 - "Community 114"
+Cohesion: 0.4
+Nodes (4): Merge A1 and Sectioner sections; keep richer section payload., Merge A1 and Sectioner sections; keep richer section payload., Merge A1 and Sectioner sections; keep richer section payload., Merge A1 and Sectioner sections; keep richer section payload.
+
+### Community 115 - "Community 115"
+Cohesion: 0.4
+Nodes (4): Extract resume sections available directly in A1 output., Extract resume sections available directly in A1 output., Extract resume sections available directly in A1 output., Extract resume sections available directly in A1 output.
+
+### Community 116 - "Community 116"
 Cohesion: 0.4
 Nodes (5): Basic root endpoint for platform health checks., Basic root endpoint for platform health checks., Basic root endpoint for platform health checks., Basic root endpoint for platform health checks., root()
 
-### Community 114 - "Community 114"
+### Community 117 - "Community 117"
+Cohesion: 0.4
+Nodes (5): _get_allowed_origins(), Resolve CORS origins from environment with safe localhost defaults., Resolve CORS origins from environment with safe localhost defaults., Resolve CORS origins from environment with safe localhost defaults., Resolve CORS origins from environment with safe localhost defaults.
+
+### Community 118 - "Community 118"
+Cohesion: 0.4
+Nodes (5): health(), Explicit health endpoint for Railway and uptime probes., Explicit health endpoint for Railway and uptime probes., Explicit health endpoint for Railway and uptime probes., Explicit health endpoint for Railway and uptime probes.
+
+### Community 119 - "Community 119"
 Cohesion: 0.5
 Nodes (3): check(), Test script to verify ISSUE 1 and ISSUE 2 fixes for Gap Closer.  ISSUE 1: Verify, Helper to track pass/fail.
 
-### Community 116 - "Community 116"
+### Community 121 - "Community 121"
 Cohesion: 0.5
 Nodes (3): check(), Test script to verify ISSUE 1 and ISSUE 2 fixes for Gap Closer.  ISSUE 1: Verify, Helper to track pass/fail.
 
 ## Knowledge Gaps
-- **959 isolated node(s):** `Interactive gap-closing helper.  This module is purely terminal-interface and do`, `Insert a horizontal line using an XML border.      The function mutates the last`, `Run the interactive gap-closing session.      Parameters     ----------     gap_`, `Open an editor for the user to modify the provided text.      Parameters     ---`, `Create a comprehensive r-sum- document with gap analysis metadata.      The stru` (+954 more)
+- **1038 isolated node(s):** `Interactive gap-closing helper.  This module is purely terminal-interface and do`, `Insert a horizontal line using an XML border.      The function mutates the last`, `Run the interactive gap-closing session.      Parameters     ----------     gap_`, `Open an editor for the user to modify the provided text.      Parameters     ---`, `Create a comprehensive r-sum- document with gap analysis metadata.      The stru` (+1033 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **290 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **293 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `downloadResumeReport()` connect `Community 13` to `Community 1`, `Community 42`, `Community 7`?**
-  _High betweenness centrality (0.076) - this node is a cross-community bridge._
-- **Why does `SectionText` connect `Community 6` to `Community 33`, `Community 35`, `Community 3`, `Community 36`, `Community 38`, `Community 73`, `Community 11`, `Community 20`, `Community 21`, `Community 22`, `Community 55`, `Community 58`, `Community 63`?**
-  _High betweenness centrality (0.049) - this node is a cross-community bridge._
-- **Why does `RewriterAgent` connect `Community 73` to `Community 33`, `Community 70`, `Community 71`, `Community 72`, `Community 6`, `Community 11`, `Community 47`, `Community 79`, `Community 30`, `Community 21`, `Community 54`, `Community 55`, `Community 56`, `Community 57`, `Community 61`, `Community 62`, `Community 63`?**
-  _High betweenness centrality (0.046) - this node is a cross-community bridge._
-- **Are the 51 inferred relationships involving `str` (e.g. with `_original()` and `_export_to_docx()`) actually correct?**
-  _`str` has 51 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 31 inferred relationships involving `SectionText` (e.g. with `Orchestrator` and `GapAnalyzerAgent`) actually correct?**
-  _`SectionText` has 31 INFERRED edges - model-reasoned connections that need verification._
+- **Why does `downloadResumeReport()` connect `Community 16` to `Community 2`, `Community 4`, `Community 5`?**
+  _High betweenness centrality (0.077) - this node is a cross-community bridge._
+- **Why does `JDFetcherAgent` connect `Community 2` to `Community 97`, `Community 68`, `Community 42`, `Community 75`, `Community 13`, `Community 50`, `Community 82`, `Community 25`, `Community 26`?**
+  _High betweenness centrality (0.057) - this node is a cross-community bridge._
+- **Why does `SectionText` connect `Community 32` to `Community 6`, `Community 10`, `Community 11`, `Community 12`, `Community 17`, `Community 21`, `Community 30`, `Community 31`, `Community 39`, `Community 40`, `Community 41`, `Community 58`, `Community 62`, `Community 63`, `Community 78`, `Community 80`, `Community 106`, `Community 114`, `Community 115`, `Community 125`?**
+  _High betweenness centrality (0.052) - this node is a cross-community bridge._
+- **Are the 56 inferred relationships involving `str` (e.g. with `_original()` and `_export_to_docx()`) actually correct?**
+  _`str` has 56 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 27 inferred relationships involving `Orchestrator` (e.g. with `GapAnalyzerAgent` and `JDIntelligenceAgent`) actually correct?**
+  _`Orchestrator` has 27 INFERRED edges - model-reasoned connections that need verification._
+- **Are the 33 inferred relationships involving `SectionText` (e.g. with `Orchestrator` and `GapAnalyzerAgent`) actually correct?**
+  _`SectionText` has 33 INFERRED edges - model-reasoned connections that need verification._
 - **Are the 18 inferred relationships involving `JDFetcherAgent` (e.g. with `GapCloseRequest` and `ApplyPatchesRequest`) actually correct?**
   _`JDFetcherAgent` has 18 INFERRED edges - model-reasoned connections that need verification._
-- **Are the 13 inferred relationships involving `RewriterAgent` (e.g. with `Orchestrator` and `BaseAgent`) actually correct?**
-  _`RewriterAgent` has 13 INFERRED edges - model-reasoned connections that need verification._

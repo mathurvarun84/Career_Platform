@@ -1270,4 +1270,9 @@ class ResumeUnderstandingValidator:
         else:
             logging.info("ResumeUnderstandingValidator: all checks passed (0 anomalies)")
 
+        if not output.get("role_family"):
+            from backend.few_shot_prompts import detect_role_family
+
+            output["role_family"] = detect_role_family(resume_text)
+
         return output

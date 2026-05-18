@@ -20,6 +20,11 @@ from typing import Dict, List, Optional
 
 from .base_agent import BaseAgent
 from backend.schemas.common import Seniority, ResumeSection
+from backend.few_shot_prompts import (
+    VALID_ROLE_FAMILIES,
+    build_few_shot_block,
+    detect_role_family,
+)
 from backend.schemas.agent1_schema import (
     ResumeUnderstandingInput,
     ResumeUnderstandingOutput,
@@ -70,6 +75,8 @@ class ResumeUnderstandingAgent(BaseAgent):
         inp = ResumeUnderstandingInput(**input_dict)
 
         resume_text = inp.resume_text
+        job_title = str(input_dict.get("job_title") or input_dict.get("role_title") or "")
+        detected_role = detect_role_family(resume_text, job_title)
         # Cap very large resumes to leave room for the system prompt and JSON response.
         max_chars = 500000
         if len(resume_text) > max_chars:
@@ -77,8 +84,9 @@ class ResumeUnderstandingAgent(BaseAgent):
 
         # System prompt defines the expected JSON schema explicitly
         system_prompt = (
-            "You are a resume parser and health evaluator specialized in Indian software engineering resumes. You receive raw resume text and must extract structured information and seniority-specific health signals. "
-            " You have deep expertise in Indian resume norms, tech industry expectations, and seniority signals across junior/mid/senior/staff levels."
+            "You are a resume parser and health evaluator for Indian professional resumes. "
+            "You receive raw resume text and must extract structured information and seniority-specific health signals. "
+            "You have deep expertise in Indian resume norms and seniority signals across junior/mid/senior/staff levels."
             " Extract structured data and return ONLY valid JSON with these exact keys:\n\n"
             "- experience_years (int): total professional experience in years, excluding internships\n"
             "- seniority (string): infer from BOTH title AND years — "
@@ -103,7 +111,10 @@ class ResumeUnderstandingAgent(BaseAgent):
             "  Staff level → add system scale (QPS, users, SLA) and business outcome (₹ impact)\"\n"
             "- improvement_areas (list[str]): top 5 actionable fixes even without a JD\n"
             "- keyword_density_verdict (str: \"low\"|\"medium\"|\"high\")\n"
-            "- formatting_signals (list[str]): formatting issues inferred from text (e.g. \"no summary section\", \"bullets missing\")\n\n"
+            "- formatting_signals (list[str]): formatting issues inferred from text (e.g. \"no summary section\", \"bullets missing\")\n"
+            "- role_family (string): exactly one of "
+            "ENGINEERING, PRODUCT, MARKETING, DATA_ANALYST, HR, FINANCE, DESIGN — "
+            "infer from job titles and domain vocabulary in the resume\n\n"
             # Seniority health signals
             "- expected_signals (list of objects, 5-7 items): seniority-aware signals for this candidate's level. "
             "  Each signal has: { signal (str), present (bool), location (str), inline_fix (str) }.\n"
@@ -136,10 +147,17 @@ class ResumeUnderstandingAgent(BaseAgent):
             "  Only include sections that exist. Omit missing section keys entirely.\n"
             "No extra keys. No markdown fences. No explanations."
         )
+        system_prompt += build_few_shot_block(detected_role, num_examples=2)
 
         # Call LLM and parse JSON response
         raw_response = self._call_llm(system_prompt, resume_text)
         parsed_output = self._parse_json(raw_response)
+
+        llm_role = str(parsed_output.get("role_family") or "").upper()
+        if llm_role not in VALID_ROLE_FAMILIES:
+            parsed_output["role_family"] = detected_role
+        else:
+            parsed_output["role_family"] = llm_role
         
         # Validate and structure the data using pydantic model
         # Pydantic v2 will coerce strings to enums (e.g., "senior" → Seniority.SENIOR)

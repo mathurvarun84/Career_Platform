@@ -90,6 +90,14 @@ export interface SectionRewrite {
 export interface ResumeUnderstanding {
   experience_years: number;
   seniority: "junior" | "mid" | "senior" | "staff";
+  role_family?:
+    | "ENGINEERING"
+    | "PRODUCT"
+    | "MARKETING"
+    | "DATA_ANALYST"
+    | "HR"
+    | "FINANCE"
+    | "DESIGN";
   tech_stack: string[];
   domains: string[];
   has_metrics: boolean;

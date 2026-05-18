@@ -71,6 +71,7 @@ export const MOCK_ANALYSIS_RESULT: AnalysisResult = {
   resume: {
     experience_years: 5,
     seniority: "mid",
+    role_family: "ENGINEERING",
     tech_stack: [
       "React",
       "TypeScript",

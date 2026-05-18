@@ -461,6 +461,13 @@ class Orchestrator:
                     )
                     resume_und = fut_resume.result()
                     jd_intel = fut_jd.result()
+                if jd_intel:
+                    from backend.few_shot_prompts import detect_role_family
+
+                    resume_und["role_family"] = detect_role_family(
+                        resume_text,
+                        str(jd_intel.get("role_title") or ""),
+                    )
             else:
                 resume_und = self.resume_understanding.run({
                     "resume_text": resume_text,
@@ -618,6 +625,7 @@ class Orchestrator:
                         "resume_sections": resume_sections,
                         "jd_intelligence": jd_intel or {},
                         "ats_result": ats_result,
+                        "role_family": resume_und.get("role_family", "ENGINEERING"),
                     },
                 )
 

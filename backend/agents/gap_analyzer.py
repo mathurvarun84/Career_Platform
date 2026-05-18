@@ -22,6 +22,7 @@ from backend.schemas.agent3_schema import (
     SectionGap,
     SubLocationChange,
 )
+from backend.few_shot_prompts import build_role_gap_addendum
 from backend.schemas.common import SectionText
 
 # Canonical sections every analysis must cover
@@ -197,13 +198,6 @@ class GapAnalyzerAgent(BaseAgent):
         """
         mode = input_dict.get("mode", "gap_closer")
 
-        if mode == "evaluate":
-            system_prompt = EVAL_SYSTEM_PROMPT
-            output_model = DetailedEvalOutput
-        else:
-            system_prompt = GAP_SYSTEM_PROMPT
-            output_model = GapAnalyzerOutput
-
         inp = GapAnalyzerInput(**input_dict)
         resume_sections_raw = input_dict.get("resume_sections", {})
         resume_sections: Dict[str, SectionText] = {
@@ -213,6 +207,19 @@ class GapAnalyzerAgent(BaseAgent):
 
         jd_analysis = inp.jd_analysis or inp.jd_intelligence
         resume_analysis = inp.resume_analysis or inp.resume_understanding
+
+        role_family = str(
+            input_dict.get("role_family")
+            or (resume_analysis or {}).get("role_family")
+            or "ENGINEERING"
+        ).upper()
+
+        if mode == "evaluate":
+            system_prompt = EVAL_SYSTEM_PROMPT + build_role_gap_addendum(role_family)
+            output_model = DetailedEvalOutput
+        else:
+            system_prompt = GAP_SYSTEM_PROMPT + build_role_gap_addendum(role_family)
+            output_model = GapAnalyzerOutput
 
         user_message = (
             f"Resume understanding:\n{json.dumps(resume_analysis, indent=2)}\n\n"
