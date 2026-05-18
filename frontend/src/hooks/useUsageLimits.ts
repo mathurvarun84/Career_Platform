@@ -27,7 +27,7 @@ export function useUsageLimits() {
 
         const { data, error: err } = await supabase
           .from("usage_limits")
-          .select("total_uploads, uploads_this_month, last_reset_date")
+          .select("total_uploads, uploads_this_month, last_month_reset_at")
           .eq("user_id", userId)
           .single();
 
@@ -41,7 +41,7 @@ export function useUsageLimits() {
           setLimits({
             total_uploads: data.total_uploads ?? 0,
             uploads_this_month: data.uploads_this_month ?? 0,
-            last_reset_date: data.last_reset_date,
+            last_reset_date: data.last_month_reset_at,
           });
         } else {
           setLimits({ total_uploads: 0, uploads_this_month: 0 });

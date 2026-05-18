@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from backend.auth import get_current_user_id
 from backend.agents.jd_fetcher import JDFetcherAgent
 from backend.db import get_db
-from backend.limit_checker import check_upload_limit, reset_user_limit
+from backend.limit_checker import check_upload_limit, get_upload_usage, reset_user_limit
 from backend.persistence import save_analysis
 from engine.resume_builder import build_final_docx
 from validator.rewriter_validator import assert_structural_completeness
@@ -178,6 +178,42 @@ def _analyze_event_stream(
                 "error": None,
                 "resume_text": "",
             }
+            q.put(
+                {
+                    "action": "yield",
+                    "data": {"event": "started", "job_id": job_id},
+                }
+            )
+
+            try:
+                db = get_db()
+                check_upload_limit(db, user_id)
+            except HTTPException as exc:
+                detail_payload = (
+                    exc.detail
+                    if isinstance(exc.detail, dict)
+                    else {"message": str(exc.detail)}
+                )
+                job_store[job_id]["status"] = "error"
+                job_store[job_id]["error"] = detail_payload.get(
+                    "message", "Upload limit reached"
+                )
+                q.put(
+                    {
+                        "action": "yield",
+                        "data": {
+                            "event": "error",
+                            "message": detail_payload.get(
+                                "message", "Upload limit reached"
+                            ),
+                            "status": exc.status_code,
+                            "detail": detail_payload,
+                        },
+                    }
+                )
+                q.put({"action": "stop"})
+                return
+
             resume_text = parse_resume(temp_path)
             job_store[job_id]["resume_text"] = resume_text
 
@@ -200,23 +236,6 @@ def _analyze_event_stream(
                     },
                 }
             )
-
-            try:
-                db = get_db()
-                check_upload_limit(db, user_id)
-            except HTTPException as exc:
-                q.put(
-                    {
-                        "action": "yield",
-                        "data": {
-                            "event": "error",
-                            "message": exc.detail if isinstance(exc.detail, str) else str(exc.detail),
-                            "status": exc.status_code,
-                        },
-                    }
-                )
-                q.put({"action": "stop"})
-                return
 
             cache_key = f"{resume_hash}:{jd_hash or 'none'}"
             cached_stage_data = stage_cache.get(cache_key)
@@ -322,6 +341,13 @@ def _analyze_event_stream(
             yield _json_event(item["data"])
         elif item["action"] == "stop":
             break
+
+
+@app.get("/api/usage-limit")
+def usage_limit(user_id: str = Depends(get_current_user_id)) -> dict:
+    """Lightweight pre-check before starting a paid analysis pipeline."""
+    db = get_db()
+    return get_upload_usage(db, user_id)
 
 
 @app.post("/api/analyze")

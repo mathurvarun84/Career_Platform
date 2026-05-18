@@ -155,6 +155,8 @@ def test_tc_e_08_response_matches_schema_fields():
         "status",
         "jd_text",
         "source_url",
+        "fetched_at",
+        "is_cached",
         "company",
         "role",
         "alternatives",

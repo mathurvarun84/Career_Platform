@@ -5,6 +5,7 @@ Orchestrator module for Resume Intelligence Platform V2.
 from __future__ import annotations
 
 import logging
+import re
 import tempfile
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
@@ -18,12 +19,63 @@ from backend.agents.sectioner_agent import SectionerAgent
 from backend.agents.rewriter import RewriterAgent
 from engine.ats_scorer import score_resume
 from engine.percentile import get_percentile
-from validators import ResumeUnderstandingValidator, RewriterValidator
+from validators import ResumeUnderstandingValidator
 from validator.rewriter_validator import assert_structural_completeness
 from validator.experience_audit import (
     ensure_experience_completeness,
     log_experience_audit,
 )
+
+
+def _dedupe_sub_entries(section_text) -> Any:
+    """Remove duplicate SubEntry rows (same label + first-line fingerprint)."""
+    from backend.schemas.common import SectionText, SubEntry
+
+    if not section_text or not getattr(section_text, "sub_entries", None):
+        return section_text
+
+    seen: set[str] = set()
+    deduped: list = []
+    for entry in section_text.sub_entries:
+        verbatim_key = re.sub(
+            r"\s+", " ", entry.verbatim_text
+        ).lower().strip()[:300]
+        first_line = ""
+        if entry.verbatim_text.strip():
+            first_line = entry.verbatim_text.strip().splitlines()[0]
+        label_key = re.sub(
+            r"\s+", " ", f"{entry.label}|{first_line}"
+        ).lower().strip()
+        key = verbatim_key if verbatim_key else label_key
+        if key in seen:
+            logging.warning(
+                "Orchestrator: duplicate sub_entry removed: '%s'",
+                entry.label[:60],
+            )
+            continue
+        seen.add(key)
+        deduped.append(entry)
+
+    if len(deduped) == len(section_text.sub_entries):
+        return section_text
+
+    return SectionText(
+        header=section_text.header,
+        full_text=section_text.full_text,
+        sub_entries=deduped,
+    )
+
+
+def _dedupe_resume_sections(resume_sections: Dict[str, Any]) -> Dict[str, Any]:
+    """Dedupe sub_entries for sections that use per-entry lists."""
+    for key in list(resume_sections.keys()):
+        canon = str(key).lower().strip()
+        if canon not in ("experience", "education", "certifications", "projects"):
+            continue
+        val = resume_sections[key]
+        if val is not None:
+            resume_sections[key] = _dedupe_sub_entries(val)
+    return resume_sections
 
 
 class Orchestrator:
@@ -105,15 +157,17 @@ class Orchestrator:
 
         augmented = ensure_experience_completeness(exp, resume_text)
         if augmented is not None:
-            resume_sections["experience"] = augmented
+            resume_sections["experience"] = _dedupe_sub_entries(augmented)
             if resume_und is not None:
                 rs = resume_und.setdefault("resume_sections", {})
                 if isinstance(rs, dict):
                     rs["experience"] = (
-                        augmented.model_dump()
-                        if hasattr(augmented, "model_dump")
-                        else augmented
+                        resume_sections["experience"].model_dump()
+                        if hasattr(resume_sections["experience"], "model_dump")
+                        else resume_sections["experience"]
                     )
+
+        resume_sections = _dedupe_resume_sections(resume_sections)
 
         log_experience_audit(
             "orchestrator_pre_rewrite",
@@ -230,6 +284,20 @@ class Orchestrator:
 
             resume_und = ResumeUnderstandingValidator().validate_and_fix(resume_und, resume_text)
             resume_sections = self._extract_a1_sections(resume_und)
+            # Harden resume_sections: backfill any empty sections from deterministic parser.
+            from parser import _extract_section_blocks
+            from backend.schemas.common import SectionText
+
+            det_blocks = _extract_section_blocks(resume_text)
+            for sec_name, sec_text in det_blocks.items():
+                existing = resume_sections.get(sec_name)
+                existing_text = (existing.full_text if hasattr(existing, "full_text") else "") if existing else ""
+                if sec_text.strip() and (not existing or not str(existing_text).strip()):
+                    resume_sections[sec_name] = SectionText(
+                        header=sec_name,
+                        full_text=sec_text.strip(),
+                        sub_entries=[],
+                    )
             resume_sections = self._sync_experience_sections(
                 resume_sections, resume_text, resume_und
             )
@@ -368,13 +436,24 @@ class Orchestrator:
             if fut_rewrite:
                 try:
                     rewrites = fut_rewrite.result()
+                    if progress_cb: progress_cb({"step":3,"label":"Resume rewritten successfully","pct":90})
                     patches_raw = (rewrites or {}).get("patches", [])
                     if rewrites:
-                        rewrites = RewriterValidator().validate_and_fix(
-                            rewrites,
-                            self._dump_sections(resume_sections),
-                            resume_text,
-                        )
+                        try:
+                            from validator.rewriter_validator import RewriterValidator
+
+                            validator = RewriterValidator()
+                            rewrites = validator.validate_and_fix(
+                                rewriter_output=rewrites,
+                                resume_sections=resume_sections,
+                                resume_text=resume_text,
+                            )
+                            if progress_cb: progress_cb({"step":3,"label":"Rewrite validated","pct":95})
+                        except Exception as exc:
+                            logging.warning(
+                                "RewriterValidator failed: %s. Using raw rewriter output.",
+                                exc,
+                            )
                         log_experience_audit(
                             "post_rewriter_validator",
                             resume_text,
@@ -391,7 +470,6 @@ class Orchestrator:
                                 "rewrites: %s. Docx will be incomplete.",
                                 missing_sections,
                             )
-                    if progress_cb: progress_cb({"step":3,"label":"Resume rewritten successfully","pct":95})
                 except Exception as exc:
                     logging.warning("Rewriter failed: %s. Using gap-based fallback.", exc)
                     rewrites = self._build_gap_fallback_rewrites(gap_result)

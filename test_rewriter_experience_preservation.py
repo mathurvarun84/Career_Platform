@@ -6,6 +6,8 @@ Regression: fuzzy processed_labels dropped unchanged experience rows from DOCX o
 
 from __future__ import annotations
 
+import json
+import re
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -16,12 +18,25 @@ from backend.schemas.common import SectionText, SubEntry
 from validator.rewriter_validator import RewriterValidator
 
 
-def _mock_llm_json(*_args, **_kwargs) -> str:
-    """Minimal valid SectionRewrite JSON for one entry."""
-    return (
-        '{"balanced":"MockCo\\nRole\\n- Did things","aggressive":"MockCo\\nRole\\n- Did more",'
-        '"top_1_percent":"MockCo\\nRole\\n- Peak"}'
-    )
+def _mock_llm_json(_sys: str, user: str, **_kwargs) -> str:
+    """Minimal valid SectionRewrite JSON keyed to the entry under rewrite."""
+    company = "MockCo"
+    m = re.search(r"ENTRY TO REWRITE:\n([^\n]+)", user)
+    if m:
+        company = m.group(1).strip()
+    body = f"{company}\\nRole\\n- Did things"
+    return json.dumps({
+        "balanced": body,
+        "aggressive": f"{company}\\nRole\\n- Did more",
+        "top_1_percent": f"{company}\\nRole\\n- Peak",
+        "patch": {
+            "op": "replace_text",
+            "original_text": "",
+            "replacement_text": body,
+            "issue_detected": "test",
+            "fix_rationale": "test",
+        },
+    })
 
 
 def test_ordered_merge_preserves_all_entries_when_labels_overlap() -> None:

@@ -197,7 +197,7 @@ def _build_corrupted_varun_docx(path: Path) -> None:
     _add_paragraph(doc, "C E R T I F I C A T I O N S", "Normal")
     _add_paragraph(
         doc,
-        "IISc (Indian Institute of Science) | Agentic AI for Engineers and Managers",
+        "IISc (Indian Institute of Science) | Agentic AI for Engineers and Managers | Sep 2024",
         "Normal",
     )
     _add_paragraph(doc, "Google | Oct 2024", "Normal")

@@ -79,7 +79,7 @@ export default function UpgradeModal({ uploadsThisMonth, limit, onClose }: Upgra
             Monthly limit reached
           </div>
           <div style={{ fontSize: "14px", color: "#6b7280", lineHeight: 1.6 }}>
-            You've used all {limit} free analyses this month. Upgrade to continue using RIP.
+            You've used all {limit} free analyses this month. Upgrade to continue using Career Platform.
           </div>
         </div>
 

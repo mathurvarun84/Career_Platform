@@ -110,6 +110,12 @@ function AppShell() {
     ]
   );
 
+  const handleAnalysisCancelled = useCallback((): void => {
+    setStreamInputs(null);
+    setIsLoading(false);
+    setIsAnalyzing(false);
+  }, [setIsLoading, setIsAnalyzing]);
+
   const showDashboard = Boolean(
     analysisResult !== null && isFullAnalysisReady
   );
@@ -227,6 +233,7 @@ function AppShell() {
             resumeFile={streamInputs.file}
             jdText={streamInputs.jdText}
             onComplete={handleAnalysisComplete}
+            onLimitDismiss={handleAnalysisCancelled}
           />
         </div>
         {isAuthModalOpen ? (

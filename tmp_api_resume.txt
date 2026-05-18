@@ -1,0 +1,52 @@
+Varun Kumar
+Engineering Manager
+varun@example.com | +91 9000000000 | Bengaluru, India | linkedin.com/in/varun
+
+SUMMARY
+Engineering manager with 12+ years of experience building distributed systems and leading teams.
+
+SKILLS
+Python, FastAPI, React, PostgreSQL, Redis, AWS, Docker, Kafka
+
+EXPERIENCE
+Flipkart
+Engineering Manager | Sep 2020 - Present
+Bengaluru, India
+- Led 5 teams and improved checkout success by 12%.
+- Reduced p95 latency by 28% across core APIs.
+
+SmartVizX
+Senior Software Engineer | Jan 2018 - Aug 2020
+Bengaluru, India
+- Built rendering services used by 2M+ monthly sessions.
+
+Apttus
+Software Engineer | Jun 2015 - Dec 2017
+Pune, India
+- Delivered pricing engine enhancements for enterprise clients.
+
+ClearTax
+Software Engineer | Jul 2014 - May 2015
+Bengaluru, India
+- Developed tax filing workflow modules.
+
+British Telecom
+Software Engineer | Jan 2013 - Jun 2014
+Gurugram, India
+- Improved observability and incident MTTR by 20%.
+
+Microsoft
+Support Engineer | Jan 2012 - Dec 2012
+Hyderabad, India
+- Automated support diagnostics for enterprise workloads.
+
+Mindtree
+Associate Engineer | Jul 2010 - Dec 2011
+Bengaluru, India
+- Built internal tools for deployment and QA workflows.
+
+EDUCATION
+B.E. Computer Science, VTU, 2010
+
+CERTIFICATIONS
+AWS Certified Solutions Architect Associate, 2021

@@ -1,7 +1,13 @@
 import type { CSSProperties, ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ANALYZE_TIMEOUT_MS, normalizeAnalysisResult } from "../../api/analyze";
+import {
+  ANALYZE_TIMEOUT_MS,
+  extractLimitReached,
+  normalizeAnalysisResult,
+  parseHttpLimitResponse,
+  throwIfSseErrorPayload,
+} from "../../api/analyze";
 import UpgradeModal from "../auth/UpgradeModal";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../store/authStore";
@@ -65,7 +71,7 @@ const INSIGHTS = [
 ] as const;
 
 const TIP_COPY =
-  "RIP scores four dimensions separately—keyword coverage is only one part of what lands interviews.";
+  "Career Platform scores four dimensions separately—keyword coverage is only one part of what lands interviews.";
 
 /** Supabase `AuthError`-shaped object without importing the full type graph here. */
 interface AuthLikeError {
@@ -179,6 +185,8 @@ export interface AnalysisProgressProps {
   resumeFile: File;
   jdText: string;
   onComplete: (result: AnalysisResult) => void;
+  /** Called when user dismisses the monthly-limit modal (e.g. Maybe later). */
+  onLimitDismiss?: () => void;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -232,11 +240,41 @@ function badgeLabel(kind: InsightBadge): string {
   return "Pending";
 }
 
+async function pollAnalysisResult(
+  jobId: string,
+  bearer: string
+): Promise<AnalysisResult | null> {
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    const resp = await fetch(`${API_BASE_URL}/api/result/${jobId}`, {
+      headers: { Authorization: `Bearer ${bearer}` },
+    });
+    if (!resp.ok) {
+      return null;
+    }
+    const envelope = (await resp.json()) as {
+      status?: string;
+      result?: unknown;
+      error?: string | null;
+    };
+    if (envelope.status === "complete" && envelope.result) {
+      return normalizeAnalysisResult(envelope.result);
+    }
+    if (envelope.status === "error") {
+      return null;
+    }
+    await new Promise((resolve) => {
+      window.setTimeout(resolve, 1500);
+    });
+  }
+  return null;
+}
+
 function parseAndDispatchSseBuffer(
   buffer: string,
-  onLine: (obj: Record<string, unknown>) => void
+  onLine: (obj: Record<string, unknown>) => void,
+  flush = false
 ): string {
-  let rest = buffer;
+  let rest = flush && buffer.trim() ? `${buffer}\n\n` : buffer;
   let sep: number;
   while ((sep = rest.indexOf("\n\n")) >= 0) {
     const block = rest.slice(0, sep);
@@ -250,20 +288,23 @@ function parseAndDispatchSseBuffer(
       if (!jsonStr) {
         continue;
       }
+      let parsed: Record<string, unknown>;
       try {
-        onLine(JSON.parse(jsonStr) as Record<string, unknown>);
+        parsed = JSON.parse(jsonStr) as Record<string, unknown>;
       } catch {
-        /* ignore malformed chunk */
+        continue;
       }
+      onLine(parsed);
     }
   }
-  return rest;
+  return flush ? "" : rest;
 }
 
 export default function AnalysisProgress({
   resumeFile,
   jdText,
   onComplete,
+  onLimitDismiss,
 }: AnalysisProgressProps): ReactElement {
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   const [barPct, setBarPct] = useState(0);
@@ -273,6 +314,7 @@ export default function AnalysisProgress({
   const [runKey, setRunKey] = useState(0);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [upgradeData, setUpgradeData] = useState<{ uploadsThisMonth: number; limit: number } | null>(null);
+  const [limitBlocked, setLimitBlocked] = useState(false);
 
   const onCompleteRef = useRef(onComplete);
   const completedRef = useRef(completedSteps);
@@ -331,6 +373,8 @@ export default function AnalysisProgress({
       formData.append("run_sim", "true");
 
       let gotFinalPacket = false;
+      let limitReached = false;
+      let trackedJobId: string | null = null;
 
       try {
         const bearer = await resolveAccessTokenForAnalyze();
@@ -346,12 +390,58 @@ export default function AnalysisProgress({
 
         if (!response.ok || !response.body) {
           const text = await response.text();
+          const limitErr = parseHttpLimitResponse(response.status, text);
+          if (limitErr) {
+            throw limitErr;
+          }
           throw new Error(text || `Server returned ${response.status}`);
         }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+
+        const dispatchPayload = (payload: Record<string, unknown>): void => {
+          if (aborted) {
+            return;
+          }
+          const ev = payload.event;
+          if (ev === "started" && typeof payload.job_id === "string") {
+            trackedJobId = payload.job_id;
+          }
+          if (ev === "heartbeat") {
+            resetStreamTimeout();
+            return;
+          }
+          if (ev === "step_complete" && typeof payload.step === "number") {
+            const s = payload.step as number;
+            if (s === 3) {
+              setAwaitingFinalPacket(true);
+            }
+            applyStepComplete(s);
+          }
+          if (ev === "analysis_complete" && payload.result) {
+            const all = new Set([0, 1, 2, 3]);
+            setCompletedSteps(all);
+            setBarPct(100);
+            setAnalysisFinal(true);
+            setAwaitingFinalPacket(false);
+            gotFinalPacket = true;
+            const raw = payload.result as unknown;
+            if (
+              raw &&
+              typeof raw === "object" &&
+              "job_id" in raw &&
+              typeof (raw as { job_id?: unknown }).job_id === "string"
+            ) {
+              trackedJobId = (raw as { job_id: string }).job_id;
+            }
+            onCompleteRef.current(normalizeAnalysisResult(raw));
+          }
+          if (ev === "error") {
+            throwIfSseErrorPayload(payload);
+          }
+        };
 
         while (!aborted) {
           const { done, value } = await reader.read();
@@ -360,42 +450,33 @@ export default function AnalysisProgress({
           }
           resetStreamTimeout();
           buffer += decoder.decode(value, { stream: true });
-          buffer = parseAndDispatchSseBuffer(buffer, (payload) => {
-            if (aborted) {
-              return;
-            }
-            const ev = payload.event;
-            if (ev === "step_complete" && typeof payload.step === "number") {
-              const s = payload.step as number;
-              if (s === 3) {
-                setAwaitingFinalPacket(true);
-              }
-              applyStepComplete(s);
-            }
-            if (ev === "analysis_complete" && payload.result) {
-              const all = new Set([0, 1, 2, 3]);
-              setCompletedSteps(all);
-              setBarPct(100);
-              setAnalysisFinal(true);
-              setAwaitingFinalPacket(false);
-              gotFinalPacket = true;
-              const raw = payload.result as unknown;
-              onCompleteRef.current(normalizeAnalysisResult(raw));
-            }
-            if (ev === "error") {
-              throw new Error(
-                typeof payload.message === "string"
-                  ? payload.message
-                  : "Analysis failed on server."
-              );
-            }
-          });
+          buffer = parseAndDispatchSseBuffer(buffer, dispatchPayload);
+        }
+
+        if (!gotFinalPacket && buffer.trim()) {
+          parseAndDispatchSseBuffer(buffer, dispatchPayload, true);
+        }
+
+        // Stream closed early — poll persisted job if the worker finished server-side.
+        if (!aborted && !gotFinalPacket && trackedJobId) {
+          const polled = await pollAnalysisResult(trackedJobId, bearer);
+          if (polled) {
+            const all = new Set([0, 1, 2, 3]);
+            setCompletedSteps(all);
+            setBarPct(100);
+            setAnalysisFinal(true);
+            setAwaitingFinalPacket(false);
+            gotFinalPacket = true;
+            onCompleteRef.current(polled);
+          }
         }
 
         // If the server stream ended without sending the final packet, avoid
         // leaving the user on a "spinning" UI with no next action.
-        if (!aborted && !gotFinalPacket) {
-          setErrorMessage("Stream ended before analysis completed. Try again.");
+        if (!aborted && !gotFinalPacket && !limitReached) {
+          setErrorMessage(
+            "We couldn't finish loading your results. Please try again."
+          );
         }
       } catch (err) {
         if (aborted) {
@@ -403,22 +484,29 @@ export default function AnalysisProgress({
         }
 
         if (err instanceof DOMException && err.name === "AbortError") {
-          const sec = Math.round(ANALYZE_TIMEOUT_MS / 1000);
           setErrorMessage(
-            `Analysis timed out (${sec}s without progress). The pipeline may still be running — try again or increase VITE_ANALYZE_TIMEOUT_MS.`
+            "Analysis took too long and was stopped. Please try again."
           );
           return;
         }
 
-        const isUpgradeError = err instanceof Error && (err as Error & { status?: number }).status === 402;
+        const isUpgradeError =
+          err instanceof Error && (err as Error & { status?: number }).status === 402;
         if (isUpgradeError) {
+          limitReached = true;
+          setLimitBlocked(true);
           const errWithDetail = err as Error & { detail?: Record<string, unknown> };
           const detail = errWithDetail.detail || {};
+          const fromDetail = extractLimitReached({ event: "error", status: 402, detail });
           setUpgradeData({
-            uploadsThisMonth: (detail.uploads_this_month as number) || 1,
-            limit: (detail.limit as number) || 2,
+            uploadsThisMonth:
+              fromDetail?.uploadsThisMonth ??
+              (detail.uploads_this_month as number) ??
+              2,
+            limit: fromDetail?.limit ?? (detail.limit as number) ?? 2,
           });
           setUpgradeModalOpen(true);
+          return;
         } else {
           const msg =
             err instanceof Error ? err.message : "Unable to complete analysis.";
@@ -845,7 +933,12 @@ export default function AnalysisProgress({
         <UpgradeModal
           uploadsThisMonth={upgradeData.uploadsThisMonth}
           limit={upgradeData.limit}
-          onClose={() => setUpgradeModalOpen(false)}
+          onClose={() => {
+            setUpgradeModalOpen(false);
+            if (limitBlocked) {
+              onLimitDismiss?.();
+            }
+          }}
         />
       )}
     </div>

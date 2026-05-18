@@ -20,17 +20,27 @@ BACKEND_DIR = REPO_ROOT / "backend"
 sys.path.insert(0, str(REPO_ROOT))
 sys.path.insert(0, str(BACKEND_DIR))
 
+from backend.agents import jd_fetcher as jf
 from backend.agents.jd_fetcher import JDFetcherAgent, JDFetchResult
-from backend.services.serper_client import SearchResult, SerperError
 
 
 def _agent_with_mocks() -> JDFetcherAgent:
-    with patch.object(JDFetcherAgent, "__init__", lambda self: None):
-        agent = JDFetcherAgent.__new__(JDFetcherAgent)
-    agent.model = "gpt-4.1-mini"
-    agent.serper = MagicMock()
-    agent.openai_client = MagicMock()
+    with patch.dict(
+        os.environ,
+        {"ANTHROPIC_API_KEY": "test-anthropic-key", "SERPER_API_KEY": "test-serper-key"},
+    ):
+        agent = JDFetcherAgent()
+    agent.anthropic = MagicMock()
     return agent
+
+
+def _haiku_message(text: str) -> MagicMock:
+    block = MagicMock()
+    block.type = "text"
+    block.text = text
+    msg = MagicMock()
+    msg.content = [block]
+    return msg
 
 
 def _load_main_module():
@@ -57,242 +67,155 @@ def _load_main_module():
     return module
 
 
-class TestJDFetcherParse:
-    """Tests for parse logic."""
+class TestParseHaikuJson:
+    """Tests for Haiku JSON parsing helpers."""
 
-    def setup_method(self):
-        self.agent = _agent_with_mocks()
-
-    def _make_message(self, text: str):
-        block = MagicMock()
-        block.type = "text"
-        block.text = text
-        msg = MagicMock()
-        msg.content = [block]
-        return msg
-
-    def test_parse_found_status(self):
+    def test_parse_found_payload(self):
         payload = json.dumps({
             "status": "found",
-            "jd_text": "We are looking for a Software Engineer...",
-            "source_url": "https://careers.google.com/jobs/123",
-            "alternatives": None,
+            "employer": "Google India",
+            "jd_text": "We are looking for a Software Engineer with Python experience.",
         })
-        result = self.agent._parse(self._make_message(payload), "Google India", "SDE")
-        assert result.status == "found"
-        assert "Software Engineer" in result.jd_text
-        assert result.source_url == "https://careers.google.com/jobs/123"
-        assert result.company == "Google India"
-        assert result.role == "SDE"
-
-    def test_parse_not_found_status(self):
-        payload = json.dumps({
-            "status": "not_found",
-            "jd_text": None,
-            "source_url": None,
-            "alternatives": None,
-        })
-        result = self.agent._parse(self._make_message(payload), "BYJU'S", "Data Scientist")
-        assert result.status == "not_found"
-        assert result.jd_text is None
-        assert result.company == "BYJU'S"
-
-    def test_parse_multiple_status(self):
-        payload = json.dumps({
-            "status": "multiple",
-            "jd_text": None,
-            "source_url": None,
-            "alternatives": [
-                {"title": "SDE-1", "level": "0-2 years", "url": "https://flipkart.com/jobs/1"},
-                {"title": "SDE-2", "level": "3-6 years", "url": "https://flipkart.com/jobs/2"},
-            ],
-        })
-        result = self.agent._parse(self._make_message(payload), "Flipkart", "Software Engineer")
-        assert result.status == "multiple"
-        assert len(result.alternatives) == 2
-        assert result.alternatives[0]["title"] == "SDE-1"
-        assert result.alternatives[1]["level"] == "3-6 years"
+        parsed = JDFetcherAgent._parse_haiku_json(payload)
+        assert parsed is not None
+        assert parsed["status"] == "found"
+        assert "Software Engineer" in parsed["jd_text"]
 
     def test_parse_strips_markdown_fences(self):
-        inner = json.dumps({"status": "found", "jd_text": "Some JD text here", "source_url": None})
-        wrapped = f"```json\n{inner}\n```"
-        result = self.agent._parse(self._make_message(wrapped), "TCS", "Backend Developer")
-        assert result.status == "found"
-        assert result.jd_text == "Some JD text here"
+        inner = json.dumps({"status": "found", "employer": "TCS", "jd_text": "Some JD text here"})
+        parsed = JDFetcherAgent._parse_haiku_json(f"```json\n{inner}\n```")
+        assert parsed is not None
+        assert parsed["jd_text"] == "Some JD text here"
 
-    def test_parse_strips_plain_fences(self):
-        inner = json.dumps({"status": "not_found", "jd_text": None, "source_url": None})
-        wrapped = f"```\n{inner}\n```"
-        result = self.agent._parse(self._make_message(wrapped), "Infosys", "QA Engineer")
-        assert result.status == "not_found"
-
-    def test_parse_fallback_long_non_json(self):
-        long_text = "We are seeking a talented engineer. " * 20
-        result = self.agent._parse(self._make_message(long_text), "Amazon India", "SDE")
-        assert result.status == "found"
-        assert result.jd_text == long_text
-        assert result.error_message is not None
-
-    def test_parse_error_on_short_non_json(self):
-        result = self.agent._parse(self._make_message("Something went wrong"), "Paytm", "PM")
-        assert result.status == "error"
-        assert result.error_message is not None
-
-    def test_parse_empty_response(self):
-        result = self.agent._parse(self._make_message(""), "Ola", "Mobile Developer")
-        assert result.status == "error"
-
-    def test_parse_preserves_company_and_role(self):
-        payload = json.dumps({"status": "not_found", "jd_text": None, "source_url": None})
-        result = self.agent._parse(self._make_message(payload), "PhonePe", "Full Stack Developer")
-        assert result.company == "PhonePe"
-        assert result.role == "Full Stack Developer"
+    def test_parse_empty_returns_none(self):
+        assert JDFetcherAgent._parse_haiku_json("") is None
 
 
-class TestJDFetcherBuildPrompt:
-    """Tests for prompt construction."""
+class TestComputeConfidence:
+    """Tests for heuristic JD confidence scoring."""
 
-    def setup_method(self):
-        self.agent = _agent_with_mocks()
+    def test_long_jd_with_sections_scores_high(self):
+        text = (
+            "Responsibilities: build APIs. Requirements: Python, Kubernetes. "
+            "We need a Software Engineer at Google India. " * 30
+        )
+        score = JDFetcherAgent._compute_confidence(text, "Google India", "Software Engineer")
+        assert score >= 0.55
 
-    def test_build_queries_returns_three(self):
-        queries = self.agent._build_queries("Google India", "Software Engineer / SDE")
-        assert len(queries) == 3
-        assert all(query.strip() for query in queries)
+    def test_empty_text_scores_zero(self):
+        assert JDFetcherAgent._compute_confidence("", "Google", "SDE") == 0.0
+
+
+class TestJDFetcherBuildQueries:
+    """Tests for ATS-first Serper query construction."""
+
+    def test_build_queries_returns_five(self):
+        queries = JDFetcherAgent._build_queries("Google India", "Software Engineer / SDE")
+        assert len(queries) == 5
         joined = " ".join(queries).lower()
-        assert ("careers" in joined) or ("jobs" in joined)
-        assert "linkedin" in joined
-        assert ("naukri" in joined) or ("indeed" in joined)
+        assert "greenhouse" in joined or "lever" in joined or "workday" in joined
 
     def test_build_queries_normalizes_other_type_manually(self):
-        queries = self.agent._build_queries("Other (type manually)", "Data Scientist")
+        queries = JDFetcherAgent._build_queries("Other (type manually)", "Data Scientist")
         joined = " ".join(queries)
         assert "Other (type manually)" not in joined
 
-    def test_format_results_contains_titles_urls_and_snippets(self):
-        formatted = self.agent._format_results([
-            SearchResult("Title 1", "https://a.com", "Snippet 1"),
-            SearchResult("Title 2", "https://b.com", "Snippet 2"),
-        ])
-        assert "Title 1" in formatted
-        assert "https://a.com" in formatted
-        assert "Snippet 2" in formatted
-
-    def test_parse_gpt_response_strips_fences(self):
-        raw = '```json\n{"status":"found","jd_text":"Some JD","source_url":null,"alternatives":null}\n```'
-        result = self.agent._parse_gpt_response(raw, "TCS", "SDE")
-        assert result.status == "found"
-
-    def test_parse_gpt_response_fallback_long_text(self):
-        raw = "A" * 500
-        result = self.agent._parse_gpt_response(raw, "Google", "SDE")
-        assert result.status == "found"
-        assert result.jd_text == raw
-
-    def test_parse_gpt_response_error_for_short_text(self):
-        result = self.agent._parse_gpt_response("Sorry, I could not find a JD.", "Google", "SDE")
-        assert result.status == "error"
-
 
 class TestJDFetcherFetch:
-    """Integration tests for fetch() with mocked Serper + OpenAI."""
+    """Integration tests for fetch() with mocked Serper + Anthropic."""
 
     def setup_method(self):
         self.agent = _agent_with_mocks()
 
-    def _completion(self, content: str) -> MagicMock:
-        return MagicMock(choices=[MagicMock(message=MagicMock(content=content))])
-
-    def _search_results(self) -> list[SearchResult]:
+    def _serper_organic(self) -> list[dict]:
         return [
-            SearchResult("t1", "https://a.com/1", "s1"),
-            SearchResult("t2", "https://a.com/2", "s2"),
-            SearchResult("t3", "https://a.com/3", "s3"),
+            {"title": "SDE", "link": "https://boards.greenhouse.io/acme/jobs/1", "snippet": "s1"},
         ]
 
+    def _found_haiku_payload(self) -> str:
+        return json.dumps({
+            "status": "found",
+            "employer": "Google India",
+            "jd_text": (
+                "Responsibilities: build scalable services. "
+                "Requirements: Python, distributed systems. "
+                "Software Engineer role at Google India."
+            ) * 5,
+        })
+
     def test_fetch_found_success(self):
-        self.agent.serper.search_multi.return_value = self._search_results()
-        self.agent.openai_client.chat.completions.create.return_value = self._completion(
-            '{"status":"found","jd_text":"We are looking for a skilled SDE...","source_url":"https://careers.google.com/jobs/456","alternatives":null}'
+        jd_text = (
+            "Responsibilities: build scalable services. "
+            "Requirements: Python, distributed systems. "
+            "Software Engineer role at Google India."
+        ) * 8
+        candidate = jf._Candidate(
+            url="https://boards.greenhouse.io/acme/jobs/1",
+            text=jd_text,
+            score=0.9,
+            method="test",
         )
-        result = self.agent.fetch("Google India", "Software Engineer")
+        with patch.object(self.agent, "_serper_search", return_value=self._serper_organic()):
+            with patch.object(self.agent, "_extract_for_url", return_value=candidate):
+                result = self.agent.fetch("Google India", "Software Engineer")
         assert result.status == "found"
         assert result.jd_text is not None
         assert result.company == "Google India"
-        assert result.role == "Software Engineer"
 
-    def test_fetch_not_found(self):
-        self.agent.serper.search_multi.return_value = self._search_results()
-        self.agent.openai_client.chat.completions.create.return_value = self._completion(
-            '{"status":"not_found","jd_text":null,"source_url":null,"alternatives":null}'
-        )
-        result = self.agent.fetch("BYJU'S", "Data Scientist")
+    def test_fetch_not_found_when_no_urls(self):
+        with patch.object(self.agent, "_serper_search", return_value=[]):
+            result = self.agent.fetch("BYJU'S", "Data Scientist")
         assert result.status == "not_found"
-        assert result.jd_text is None
 
-    def test_fetch_multiple_roles(self):
-        self.agent.serper.search_multi.return_value = self._search_results()
-        self.agent.openai_client.chat.completions.create.return_value = self._completion(
-            '{"status":"multiple","jd_text":null,"source_url":null,"alternatives":[{"title":"SDE-1","level":"0-2 years"},{"title":"SDE-2","level":"3-6 years"}]}'
-        )
-        result = self.agent.fetch("Flipkart", "Software Engineer")
-        assert result.status == "multiple"
-        assert result.alternatives is not None
-        assert len(result.alternatives) == 2
-
-    def test_fetch_catches_serper_exception(self):
-        self.agent.serper.search_multi.side_effect = SerperError("API timeout")
-        result = self.agent.fetch("Swiggy", "ML Engineer")
+    def test_fetch_error_without_anthropic_key(self):
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": ""}, clear=False):
+            agent = JDFetcherAgent()
+        result = agent.fetch("Google India", "SDE")
         assert result.status == "error"
-        assert "API timeout" in result.error_message
-
-    def test_fetch_catches_openai_exception(self):
-        self.agent.serper.search_multi.return_value = self._search_results()
-        self.agent.openai_client.chat.completions.create.side_effect = RuntimeError("OpenAI failed")
-        result = self.agent.fetch("Amazon India", "Backend Developer")
-        assert result.status == "error"
-        assert result.error_message is not None
-
-    def test_fetch_api_is_called_with_correct_model(self):
-        self.agent.serper.search_multi.return_value = self._search_results()
-        self.agent.openai_client.chat.completions.create.return_value = self._completion(
-            '{"status":"found","jd_text":"Some JD","source_url":null,"alternatives":null}'
-        )
-        self.agent.fetch("Paytm", "Product Manager")
-        call_kwargs = self.agent.openai_client.chat.completions.create.call_args[1]
-        assert call_kwargs["model"] == "gpt-4.1-mini"
+        assert "ANTHROPIC" in (result.error_message or "")
 
     def test_fetch_result_is_jdfetchresult_type(self):
-        self.agent.serper.search_multi.return_value = self._search_results()
-        self.agent.openai_client.chat.completions.create.return_value = self._completion(
-            '{"status":"found","jd_text":"Some JD text","source_url":null,"alternatives":null}'
-        )
-        result = self.agent.fetch("TCS", "Technical Lead")
+        with patch.object(self.agent, "_serper_search", return_value=[]):
+            result = self.agent.fetch("TCS", "Technical Lead")
         assert isinstance(result, JDFetchResult)
 
-    def test_fetch_with_special_characters_in_company_name(self):
-        self.agent.serper.search_multi.return_value = self._search_results()
-        self.agent.openai_client.chat.completions.create.return_value = self._completion(
-            '{"status":"not_found","jd_text":null,"source_url":null,"alternatives":null}'
-        )
-        result = self.agent.fetch("BYJU'S", "Business Analyst")
-        assert result.company == "BYJU'S"
-        assert result.status == "not_found"
-
     def test_direct_url_skips_serper(self):
-        self.agent.openai_client.chat.completions.create.return_value = self._completion(
-            '{"status":"found","jd_text":"' + ("abc " * 80) + '","source_url":"https://u","alternatives":null}'
+        jd_text = (
+            "Responsibilities: ship features. Requirements: Python. "
+            "Software Engineer at Google India."
+        ) * 8
+        candidate = jf._Candidate(
+            url="https://boards.greenhouse.io/google/jobs/12345",
+            text=jd_text,
+            score=0.9,
+            method="test",
         )
-        with patch.object(self.agent, "_fetch_url_content", return_value="job content"):
-            result = self.agent.fetch("Google India", "SDE", direct_url="https://careers.google.com/jobs/12345")
-        self.agent.serper.search_multi.assert_not_called()
+        with patch.object(self.agent, "_fetch_single_url") as mock_direct:
+            mock_direct.return_value = JDFetchResult(
+                status="found",
+                jd_text=jd_text,
+                source_url="https://boards.greenhouse.io/google/jobs/12345",
+                company="Google India",
+                role="SDE",
+            )
+            with patch.object(self.agent, "_serper_search") as mock_serper:
+                result = self.agent.fetch(
+                    "Google India",
+                    "SDE",
+                    direct_url="https://boards.greenhouse.io/google/jobs/12345",
+                )
+        mock_serper.assert_not_called()
+        mock_direct.assert_called_once()
         assert result.status == "found"
 
-    def test_direct_url_returns_error_when_fetch_fails(self):
-        with patch.object(self.agent, "_fetch_url_content", side_effect=RuntimeError("URL fetch failure: connection")):
-            result = self.agent.fetch("Google India", "SDE", direct_url="https://careers.google.com/jobs/12345")
-        assert result.status == "error"
-        assert result.error_message is not None and "URL fetch failure" in result.error_message
+    def test_direct_url_returns_not_found_when_extraction_empty(self):
+        with patch.object(self.agent, "_fetch_jina", return_value=""):
+            result = self.agent.fetch(
+                "Google India",
+                "SDE",
+                direct_url="https://example.com/jobs/1",
+            )
+        assert result.status == "not_found"
 
 
 class TestFetchJDEndpoint:
@@ -449,11 +372,11 @@ class TestJDFetchData:
 
 @pytest.mark.integration
 @pytest.mark.skipif(
-    not (os.getenv("OPENAI_API_KEY") and os.getenv("SERPER_API_KEY")),
-    reason="Integration test requires OPENAI_API_KEY and SERPER_API_KEY",
+    not (os.getenv("ANTHROPIC_API_KEY") and os.getenv("SERPER_API_KEY")),
+    reason="Integration test requires ANTHROPIC_API_KEY and SERPER_API_KEY",
 )
 def test_real_fetch_api():
     agent = JDFetcherAgent()
     result = agent.fetch("Google India", "Software Engineer / SDE")
-    assert result.status in ["found", "multiple", "not_found"]
+    assert result.status in ["found", "not_found"]
     assert result.status != "error"

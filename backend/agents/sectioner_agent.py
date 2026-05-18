@@ -32,7 +32,10 @@ SECTION_ALIASES = {
     "education": ["education", "academic background", "academics", "qualifications"],
     "certifications": ["certifications", "certificates", "licenses", "credentials"],
     "projects": ["projects", "personal projects", "side projects"],
-    "awards": ["awards", "achievements", "honors", "honours", "awards and achievements"],
+    "awards": [
+        "awards", "achievements", "honors", "honours",
+        "awards and achievements", "awards & achievements",
+    ],
     "publications": ["publications", "research", "papers"],
     "extracurriculars": ["extracurriculars", "activities", "volunteer", "community service"],
 }
@@ -49,7 +52,7 @@ class SectionerAgent(BaseAgent):
     """
 
     def __init__(self):
-        super().__init__(model="gpt-5.4-mini", max_tokens=3000, provider="openai")
+        super().__init__(model="gpt-4o-mini", max_tokens=3000, provider="openai")
 
     def run(self, input_dict: dict) -> Dict[str, SectionText]:
         """

@@ -1,9 +1,12 @@
 import { useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 
+import { fetchUsageLimit } from "../../api/analyze";
+import UpgradeModal from "../auth/UpgradeModal";
 import { TOP_COMPANIES, TOP_ROLES_BY_GROUP } from "../../constants/jdFetchData";
 import type { FetchJDResult } from "../../types";
 import { useWindowSize } from "../../hooks/useWindowSize";
+import { supabase } from "../../lib/supabase";
 import { useResumeStore } from "../../store/useResumeStore";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
@@ -121,6 +124,11 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
   >("idle");
   const [fetchResult, setFetchResult] = useState<FetchJDResult | null>(null);
   const [jdLoadedFromFetch, setJdLoadedFromFetch] = useState(false);
+  const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
+  const [upgradeData, setUpgradeData] = useState<{
+    uploadsThisMonth: number;
+    limit: number;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { isMobile, isTablet } = useWindowSize();
   const jdFetchUrl = `${import.meta.env.VITE_API_URL ?? ""}/api/fetch-jd`;
@@ -175,7 +183,7 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
     validateAndSetFile(event.dataTransfer.files[0] ?? null);
   };
 
-  const handleSubmit = (): void => {
+  const handleSubmit = async (): Promise<void> => {
     setSubmitError(null);
     setAnalysisError(null);
     setCurrentProgress(null);
@@ -186,14 +194,39 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
       return;
     }
 
+    const { data: sessionData, error: sessionError } =
+      await supabase.auth.getSession();
+    if (sessionError || !sessionData.session?.access_token) {
+      setSubmitError("Sign in to run analysis.");
+      return;
+    }
+
     setIsSubmitting(true);
-    setSubmitProgress(0);
-    setLoadingStepIndex(0);
-    setIsFullAnalysisReady(false);
-    setAnalysisResult(null);
-    setIsLoading(true);
-    setIsAnalyzing(true);
-    onBeginAnalysis(file, jdText);
+    try {
+      const usage = await fetchUsageLimit(sessionData.session.access_token);
+      if (!usage.allowed) {
+        setUpgradeData({
+          uploadsThisMonth: usage.uploads_this_month,
+          limit: usage.limit,
+        });
+        setUpgradeModalOpen(true);
+        return;
+      }
+
+      setSubmitProgress(0);
+      setLoadingStepIndex(0);
+      setIsFullAnalysisReady(false);
+      setAnalysisResult(null);
+      setIsLoading(true);
+      setIsAnalyzing(true);
+      onBeginAnalysis(file, jdText);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Could not verify your usage limit.";
+      setSubmitError(msg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const effectiveCompany = company === "other" ? customCompany : company;
@@ -244,6 +277,7 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
   };
 
   return (
+    <>
     <div
       style={{
         maxWidth: "960px",
@@ -1492,5 +1526,13 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
         ))}
       </div>
     </div>
+    {upgradeModalOpen && upgradeData ? (
+      <UpgradeModal
+        uploadsThisMonth={upgradeData.uploadsThisMonth}
+        limit={upgradeData.limit}
+        onClose={() => setUpgradeModalOpen(false)}
+      />
+    ) : null}
+    </>
   );
 }

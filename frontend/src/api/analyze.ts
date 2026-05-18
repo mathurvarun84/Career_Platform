@@ -16,6 +16,115 @@ export const ANALYZE_TIMEOUT_MS = (() => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 300_000;
 })();
 
+export interface LimitReachedInfo {
+  uploadsThisMonth: number;
+  limit: number;
+}
+
+export interface UsageLimitStatus {
+  allowed: boolean;
+  uploads_this_month: number;
+  limit: number;
+  code?: string | null;
+}
+
+/** Pre-flight check — no resume upload, no LLM calls. */
+export async function fetchUsageLimit(bearer: string): Promise<UsageLimitStatus> {
+  const response = await fetch(`${API_BASE_URL}/api/usage-limit`, {
+    headers: { Authorization: `Bearer ${bearer}` },
+  });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `Usage check failed (${response.status})`);
+  }
+  return (await response.json()) as UsageLimitStatus;
+}
+
+/** Detect monthly upload cap from SSE error payload (status, detail, or message). */
+export function extractLimitReached(
+  payload: Record<string, unknown>
+): LimitReachedInfo | null {
+  const detail =
+    payload.detail && typeof payload.detail === "object"
+      ? (payload.detail as Record<string, unknown>)
+      : null;
+
+  if (payload.status === 402 || detail?.code === "LIMIT_REACHED") {
+    return {
+      uploadsThisMonth: Number(detail?.uploads_this_month ?? 0) || 2,
+      limit: Number(detail?.limit ?? 0) || 2,
+    };
+  }
+
+  const msg = payload.message;
+  if (typeof msg === "string" && msg.includes("LIMIT_REACHED")) {
+    const uploadsMatch = msg.match(/uploads_this_month['"]?\s*[:=]\s*(\d+)/i);
+    const limitMatch = msg.match(/['"]limit['"]?\s*[:=]\s*(\d+)/i);
+    return {
+      uploadsThisMonth: uploadsMatch ? Number(uploadsMatch[1]) : 2,
+      limit: limitMatch ? Number(limitMatch[1]) : 2,
+    };
+  }
+
+  return null;
+}
+
+export function throwIfSseErrorPayload(payload: Record<string, unknown>): void {
+  if (payload.event !== "error") {
+    return;
+  }
+
+  const limit = extractLimitReached(payload);
+  if (limit) {
+    const err = new Error("Monthly limit reached") as Error & {
+      status?: number;
+      detail?: Record<string, unknown>;
+    };
+    err.status = 402;
+    err.detail = {
+      code: "LIMIT_REACHED",
+      message:
+        typeof payload.message === "string"
+          ? payload.message
+          : `Free tier limited to ${limit.limit} analyses per month`,
+      uploads_this_month: limit.uploadsThisMonth,
+      limit: limit.limit,
+    };
+    throw err;
+  }
+
+  throw new Error(
+    typeof payload.message === "string"
+      ? payload.message
+      : "Analysis failed on server."
+  );
+}
+
+export function parseHttpLimitResponse(
+  status: number,
+  bodyText: string
+): Error & { status: number; detail: Record<string, unknown> } | null {
+  if (status !== 402) {
+    return null;
+  }
+  let detail: Record<string, unknown> = { code: "LIMIT_REACHED" };
+  try {
+    const parsed = JSON.parse(bodyText) as Record<string, unknown>;
+    if (typeof parsed.detail === "object" && parsed.detail) {
+      detail = parsed.detail as Record<string, unknown>;
+    }
+  } catch {
+    /* non-JSON body */
+  }
+  const err = new Error("Monthly limit reached") as Error & {
+    status: number;
+    detail: Record<string, unknown>;
+  };
+  err.status = 402;
+  err.detail = detail;
+  return err;
+}
+
 interface AnalyzeCallbacks {
   onJobCreated?: (jobId: string) => void;
   onProgress?: (progress: SSEProgressEvent) => void;
@@ -208,23 +317,12 @@ export async function analyzeResume(
       signal: controller.signal,
     });
 
-    if (response.status === 402) {
-      let detail: Record<string, unknown> = { code: "LIMIT_REACHED" };
-      try {
-        const text = await response.text();
-        const parsed = JSON.parse(text) as Record<string, unknown>;
-        detail = typeof parsed.detail === "object" && parsed.detail ? (parsed.detail as Record<string, unknown>) : detail;
-      } catch {
-        /* fallback to default detail */
-      }
-      const error = new Error("Monthly limit reached") as Error & { status?: number; detail?: Record<string, unknown> };
-      error.status = 402;
-      error.detail = detail;
-      throw error;
-    }
-
     if (!response.ok || !response.body) {
       const text = await response.text();
+      const limitErr = parseHttpLimitResponse(response.status, text);
+      if (limitErr) {
+        throw limitErr;
+      }
       throw new Error(text || `Analyze failed (${response.status})`);
     }
 
@@ -253,7 +351,12 @@ export async function analyzeResume(
           if (!jsonStr) {
             continue;
           }
-          const payload = JSON.parse(jsonStr) as Record<string, unknown>;
+          let payload: Record<string, unknown>;
+          try {
+            payload = JSON.parse(jsonStr) as Record<string, unknown>;
+          } catch {
+            continue;
+          }
           if (payload.event === "step_complete" && typeof payload.step === "number") {
             callbacks?.onProgress?.({
               status: "running",
@@ -271,25 +374,19 @@ export async function analyzeResume(
             }
           }
           if (payload.event === "error") {
-            throw new Error(
-              typeof payload.message === "string"
-                ? payload.message
-                : "Analysis failed on server."
-            );
+            throwIfSseErrorPayload(payload);
           }
         }
       }
     }
 
     if (!finalResult) {
-      throw new Error("Stream ended without analysis result.");
+      throw new Error("We couldn't finish loading your results. Please try again.");
     }
     return finalResult;
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error(
-        `Analysis timed out after ${Math.round(ANALYZE_TIMEOUT_MS / 1000)}s without a response. Try again.`
-      );
+      throw new Error("Analysis took too long and was stopped. Please try again.");
     }
     if (error instanceof Error) {
       throw error;

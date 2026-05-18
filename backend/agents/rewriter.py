@@ -266,38 +266,21 @@ def _ensure_experience_markers(text: str, sub_label: str) -> str:
     return f"{header}\n{content}"
 
 
-SYSTEM_PROMPT = """CRITICAL MERGE RULE — Experience Preservation:
+SYSTEM_PROMPT = """You are a resume rewriter specialising in software engineering resumes.
 
-You will receive a full resume and a list of target companies to rewrite.
-You MUST preserve ALL experience entries in the output, not just the rewritten ones.
+You will be given ONE resume entry at a time. Your job is to rewrite only that entry.
 
-Steps:
-1. Parse ALL experience entries from the original resume
-2. Rewrite ONLY the target companies
-3. Merge: rewritten entries + all unchanged entries = full output
-4. Validate: output entry count must equal input entry count
+HARD RULES:
+1. Rewrite ONLY the entry you are given. Never add, infer, or reproduce any other entry.
+2. Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
+3. Max 150 words per style. Be dense, not verbose.
+4. Never invent companies, degrees, titles, or metrics that are not in the original text.
+5. If a metric is missing, use a placeholder: [X%], [N users], [Xms]. Never fabricate a number.
+6. The JSON must be parseable by Python json.loads() with zero post-processing.
+7. Never leave a string unterminated.
 
-Example:
-  Input:  8 entries (Flipkart, SmartVizX, Apttus, ClearTax, BT, Microsoft, Mindtree)
-  Targets: Flipkart + SmartVizX
-  Output: Must have all 8 entries (2 rewritten + 6 unchanged verbatim)
-
-  WRONG: Only 2 entries in output DOCX
-  RIGHT: All 8 entries in output DOCX
-
-If output has fewer entries than input, rebuild before returning.
-
-You are a resume rewriter for Indian software engineers with 20 years of experience and who has complete knowledge of the Indian job market and software engineering practices and what recruiter are looking for.
-
-CRITICAL OUTPUT RULES:
-1. Return ONLY a valid JSON object. No markdown, no backticks, no explanation.
-2. Keep each rewrite to 150 words maximum per style. Be dense, not verbose.
-3. Never leave a string unterminated. If you are near your output limit, close all
-   open strings, arrays, and objects immediately and stop.
-4. The JSON must be parseable by Python's json.loads() with zero post-processing.
-
-Output format:
-{"balanced": "...", "aggressive": "...", "top_1_percent": "..."}
+Output format — exactly these four keys, nothing else:
+{"balanced": "...", "aggressive": "...", "top_1_percent": "...", "patch": {...}}
 """
 
 # Key invariant: a sub-entry with needs_change=False must NEVER be passed to the LLM.
@@ -893,37 +876,38 @@ class RewriterAgent(BaseAgent):
         original_word_count = len(original_text.split()) if original_text else 0
 
         prompt = (
-            "You are rewriting ONE entry that will be stitched back into the full section.\n"
-            f"Section: {section}\n"
-            f"Entry label: {sub.get('sub_label', 'unknown')}\n"
-            f"Entry-level instruction: {rewrite_hint}\n"
-            f"Section-level instruction: {section_context or 'N/A'}\n"
-            f"Missing keywords to add: {', '.join(missing_kw[:10])}\n\n"
-            "ORIGINAL ENTRY TEXT (rewrite this — do not return it unchanged):\n"
+            f"TASK: Rewrite this single {section} entry. Output only this entry — nothing else.\n\n"
+
+            "ENTRY TO REWRITE:\n"
             f"{original_text}\n\n"
-            'Return ONLY JSON: {"balanced":"...","aggressive":"...","top_1_percent":"...","patch":{...}}\n'
-            "No markdown, no fences, no extra keys. Max 150 words per style.\n"
-            "Anti-hallucination: Never invent companies, degrees, metrics, or projects.\n"
-            "OUTPUT STRUCTURE FOR EXPERIENCE ENTRIES:\n"
-            "Line 1: Company name and location\n"
-            "Line 2: Role title and dates\n"
-            "Lines 3+: Bullet points starting with •\n"
-            "Last line: Tech Stack: lang1, lang2 (only if present in original)\n"
-            "Use placeholders [X%], [N users], [Xms], [INR X Cr] for missing metrics only.\n\n"
-            "ALSO return a \"patch\" field:\n"
-            "{\n"
-            '  "patch": {\n'
-            '    "op": "replace_text",\n'
-            '    "original_text": "exact verbatim quote you changed — character-for-character",\n'
-            '    "replacement_text": "<same as balanced output>",\n'
-            '    "issue_detected": "one sentence: what was wrong",\n'
-            '    "fix_rationale": "one sentence: what you changed and why"\n'
-            "  }\n"
-            "}\n"
-            "Rules for patch.original_text:\n"
-            "- MUST be a verbatim substring of the original entry text given above\n"
-            "- If you changed multiple sentences, quote all as one contiguous string\n"
-            "- If you cannot identify the exact changed portion, set original_text to empty string"
+
+            f"Entry label: {sub.get('sub_label', 'unknown')}\n"
+            f"Rewrite instruction: {rewrite_hint}\n"
+            f"Section context: {section_context or 'N/A'}\n"
+            f"Keywords to weave in: {', '.join(missing_kw[:10]) or 'none'}\n\n"
+
+            "OUTPUT STRUCTURE (experience entries only):\n"
+            "  Line 1: Company name and location (copy verbatim from original)\n"
+            "  Line 2: Role title and dates (copy verbatim from original)\n"
+            "  Lines 3+: Bullet points starting with •\n"
+            "  Last line: Tech Stack: ... (only if present in original — do not add one)\n\n"
+
+            "RULES:\n"
+            "- Do NOT output any other company, role, or entry — only the one above\n"
+            "- Do NOT add a company or role that is not in the original entry\n"
+            "- Do NOT bold, italicise, or add markdown formatting\n"
+            "- Max 150 words per style\n"
+            "- Use [X%], [N users], [Xms] for missing metrics only — never fabricate numbers\n\n"
+
+            "Return ONLY JSON with exactly these keys:\n"
+            '{"balanced":"...","aggressive":"...","top_1_percent":"...","patch":{...}}\n\n'
+
+            "patch field:\n"
+            '{"op":"replace_text",'
+            '"original_text":"verbatim substring you changed (empty string if unsure)",'
+            '"replacement_text":"same as balanced",'
+            '"issue_detected":"one sentence",'
+            '"fix_rationale":"one sentence"}'
         )
 
         for attempt in range(2):
