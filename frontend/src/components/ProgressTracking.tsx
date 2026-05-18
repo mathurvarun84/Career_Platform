@@ -8,7 +8,9 @@ import {
   YAxis,
 } from "recharts";
 
+import { useWindowSize } from "../hooks/useWindowSize";
 import { useUserHistory } from "../hooks/useUserHistory";
+import { pageContainerStyle } from "../utils/pageLayout";
 import type { HistoryEntry } from "../types";
 
 interface ChartPoint {
@@ -38,14 +40,16 @@ function deriveChartData(entries: HistoryEntry[]): ChartPoint[] {
 }
 
 export default function ProgressTracking() {
+  const { isMobile } = useWindowSize();
   const { entries, loading, error } = useUserHistory();
+  const containerStyle = pageContainerStyle(isMobile);
 
   const chartData = useMemo(() => deriveChartData(entries), [entries]);
 
   if (loading) {
     return (
       <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-        <div style={{ maxWidth: "960px", margin: "0 auto", padding: "40px 32px 48px" }}>
+        <div style={containerStyle}>
           <div style={{ fontSize: "22px", fontWeight: 800, color: "#111827", marginBottom: "16px" }}>
             Progress Tracking
           </div>
@@ -68,7 +72,7 @@ export default function ProgressTracking() {
   if (error) {
     return (
       <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-        <div style={{ maxWidth: "960px", margin: "0 auto", padding: "40px 32px 48px" }}>
+        <div style={containerStyle}>
           <div style={{ fontSize: "22px", fontWeight: 800, color: "#111827", marginBottom: "16px" }}>
             Progress Tracking
           </div>
@@ -91,7 +95,7 @@ export default function ProgressTracking() {
   if (entries.length === 0) {
     return (
       <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-        <div style={{ maxWidth: "960px", margin: "0 auto", padding: "40px 32px 48px" }}>
+        <div style={containerStyle}>
           <div style={{ fontSize: "22px", fontWeight: 800, color: "#111827", marginBottom: "16px" }}>
             Progress Tracking
           </div>
@@ -118,7 +122,7 @@ export default function ProgressTracking() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "40px 32px 48px" }}>
+      <div style={containerStyle}>
         <div style={{ fontSize: "22px", fontWeight: 800, color: "#111827", marginBottom: "16px" }}>
           Progress Tracking
         </div>
@@ -130,7 +134,7 @@ export default function ProgressTracking() {
             padding: "20px",
             boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
             background: "#ffffff",
-            height: "360px",
+            height: isMobile ? "260px" : "360px",
             marginBottom: "32px",
           }}
         >

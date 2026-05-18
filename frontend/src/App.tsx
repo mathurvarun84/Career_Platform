@@ -128,7 +128,7 @@ function AppShell() {
 
   if (showProgressStandalone) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="page-shell min-h-screen bg-white">
         <TopBar
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           onViewProgress={() => setActiveTab("progress")}
@@ -143,7 +143,7 @@ function AppShell() {
 
   if (showDashboard) {
     return (
-      <div className="min-h-screen bg-white">
+      <div className="page-shell min-h-screen bg-white">
         <TopBar
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           onViewProgress={() => setActiveTab("progress")}
@@ -210,6 +210,7 @@ function AppShell() {
   if (showAnalyzingPage && streamInputs) {
     return (
       <div
+        className="page-shell"
         style={{
           minHeight: "100vh",
           background: "#ffffff",
@@ -244,7 +245,7 @@ function AppShell() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: "#ffffff" }}>
+    <div className="page-shell" style={{ minHeight: "100vh", background: "#ffffff" }}>
       <TopBar
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onViewProgress={() => setActiveTab("progress")}

@@ -185,18 +185,204 @@ class Orchestrator:
             for k, v in a1_raw.items()
         }
 
-    def _infer_strengths_from_resume(self, resume_und: dict) -> dict:
+    def _infer_strengths_from_resume(
+        self,
+        resume_und: dict,
+        resume_sections: dict | None = None,
+    ) -> dict:
+        """
+        Build gap_result from A1 output alone (no JD).
+        Delegates to _build_no_jd_gaps for the correct section_gaps shape.
+        Kept for backward compatibility — run_full_evaluation calls
+        _build_no_jd_gaps directly.
+        """
+        return self._build_no_jd_gaps(resume_und, resume_sections or {})
+
+    def _build_no_jd_gaps(
+        self,
+        resume_und: dict,
+        resume_sections: dict,
+    ) -> dict:
+        """
+        Build section_gaps from A1's improvement_areas and weaknesses
+        when no JD is present.
+
+        A1 (ResumeUnderstandingAgent) already identifies what needs fixing.
+        This converts those findings into the section_gaps format that
+        RewriterAgent.run() consumes — so the rewriter can act without a JD.
+
+        Returns a dict shaped like GapAnalyzerOutput. The rewriter reads
+        either 'gaps' or 'section_gaps' — both are populated here.
+        """
+        from backend.schemas.common import SectionText
+
+        improvement_areas: list[str] = [
+            str(a).strip()
+            for a in (resume_und.get("improvement_areas") or [])
+            if str(a).strip()
+        ]
+        weaknesses: list[str] = [
+            str(w).strip()
+            for w in (resume_und.get("weaknesses") or [])
+            if str(w).strip()
+        ]
+        has_summary: bool = bool(resume_und.get("has_summary", False))
+
+        # Canonical sections to cover — same order as GapAnalyzerAgent
+        canonical_sections = [
+            "summary", "skills", "experience",
+            "education", "certifications", "awards",
+        ]
+
+        # Route improvement_areas and weaknesses to sections by keyword
+        _section_keywords: dict[str, list[str]] = {
+            "summary":        ["summary", "objective", "profile", "introduction", "header"],
+            "skills":         ["skill", "technology", "tech stack", "keyword",
+                               "tool", "framework", "language"],
+            "experience":     ["experience", "bullet", "impact", "metric", "achievement",
+                               "quantif", "result", "wording", "action verb", "role",
+                               "company", "oracle", "optimizely", "sheroes"],
+            "education":      ["education", "degree", "institution", "gpa", "university"],
+            "certifications": ["certif", "license", "credential"],
+            "awards":         ["award", "achievement", "honor", "recognit"],
+        }
+
+        def _route_to_section(text: str) -> str:
+            lowered = text.lower()
+            for section, keywords in _section_keywords.items():
+                if any(kw in lowered for kw in keywords):
+                    return section
+            return "experience"  # default — most improvements are experience-related
+
+        # Accumulate per-section rewrite instructions
+        section_instructions: dict[str, list[str]] = {s: [] for s in canonical_sections}
+
+        for area in improvement_areas:
+            section_instructions[_route_to_section(area)].append(area)
+
+        for weakness in weaknesses:
+            # Extract the fix suggestion after → if present; otherwise use the full text
+            fix = weakness.split("→", 1)[-1].strip() if "→" in weakness else weakness
+            section_instructions[_route_to_section(weakness)].append(fix)
+
+        # Build section_gaps list
+        section_gaps: list[dict] = []
+
+        for section in canonical_sections:
+            instructions = section_instructions.get(section, [])
+
+            # Resolve section text from resume_sections
+            sec_obj = resume_sections.get(section)
+            original_content = ""
+            sub_entries = []
+            if sec_obj is not None:
+                if hasattr(sec_obj, "full_text"):
+                    original_content = sec_obj.full_text or ""
+                    sub_entries = list(sec_obj.sub_entries or [])
+                elif isinstance(sec_obj, dict):
+                    original_content = sec_obj.get("full_text", "") or ""
+                    sub_entries = sec_obj.get("sub_entries", []) or []
+
+            # Summary: always needs_change when missing
+            if section == "summary" and not has_summary:
+                section_gaps.append({
+                    "section": "summary",
+                    "needs_change": True,
+                    "gap_reason": (
+                        "No professional summary found — "
+                        "generating one improves recruiter first impression"
+                    ),
+                    "missing_keywords": [],
+                    "rewrite_instruction": (
+                        "Write a professional summary for this candidate based solely on "
+                        "their experience, seniority, and tech stack in the resume. "
+                        "3-4 sentences: (1) current role/level and years of experience, "
+                        "(2) core technical expertise naming 2-3 specific technologies, "
+                        "(3) key career achievement or domain impact, "
+                        "(4) value the candidate brings to the next role. "
+                        "First person. Present tense. No evaluation labels."
+                    ),
+                    "original_content": "",
+                    "present_in_resume": False,
+                    "sub_changes": [],
+                })
+                continue
+
+            # Build sub_changes for experience by matching weakness company mentions
+            sub_changes: list[dict] = []
+            if section == "experience" and sub_entries:
+                for entry in sub_entries:
+                    entry_label = (
+                        entry.label if hasattr(entry, "label")
+                        else entry.get("label", "")
+                    )
+                    entry_verbatim = (
+                        entry.verbatim_text if hasattr(entry, "verbatim_text")
+                        else entry.get("verbatim_text", "")
+                    )
+                    # Find weaknesses that mention this entry's company
+                    company_token = (
+                        entry_label.split("|")[0]
+                        .split("—")[0]
+                        .strip()
+                        .lower()
+                    )
+                    matching = [
+                        w for w in weaknesses
+                        if company_token and len(company_token) > 2
+                        and company_token in w.lower()
+                    ]
+                    if matching:
+                        fix = (
+                            matching[0].split("→", 1)[-1].strip()
+                            if "→" in matching[0]
+                            else "Improve impact clarity and add quantified metrics."
+                        )
+                        sub_changes.append({
+                            "sub_id": f"{company_token}_no_jd",
+                            "sub_label": entry_label,
+                            "needs_change": True,
+                            "gap_reason": matching[0],
+                            "rewrite_instruction": fix,
+                            "missing_keywords": [],
+                            "original_text": entry_verbatim,
+                        })
+
+            needs_change = bool(instructions) or bool(sub_changes)
+            rewrite_instruction = " ".join(instructions[:3]) if instructions else ""
+
+            section_gaps.append({
+                "section": section,
+                "needs_change": needs_change,
+                "gap_reason": rewrite_instruction or "No change needed",
+                "missing_keywords": [],
+                "rewrite_instruction": rewrite_instruction,
+                "original_content": original_content,
+                "present_in_resume": bool(original_content),
+                "sub_changes": sub_changes,
+            })
+
+        # Top-level result — matches GapAnalyzerOutput shape
+        priority_fixes = improvement_areas[:3]
+
         return {
+            "section_gaps": section_gaps,
+            "gaps": section_gaps,           # rewriter reads either key
+            "missing_keywords": [],
+            "priority_fixes": priority_fixes,
+            "sections_changed": [
+                g["section"] for g in section_gaps if g.get("needs_change")
+            ],
+            "sections_unchanged": [
+                g["section"] for g in section_gaps if not g.get("needs_change")
+            ],
+            "jd_match_score_before": 0,
+            "resume_only_mode": True,
+            "strengths": resume_und.get("strengths", []),
+            "weaknesses": weaknesses,
+            "quick_wins": improvement_areas,
             "match_score": None,
             "confidence_score": None,
-            "gaps": [
-                {"type": "poor_wording", "description": w, "severity": "minor", "suggestion": ""}
-                for w in resume_und.get("weaknesses", [])
-            ],
-            "strengths": resume_und.get("strengths", []),
-            "weaknesses": resume_und.get("weaknesses", []),
-            "quick_wins": resume_und.get("improvement_areas", []),
-            "resume_only_mode": True,
         }
 
     def _build_gap_fallback_rewrites(self, gap_output: Dict[str, Any]) -> Dict[str, Any]:
@@ -381,9 +567,11 @@ class Orchestrator:
             if sse_step_cb:
                 sse_step_cb(1, "JD matched")
         else:
-            gap_result = self._infer_strengths_from_resume(resume_und)
+            # No JD: convert A1's improvement_areas and weaknesses into section_gaps
+            # so the rewriter can act on them. Also generates summary if missing.
+            gap_result = self._build_no_jd_gaps(resume_und, resume_sections)
             if sse_step_cb:
-                sse_step_cb(1, "JD matched")
+                sse_step_cb(1, "Resume analysed")
         if partial_result_cb:
             partial_result_cb({"gap": gap_result, "resume": resume_und})
 

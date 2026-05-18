@@ -6,6 +6,7 @@ import UpgradeModal from "../auth/UpgradeModal";
 import { TOP_COMPANIES, TOP_ROLES_BY_GROUP } from "../../constants/jdFetchData";
 import type { FetchJDResult } from "../../types";
 import { useWindowSize } from "../../hooks/useWindowSize";
+import { cardPadding, pageContainerStyle } from "../../utils/pageLayout";
 import { supabase } from "../../lib/supabase";
 import { useResumeStore } from "../../store/useResumeStore";
 
@@ -278,13 +279,7 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
 
   return (
     <>
-    <div
-      style={{
-        maxWidth: "960px",
-        margin: "0 auto",
-        padding: isMobile ? "40px 16px 48px" : "40px 32px 48px",
-      }}
-    >
+    <div style={pageContainerStyle(isMobile)}>
       {isSubmitting && (
         <div
           style={{
@@ -383,8 +378,8 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
         style={{
           background: "#ffffff",
           border: "1.5px solid #e5e7eb",
-          borderRadius: "24px",
-          padding: "40px",
+          borderRadius: isMobile ? "16px" : "24px",
+          padding: cardPadding(isMobile),
           boxShadow: "0 4px 0 #e5e7eb, 0 8px 24px rgba(0,0,0,0.06)",
           marginBottom: "20px",
         }}
@@ -726,7 +721,7 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
                   fontFamily: "inherit",
                 }}
               >
-                📋 Paste JD manually
+                {isMobile ? "Paste JD" : "📋 Paste JD manually"}
               </button>
               <button
                 type="button"
@@ -735,15 +730,15 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
                   flex: 1,
                   background: jdTab === "fetch" ? "#6366f1" : "#ffffff",
                   color: jdTab === "fetch" ? "#ffffff" : "#6b7280",
-                  fontSize: "13px",
+                  fontSize: isMobile ? "12px" : "13px",
                   fontWeight: 600,
-                  padding: "9px 14px",
+                  padding: isMobile ? "9px 8px" : "9px 14px",
                   border: "none",
                   cursor: "pointer",
                   fontFamily: "inherit",
                 }}
               >
-                🔍 Auto-fetch by company &amp; role
+                {isMobile ? "Auto-fetch" : "🔍 Auto-fetch by company & role"}
               </button>
             </div>
 

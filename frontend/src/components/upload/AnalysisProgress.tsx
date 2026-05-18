@@ -9,6 +9,7 @@ import {
   throwIfSseErrorPayload,
 } from "../../api/analyze";
 import UpgradeModal from "../auth/UpgradeModal";
+import { useWindowSize } from "../../hooks/useWindowSize";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../store/authStore";
 import type { AnalysisResult } from "../../types";
@@ -315,6 +316,7 @@ export default function AnalysisProgress({
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [upgradeData, setUpgradeData] = useState<{ uploadsThisMonth: number; limit: number } | null>(null);
   const [limitBlocked, setLimitBlocked] = useState(false);
+  const { isMobile } = useWindowSize();
 
   const onCompleteRef = useRef(onComplete);
   const completedRef = useRef(completedSteps);
@@ -586,10 +588,10 @@ export default function AnalysisProgress({
         minHeight: 0,
         maxWidth: "1120px",
         margin: "0 auto",
-        paddingLeft: "24px",
-        paddingRight: "24px",
-        paddingTop: "28px",
-        paddingBottom: "40px",
+        paddingLeft: isMobile ? "16px" : "24px",
+        paddingRight: isMobile ? "16px" : "24px",
+        paddingTop: isMobile ? "20px" : "28px",
+        paddingBottom: isMobile ? "32px" : "40px",
         background: PALETTE.white,
       }}
     >
@@ -658,16 +660,18 @@ export default function AnalysisProgress({
       <div
         style={{
           display: "flex",
-          flexDirection: "row",
+          flexDirection: isMobile ? "column" : "row",
           flexWrap: "wrap",
           alignItems: "flex-start",
+          gap: isMobile ? "24px" : "0",
         }}
       >
         <div
           style={{
-            flex: "1 1 320px",
-            minWidth: "280px",
-            paddingRight: "24px",
+            flex: isMobile ? "1 1 auto" : "1 1 320px",
+            minWidth: isMobile ? 0 : "280px",
+            width: isMobile ? "100%" : undefined,
+            paddingRight: isMobile ? 0 : "24px",
           }}
         >
           <div
@@ -820,9 +824,9 @@ export default function AnalysisProgress({
 
         <div
           style={{
-            width: "280px",
-            flex: "0 0 280px",
-            minWidth: "260px",
+            width: isMobile ? "100%" : "280px",
+            flex: isMobile ? "1 1 auto" : "0 0 280px",
+            minWidth: isMobile ? 0 : "260px",
           }}
         >
           <div

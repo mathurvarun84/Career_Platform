@@ -86,7 +86,7 @@ export default function TabNav() {
               }
             }}
             style={{
-              padding: "14px 20px",
+              padding: isMobile ? "12px 14px" : "14px 20px",
               fontSize: "13px",
               fontWeight: isActive ? 700 : 500,
               color: isDisabled ? "#d1d5db" : isActive ? "#6366f1" : "#6b7280",
@@ -105,7 +105,13 @@ export default function TabNav() {
             }}
           >
             <span style={{ lineHeight: 1 }}>{tab.icon}</span>
-            <span>{tab.label}</span>
+            <span>
+              {isMobile && tab.id === "fixes"
+                ? "Fixes"
+                : isMobile && tab.id === "recruiter"
+                  ? "Recruiter"
+                  : tab.label}
+            </span>
             {unavailableByTab[tab.id] ? (
               <span
                 style={{

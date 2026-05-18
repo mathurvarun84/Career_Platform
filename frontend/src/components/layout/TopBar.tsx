@@ -112,7 +112,13 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
       }}
     >
       <div
-        style={{ display: "flex", alignItems: "center", gap: "12px", minWidth: 0 }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: isMobile ? "8px" : "12px",
+          minWidth: 0,
+          flex: 1,
+        }}
       >
         <div
           style={{
@@ -144,7 +150,7 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
               whiteSpace: isMobile ? "nowrap" : undefined,
             }}
           >
-            AI Career Intelligence Platform
+            {isMobile ? "Career Intelligence" : "AI Career Intelligence Platform"}
           </div>
           {!isMobile ? (
             <div
@@ -165,7 +171,7 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
         style={{
           display: "flex",
           alignItems: "center",
-          gap: "16px",
+          gap: isMobile ? "8px" : "16px",
           marginLeft: "auto",
           minWidth: 0,
           flexShrink: 0,
@@ -182,7 +188,7 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
             background: (!analysisResult || isLoading) ? "#f3f4f6" : "#7c3aed",
             color: (!analysisResult || isLoading) ? "#9ca3af" : "#ffffff",
             borderRadius: "10px",
-            padding: "10px 20px",
+            padding: isMobile ? "10px 12px" : "10px 20px",
             fontSize: "13px",
             fontWeight: 700,
             border: "none",

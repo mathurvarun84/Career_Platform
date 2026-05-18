@@ -4,6 +4,7 @@ import { downloadResumeReport } from "./api/client";
 import type { ATSDimensionDetail, PriorityFix } from "./types";
 import DataSourceNotice from "./components/DataSourceNotice";
 import { useWindowSize } from "./hooks/useWindowSize";
+import { pageContainerStyle } from "./utils/pageLayout";
 import { useResumeStore } from "./store/useResumeStore";
 
 interface EvaluationDashboardProps {
@@ -211,7 +212,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
 
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "40px 32px 48px" }}>
+      <div style={pageContainerStyle(isMobile)}>
 
         {/* ── SECTION 1: Page Header ── */}
         <div style={{ textAlign: "center", marginBottom: "28px" }}>
@@ -224,7 +225,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             <span style={{ fontSize: "8px", lineHeight: 1 }}>●</span> Analysis Complete
           </div>
           <div style={{
-            fontSize: "22px", fontWeight: 800, color: "#111827",
+            fontSize: isMobile ? "18px" : "22px", fontWeight: 800, color: "#111827",
             letterSpacing: "-0.02em", marginBottom: "4px",
           }}>
             Your Resume Intelligence Report
@@ -492,7 +493,11 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             <div style={{
               background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)",
               borderRadius: "16px", padding: "24px 28px", marginBottom: "24px",
-              display: "grid", gridTemplateColumns: "1fr auto", gap: "24px", alignItems: "center",
+              display: isMobile ? "flex" : "grid",
+              flexDirection: isMobile ? "column" : undefined,
+              gridTemplateColumns: isMobile ? undefined : "1fr auto",
+              gap: "24px",
+              alignItems: isMobile ? "stretch" : "center",
             }}>
               <div>
                 <div style={{
@@ -525,7 +530,9 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
                 border: "1px solid rgba(255,255,255,0.25)",
                 borderRadius: "12px", padding: "16px 20px",
                 backdropFilter: "blur(8px)",
-                minWidth: "200px", flexShrink: 0,
+                minWidth: isMobile ? undefined : "200px",
+                flexShrink: 0,
+                width: isMobile ? "100%" : undefined,
               }}>
                 <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.65)", fontWeight: 600 }}>
                   Current Range
@@ -555,7 +562,13 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
         })()}
 
         {/* ── SECTION 5: Priority Actions ── */}
-        <div style={{ display: "flex", alignItems: "center", gap: "14px", marginBottom: "18px" }}>
+        <div style={{
+          display: "flex",
+          alignItems: isMobile ? "flex-start" : "center",
+          flexDirection: isMobile ? "column" : "row",
+          gap: "14px",
+          marginBottom: "18px",
+        }}>
           <div style={{
             width: "42px", height: "42px", borderRadius: "12px",
             background: "#fff7ed",
@@ -580,7 +593,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
         </div>
 
         {actionItems.map((item, idx) => (
-          <PriorityActionCard key={idx} item={item} onTabChange={onTabChange} />
+          <PriorityActionCard key={idx} item={item} onTabChange={onTabChange} isMobile={isMobile} />
         ))}
 
         <hr style={{ border: "none", borderTop: "1.5px solid #e5e7eb", margin: "20px 0" }} />
@@ -894,9 +907,11 @@ function useCountUp(target: number, duration = 1200): number {
 function PriorityActionCard({
   item,
   onTabChange,
+  isMobile,
 }: {
   item: ActionItem;
   onTabChange?: (tab: string) => void;
+  isMobile: boolean;
 }) {
   const styles = {
     high:   { cardBg: "#fff5f5", cardBorder: "#fecaca", pillBg: "#fef2f2", pillColor: "#dc2626", pillText: "● High Impact", btnBg: "#dc2626" },
@@ -920,7 +935,11 @@ function PriorityActionCard({
       background: styles.cardBg,
       border: `1.5px solid ${styles.cardBorder}`,
       borderRadius: "10px", padding: "16px 18px", marginBottom: "10px",
-      display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px",
+      display: "flex",
+      flexDirection: isMobile ? "column" : "row",
+      alignItems: isMobile ? "stretch" : "center",
+      justifyContent: "space-between",
+      gap: "12px",
     }}>
       <div style={{ flex: 1 }}>
         <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "5px" }}>
@@ -956,7 +975,10 @@ function PriorityActionCard({
           background: styles.btnBg, color: "#ffffff",
           border: "none", borderRadius: "8px",
           padding: "8px 14px", fontSize: "12px", fontWeight: 700,
-          cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap",
+          cursor: "pointer",
+          flexShrink: 0,
+          whiteSpace: "nowrap",
+          width: isMobile ? "100%" : undefined,
           boxShadow: "0 2px 0 rgba(0,0,0,0.15)",
           transition: "transform 0.1s",
         }}
@@ -968,12 +990,13 @@ function PriorityActionCard({
 }
 
 function SkeletonLoader() {
+  const { isMobile } = useWindowSize();
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-      <div style={{ maxWidth: "960px", margin: "0 auto", padding: "40px 32px 48px" }}>
+      <div style={pageContainerStyle(isMobile)}>
         <div style={{
           display: "grid",
-          gridTemplateColumns: "repeat(4, 1fr)",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)",
           gap: "16px",
           marginBottom: "28px",
         }}>

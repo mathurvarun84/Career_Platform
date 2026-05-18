@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { getResumeDownloadUrl } from "../api/client";
 import { useWindowSize } from "../hooks/useWindowSize";
+import { pageContainerStyle } from "../utils/pageLayout";
 import { useResumeStore } from "../store/useResumeStore";
 import type {
   ATSDimensionDetail,
@@ -146,16 +147,34 @@ const normalizePriorityFixes = (gap: GapResult | null): PriorityFix[] => {
     return [];
   }
 
-  return gap.priority_fixes.filter(
-    (item): item is PriorityFix =>
-      typeof item === "object" &&
-      item !== null &&
-      "section" in item &&
-      "gap_reason" in item &&
-      "rewrite_instruction" in item &&
-      "missing_keywords" in item &&
-      "needs_change" in item
-  );
+  return (gap.priority_fixes as Array<string | PriorityFix>)
+    .filter(Boolean)
+    .flatMap((item, idx): PriorityFix[] => {
+      // No-JD mode: item is a plain string from A1's improvement_areas
+      if (typeof item === "string") {
+        return [{
+          section: inferSectionKey(item),
+          needs_change: true,
+          gap_reason: item,
+          rewrite_instruction: item,
+          missing_keywords: [],
+        }];
+      }
+      // JD mode: item must be a properly-shaped object
+      if (
+        typeof item === "object" &&
+        item !== null &&
+        "section" in item &&
+        "gap_reason" in item &&
+        "rewrite_instruction" in item &&
+        "missing_keywords" in item &&
+        "needs_change" in item
+      ) {
+        void idx;
+        return [item];
+      }
+      return [];
+    });
 };
 
 const derivePriority = (
@@ -441,7 +460,7 @@ export default function ActionableFixes() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-      <div style={{ maxWidth: "960px", margin: "0 auto", padding: isMobile ? "40px 16px 120px" : "40px 32px 120px" }}>
+      <div style={pageContainerStyle(isMobile, isMobile ? 88 : 72)}>
         <div style={{ marginBottom: "32px", textAlign: "center" }}>
           <div
             style={{
@@ -460,7 +479,7 @@ export default function ActionableFixes() {
           </div>
           <div
             style={{
-              fontSize: "28px",
+              fontSize: isMobile ? "22px" : "28px",
               fontWeight: 800,
               color: "#111827",
               letterSpacing: "-0.02em",
@@ -496,6 +515,9 @@ export default function ActionableFixes() {
             style={{
               display: "inline-flex",
               alignItems: "stretch",
+              flexDirection: isMobile ? "column" : "row",
+              width: isMobile ? "100%" : undefined,
+              maxWidth: "100%",
               background: "#f9fafb",
               border: "1.5px solid #e5e7eb",
               borderRadius: "12px",
@@ -513,7 +535,8 @@ export default function ActionableFixes() {
                   style={{
                     border: "none",
                     borderRadius: "8px",
-                    padding: "10px 20px",
+                    padding: isMobile ? "10px 12px" : "10px 20px",
+                    width: isMobile ? "100%" : undefined,
                     fontSize: "13px",
                     fontWeight: isActive ? 700 : 500,
                     cursor: "pointer",

@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { CSSProperties } from "react";
 
+import { useWindowSize } from "../../hooks/useWindowSize";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../store/authStore";
 
@@ -200,6 +201,7 @@ export default function AuthGateScreen() {
     useState(false);
   const [confirmationEmail, setConfirmationEmail] = useState("");
   const [passwordResetSent, setPasswordResetSent] = useState(false);
+  const { isMobile } = useWindowSize();
 
   const getInputStyle = useCallback(
     (field: string): CSSProperties => ({
@@ -276,13 +278,14 @@ export default function AuthGateScreen() {
     <div
       style={{
         display: "grid",
-        gridTemplateColumns: "1fr 1fr",
-        minHeight: "calc(100vh - 70px)",
+        gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+        minHeight: isMobile ? "auto" : "calc(100vh - 70px)",
         width: "100%",
         overflow: "hidden",
       }}
     >
-      {/* Left — value panel */}
+      {/* Left — value panel (hidden on small screens) */}
+      {!isMobile ? (
       <div
         style={{
           background: "#6366f1",
@@ -589,12 +592,13 @@ export default function AuthGateScreen() {
           </div>
         </div>
       </div>
+      ) : null}
 
       {/* Right — auth form */}
       <div
         style={{
           background: "#ffffff",
-          padding: "48px 40px",
+          padding: isMobile ? "32px 20px 40px" : "48px 40px",
           display: "flex",
           flexDirection: "column",
           justifyContent: "center",
@@ -649,9 +653,39 @@ export default function AuthGateScreen() {
           </div>
         ) : (
           <>
+        {isMobile ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              marginBottom: "24px",
+            }}
+          >
+            <div
+              style={{
+                width: "36px",
+                height: "36px",
+                borderRadius: "10px",
+                background: "linear-gradient(135deg, #6366f1, #7c3aed)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                color: "#ffffff",
+                fontSize: "16px",
+                fontWeight: 700,
+              }}
+            >
+              ✦
+            </div>
+            <div style={{ fontSize: "15px", fontWeight: 700, color: "#111827" }}>
+              Career Intelligence
+            </div>
+          </div>
+        ) : null}
         <div
           style={{
-            fontSize: "22px",
+            fontSize: isMobile ? "20px" : "22px",
             fontWeight: 700,
             color: "#111827",
             marginBottom: "6px",

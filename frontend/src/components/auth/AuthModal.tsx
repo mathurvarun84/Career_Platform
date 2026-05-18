@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { useWindowSize } from "../../hooks/useWindowSize";
 import { useAuthStore } from "../../store/authStore";
 
 interface AuthModalProps {
@@ -23,6 +24,7 @@ const INPUT_BASE_STYLE: React.CSSProperties = {
 };
 
 export default function AuthModal({ onClose }: AuthModalProps) {
+  const { isMobile } = useWindowSize();
   const signInWithGoogle = useAuthStore((state) => state.signInWithGoogle);
   const signInWithEmail = useAuthStore((state) => state.signInWithEmail);
   const signUpWithEmail = useAuthStore((state) => state.signUpWithEmail);
@@ -116,6 +118,7 @@ export default function AuthModal({ onClose }: AuthModalProps) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        padding: isMobile ? "16px" : "0",
       }}
       onClick={(event) => {
         if (event.target === event.currentTarget) {
@@ -128,9 +131,11 @@ export default function AuthModal({ onClose }: AuthModalProps) {
           position: "relative",
           background: "#ffffff",
           borderRadius: "16px",
-          padding: "32px",
+          padding: isMobile ? "24px 20px" : "32px",
           width: "100%",
           maxWidth: "420px",
+          maxHeight: isMobile ? "calc(100dvh - 32px)" : undefined,
+          overflowY: isMobile ? "auto" : undefined,
           boxShadow: "0 20px 60px rgba(0,0,0,0.15)",
           boxSizing: "border-box",
         }}

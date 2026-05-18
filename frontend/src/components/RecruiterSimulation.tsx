@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import { useWindowSize } from "../hooks/useWindowSize";
+import { pageContainerStyle } from "../utils/pageLayout";
 import { useResumeStore } from "../store/useResumeStore";
 import type { PersonaVerdict } from "../types";
 import DataSourceNotice from "./DataSourceNotice";
@@ -360,7 +361,7 @@ export default function RecruiterSimulation() {
   if (!analysisResult?.sim) {
     return (
       <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-        <div style={{ maxWidth: "960px", margin: "0 auto", padding: "40px 32px 48px" }}>
+        <div style={pageContainerStyle(isMobile)}>
           <div
             style={{
               textAlign: "center",
@@ -394,13 +395,7 @@ export default function RecruiterSimulation() {
 
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-      <div
-        style={{
-          maxWidth: "960px",
-          margin: "0 auto",
-          padding: "40px 32px 48px",
-        }}
-      >
+      <div style={pageContainerStyle(isMobile)}>
         {/* Hero Header */}
         <div style={{ marginBottom: "32px", textAlign: "center" }}>
           <div
@@ -420,7 +415,7 @@ export default function RecruiterSimulation() {
           </div>
           <div
             style={{
-              fontSize: "28px",
+              fontSize: isMobile ? "22px" : "28px",
               fontWeight: 800,
               color: "#111827",
               letterSpacing: "-0.02em",
