@@ -51,6 +51,7 @@ export default function GapCloser() {
         [patch.patch_id],
         patch.risk === "needs_confirmation"
       );
+      // Update local patches array with applied status
       setPatches((prev) =>
         prev.map((p) =>
           p.patch_id === patch.patch_id
@@ -58,10 +59,15 @@ export default function GapCloser() {
             : p
         )
       );
+      // Display the updated resume text info
+      if (result.resume_text) {
+        console.log("Patch applied. Updated resume text available in session.");
+      }
+      // Show score improvement
       if (result.score) {
         setPatchScores((prev) => ({
           ...prev,
-          [patch.patch_id]: result.score.score,
+          [patch.patch_id]: typeof result.score === 'number' ? result.score : result.score.score,
         }));
       }
     } catch (error) {
@@ -294,6 +300,57 @@ export default function GapCloser() {
           </div>
 
           <div>
+            {/* Detailed Changes by Section */}
+            {analysisResult.gap?.section_gaps && analysisResult.gap.section_gaps.filter(g => g.needs_change).length > 0 && (
+              <div style={{ marginBottom: "24px" }}>
+                <div
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 700,
+                    color: "#111827",
+                    marginBottom: "12px",
+                    paddingBottom: "8px",
+                    borderBottom: "1.5px solid #e5e7eb",
+                  }}
+                >
+                  Detailed Changes
+                </div>
+                {analysisResult.gap.section_gaps
+                  .filter((gap) => gap.needs_change)
+                  .map((gap) => (
+                    <div key={`gap-${gap.section}`} style={{ marginBottom: "12px" }}>
+                      <div
+                        style={{
+                          fontSize: "13px",
+                          fontWeight: 600,
+                          color: "#111827",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        {gap.section.charAt(0).toUpperCase() + gap.section.slice(1)}
+                      </div>
+                      <div
+                        style={{
+                          fontSize: "12px",
+                          color: "#4b5563",
+                          marginBottom: "8px",
+                          paddingLeft: "12px",
+                          borderLeft: "3px solid #6366f1",
+                          lineHeight: 1.5,
+                        }}
+                      >
+                        {gap.gap_reason}
+                      </div>
+                      {gap.sub_changes && gap.sub_changes.length > 0 && (
+                        <div style={{ fontSize: "11px", color: "#6b7280", paddingLeft: "12px" }}>
+                          {gap.sub_changes.filter(sc => sc.needs_change).length} entry/entries need changes
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
+
             <div
               style={{
                 fontSize: "11px",
@@ -420,10 +477,22 @@ export default function GapCloser() {
           </div>
         </div>
 
+
         {patches.length > 0 && (
           <div style={{ marginBottom: "20px" }}>
-            <div style={{ fontSize: "15px", fontWeight: 700, color: "#111827", marginBottom: "16px" }}>
+            <div style={{ fontSize: "15px", fontWeight: 700, color: "#111827", marginBottom: "12px" }}>
               Intelligent Patches
+            </div>
+            <div style={{
+              background: "#f0fdf4",
+              border: "1px solid #bbf7d0",
+              borderRadius: "8px",
+              padding: "10px 12px",
+              fontSize: "12px",
+              color: "#166534",
+              marginBottom: "16px"
+            }}>
+              💡 Applied patches will be included in your downloaded resume. Click Apply to activate fixes.
             </div>
             {patches.map((patch) => (
               <div
@@ -632,6 +701,47 @@ export default function GapCloser() {
                     >
                       Skipped
                     </div>
+                  )}
+                  {patch.status === "rolled_back" && (
+                    <>
+                      <div
+                        style={{
+                          background: "#fee2e2",
+                          border: "1px solid #fecaca",
+                          color: "#991b1b",
+                          borderRadius: "6px",
+                          padding: "8px 12px",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                        }}
+                      >
+                        ↺ Rolled Back
+                      </div>
+                      <button
+                        onClick={() => {
+                          setPatches((prev) =>
+                            prev.map((p) =>
+                              p.patch_id === patch.patch_id
+                                ? { ...p, status: "pending" }
+                                : p
+                            )
+                          );
+                        }}
+                        style={{
+                          background: "#6366f1",
+                          color: "#ffffff",
+                          border: "none",
+                          borderRadius: "6px",
+                          padding: "8px 12px",
+                          fontSize: "12px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                          boxShadow: "0 2px 0 #4338ca",
+                        }}
+                      >
+                        Re-apply
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
