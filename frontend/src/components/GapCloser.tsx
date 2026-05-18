@@ -300,57 +300,6 @@ export default function GapCloser() {
           </div>
 
           <div>
-            {/* Detailed Changes by Section */}
-            {analysisResult.gap?.section_gaps && analysisResult.gap.section_gaps.filter(g => g.needs_change).length > 0 && (
-              <div style={{ marginBottom: "24px" }}>
-                <div
-                  style={{
-                    fontSize: "14px",
-                    fontWeight: 700,
-                    color: "#111827",
-                    marginBottom: "12px",
-                    paddingBottom: "8px",
-                    borderBottom: "1.5px solid #e5e7eb",
-                  }}
-                >
-                  Detailed Changes
-                </div>
-                {analysisResult.gap.section_gaps
-                  .filter((gap) => gap.needs_change)
-                  .map((gap) => (
-                    <div key={`gap-${gap.section}`} style={{ marginBottom: "12px" }}>
-                      <div
-                        style={{
-                          fontSize: "13px",
-                          fontWeight: 600,
-                          color: "#111827",
-                          marginBottom: "4px",
-                        }}
-                      >
-                        {gap.section.charAt(0).toUpperCase() + gap.section.slice(1)}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "12px",
-                          color: "#4b5563",
-                          marginBottom: "8px",
-                          paddingLeft: "12px",
-                          borderLeft: "3px solid #6366f1",
-                          lineHeight: 1.5,
-                        }}
-                      >
-                        {gap.gap_reason}
-                      </div>
-                      {gap.sub_changes && gap.sub_changes.length > 0 && (
-                        <div style={{ fontSize: "11px", color: "#6b7280", paddingLeft: "12px" }}>
-                          {gap.sub_changes.filter(sc => sc.needs_change).length} entry/entries need changes
-                        </div>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            )}
-
             <div
               style={{
                 fontSize: "11px",
