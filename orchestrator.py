@@ -11,6 +11,11 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, Optional
 
+from memory.session_store import (
+    generate_run_id,
+    save_agent_output,
+    save_full_run_result,
+)
 from backend.agents.gap_analyzer import GapAnalyzerAgent
 from backend.agents.jd_intelligence import JDIntelligenceAgent
 from backend.agents.recruiter_sim import RecruiterSimulatorAgent
@@ -197,6 +202,65 @@ class Orchestrator:
         _build_no_jd_gaps directly.
         """
         return self._build_no_jd_gaps(resume_und, resume_sections or {})
+
+    def _build_actionable_changes(self, gap_result: dict) -> list:
+        """Convert section_gaps into ActionableChange objects for the UI.
+
+        Creates detailed per-change suggestions from section-level gaps.
+        """
+        from backend.schemas.agent3_schema import ActionableChange
+
+        changes = []
+        change_id = 0
+        section_gaps = gap_result.get("section_gaps", [])
+
+        for gap in section_gaps:
+            if not gap.get("needs_change"):
+                continue
+
+            section = gap.get("section", "unknown")
+            gap_reason = gap.get("gap_reason", "Section needs improvement")
+            rewrite_instr = gap.get("rewrite_instruction", "")
+            missing_kw = gap.get("missing_keywords", [])
+
+            # For sections with sub_changes (experience, education), create per-entry changes
+            sub_changes = gap.get("sub_changes", [])
+            if sub_changes:
+                for sub in sub_changes:
+                    if not sub.get("needs_change"):
+                        continue
+                    change_id += 1
+                    changes.append(ActionableChange(
+                        change_id=change_id,
+                        location={
+                            "section": section,
+                            "sub_location": sub.get("sub_label", "")
+                        },
+                        change_type="rewrite_bullet",
+                        priority="high" if "critical" in str(gap_reason).lower() else "medium",
+                        why=sub.get("gap_reason", gap_reason),
+                        original_text=sub.get("original_text", ""),
+                        suggested_text=rewrite_instr or f"Improve: {gap_reason}",
+                        keywords_added=sub.get("missing_keywords", missing_kw),
+                    ).model_dump())
+            else:
+                # For monolithic sections (summary, skills), one change per section
+                change_id += 1
+                changes.append(ActionableChange(
+                    change_id=change_id,
+                    location={
+                        "section": section,
+                        "sub_location": ""
+                    },
+                    change_type="rewrite_section",
+                    priority="high" if "critical" in str(gap_reason).lower() else "medium",
+                    why=gap_reason,
+                    original_text=gap.get("original_content", ""),
+                    suggested_text=rewrite_instr or f"Improve {section}",
+                    keywords_added=missing_kw,
+                ).model_dump())
+
+        return changes
 
     def _build_no_jd_gaps(
         self,
@@ -437,6 +501,7 @@ class Orchestrator:
         sse_step_cb: Optional[Callable[[int, str], None]] = None,
     ) -> Dict[str, Any]:
         uid = user_id or self.user_id or "anonymous"
+        run_id = generate_run_id()
         if progress_cb: progress_cb({"step":1,"label":"Reading your resume...","pct":10})
         has_jd = bool(jd_text and jd_text.strip())
         ats_result = score_resume(resume_text, jd_text if has_jd else None)
@@ -468,6 +533,11 @@ class Orchestrator:
                         resume_text,
                         str(jd_intel.get("role_title") or ""),
                     )
+                # Save A2 output to session store
+                try:
+                    save_agent_output(uid, run_id, "jd_intelligence", jd_intel)
+                except Exception as e:
+                    logging.warning("Failed to save jd_intelligence to session store: %s", e)
             else:
                 resume_und = self.resume_understanding.run({
                     "resume_text": resume_text,
@@ -477,6 +547,11 @@ class Orchestrator:
 
             resume_und = ResumeUnderstandingValidator().validate_and_fix(resume_und, resume_text)
             resume_sections = self._extract_a1_sections(resume_und)
+            # Save A1 output to session store
+            try:
+                save_agent_output(uid, run_id, "resume_understanding", resume_und)
+            except Exception as e:
+                logging.warning("Failed to save resume_understanding to session store: %s", e)
             # Harden resume_sections: backfill any empty sections from deterministic parser.
             from parser import _extract_section_blocks
             from backend.schemas.common import SectionText
@@ -579,6 +654,26 @@ class Orchestrator:
             gap_result = self._build_no_jd_gaps(resume_und, resume_sections)
             if sse_step_cb:
                 sse_step_cb(1, "Resume analysed")
+        # Build actionable changes from section gaps
+        try:
+            if isinstance(gap_result, dict):
+                changes = self._build_actionable_changes(gap_result)
+                gap_result["changes"] = changes
+                logging.info("Built %d actionable changes from section gaps", len(changes))
+                if not changes:
+                    logging.warning(
+                        "No actionable changes built. Section gaps with needs_change: %s",
+                        [g.get("section") for g in gap_result.get("section_gaps", []) if g.get("needs_change")]
+                    )
+        except Exception as e:
+            logging.warning("Failed to build actionable changes: %s", e)
+            gap_result["changes"] = []
+
+        # Save A3 output to session store
+        try:
+            save_agent_output(uid, run_id, "gap_analyzer", gap_result)
+        except Exception as e:
+            logging.warning("Failed to save gap_analyzer to session store: %s", e)
         if partial_result_cb:
             partial_result_cb({"gap": gap_result, "resume": resume_und})
 
@@ -632,6 +727,11 @@ class Orchestrator:
             if fut_rewrite:
                 try:
                     rewrites = fut_rewrite.result()
+                    # Save A4 output to session store
+                    try:
+                        save_agent_output(uid, run_id, "rewriter", rewrites)
+                    except Exception as e:
+                        logging.warning("Failed to save rewriter to session store: %s", e)
                     if progress_cb: progress_cb({"step":3,"label":"Resume rewritten successfully","pct":90})
                     patches_raw = (rewrites or {}).get("patches", [])
                     if rewrites:
@@ -683,6 +783,11 @@ class Orchestrator:
             if fut_sim:
                 try:
                     sim_result = fut_sim.result()
+                    # Save A5 output to session store
+                    try:
+                        save_agent_output(uid, run_id, "recruiter_sim", sim_result)
+                    except Exception as e:
+                        logging.warning("Failed to save recruiter_sim to session store: %s", e)
                 except Exception as exc:
                     logging.warning("Recruiter Sim (Agent 5) failed: %s. Continuing without simulation.", exc)
         if partial_result_cb:
@@ -749,7 +854,7 @@ class Orchestrator:
                 logging.warning("Patch classification failed: %s", exc)
                 classified_patches = []
 
-        return {
+        final_result = {
             "ats": ats_result,
             "resume": resume_und,
             "gap": gap_result,
@@ -760,3 +865,9 @@ class Orchestrator:
             "jd_intelligence": jd_intel,
             "patches": [p.model_dump() if hasattr(p, "model_dump") else p for p in classified_patches],
         }
+        # Save full result to session store
+        try:
+            save_full_run_result(uid, run_id, final_result)
+        except Exception as e:
+            logging.warning("Failed to save full run result to session store: %s", e)
+        return final_result

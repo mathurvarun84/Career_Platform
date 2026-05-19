@@ -2,6 +2,7 @@
 Memory layer – per‑user JSON store.
 
 Stores session history, tracks runs, and keeps a running style decision log.
+Supports flexible agent output storage keyed by run_id + agent_name.
 
 All I/O is protected by try/except with descriptive error messages.
 """
@@ -11,6 +12,7 @@ import os
 import pathlib
 import datetime
 import logging
+import uuid
 
 # Directory for per‑user JSON files – ensure existence lazily
 BASE_DIR = pathlib.Path("resume_platform/memory")
@@ -41,6 +43,7 @@ def _scaffold(user_id: str) -> dict:
         "created_at": now,
         "runs": [],
         "style_decisions": {"accepted": [], "rejected": []},
+        "agent_data": {},  # Keyed by run_id.agent_name → stores individual agent outputs
     }
 
 # -------------------------------------------------------------------------------------------------
@@ -69,6 +72,9 @@ def load_session(user_id: str) -> dict:
         if key not in data:
             logger.warning("Missing key '%s' in session, resetting", key)
             return _scaffold(user_id)
+    # Add agent_data if missing (backward compatibility)
+    if "agent_data" not in data:
+        data["agent_data"] = {}
     return data
 
 # -------------------------------------------------------------------------------------------------
@@ -123,3 +129,75 @@ def update_session(user_id: str, run_result: dict) -> None:
         session["runs"] = session["runs"][-50:]
 
     save_session(user_id, session)
+
+# -------------------------------------------------------------------------------------------------
+# Agent Data Storage – flexible per-run agent output storage
+# -------------------------------------------------------------------------------------------------
+
+def generate_run_id() -> str:
+    """Generate a unique run ID."""
+    return str(uuid.uuid4())[:8]
+
+def save_agent_output(user_id: str, run_id: str, agent_name: str, data: dict) -> None:
+    """Save an individual agent's output for a given run.
+
+    Args:
+        user_id: User identifier.
+        run_id: Run identifier (can be generated via generate_run_id).
+        agent_name: Agent identifier (e.g., 'resume_understanding', 'gap_analyzer').
+        data: Agent output dict to store.
+    """
+    session = load_session(user_id)
+    key = f"{run_id}.{agent_name}"
+    try:
+        session["agent_data"][key] = data
+        save_session(user_id, session)
+    except Exception as e:
+        logger.error("Failed to save agent output %s: %s", key, e)
+        raise
+
+def get_agent_output(user_id: str, run_id: str, agent_name: str) -> dict | None:
+    """Retrieve a saved agent output.
+
+    Args:
+        user_id: User identifier.
+        run_id: Run identifier.
+        agent_name: Agent identifier.
+
+    Returns:
+        Agent output dict, or None if not found.
+    """
+    session = load_session(user_id)
+    key = f"{run_id}.{agent_name}"
+    return session.get("agent_data", {}).get(key)
+
+def save_full_run_result(user_id: str, run_id: str, full_result: dict) -> None:
+    """Save the complete orchestrator output for a run.
+
+    Args:
+        user_id: User identifier.
+        run_id: Run identifier.
+        full_result: Full dict returned by orchestrator.run_full_evaluation().
+    """
+    session = load_session(user_id)
+    key = f"{run_id}.full_result"
+    try:
+        session["agent_data"][key] = full_result
+        save_session(user_id, session)
+    except Exception as e:
+        logger.error("Failed to save full run result %s: %s", key, e)
+        raise
+
+def get_full_run_result(user_id: str, run_id: str) -> dict | None:
+    """Retrieve the complete orchestrator output for a run.
+
+    Args:
+        user_id: User identifier.
+        run_id: Run identifier.
+
+    Returns:
+        Full result dict, or None if not found.
+    """
+    session = load_session(user_id)
+    key = f"{run_id}.full_result"
+    return session.get("agent_data", {}).get(key)
