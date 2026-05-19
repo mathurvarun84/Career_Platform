@@ -1,10 +1,10 @@
 import { useState } from "react";
 
-import { applyPatches, getResumeDownloadUrl, rollbackPatch, validateRewrite } from "../api/client";
+import { applyPatches, getResumeDownloadUrl, rollbackPatch } from "../api/client";
 import { useWindowSize } from "../hooks/useWindowSize";
 import { cardPadding, pageContainerStyle } from "../utils/pageLayout";
 import { useResumeStore } from "../store/useResumeStore";
-import type { PriorityFix, ResumePatch, ActionableChange, RewriteValidation } from "../types";
+import type { PriorityFix, ResumePatch } from "../types";
 import DataSourceNotice from "./DataSourceNotice";
 
 const toTitle = (value: string): string =>
@@ -36,9 +36,6 @@ export default function GapCloser() {
   const [patches, setPatches] = useState<ResumePatch[]>(analysisResult?.patches || []);
   const [applying, setApplying] = useState<string | null>(null);
   const [patchScores, setPatchScores] = useState<Record<string, number | null>>({});
-  const [userRewrites, setUserRewrites] = useState<Record<number, string>>({});
-  const [validations, setValidations] = useState<Record<number, RewriteValidation>>({});
-  const [validating, setValidating] = useState<number | null>(null);
   const { isMobile } = useWindowSize();
 
   const handleApplyPatch = async (patch: ResumePatch) => {
@@ -97,32 +94,6 @@ export default function GapCloser() {
       });
     } catch (error) {
       alert(`Error rolling back patch: ${error}`);
-    }
-  };
-
-  const handleValidateRewrite = async (change: ActionableChange) => {
-    const rewrite = userRewrites[change.change_id];
-    if (!rewrite || !rewrite.trim()) {
-      alert("Please enter your rewrite before validating.");
-      return;
-    }
-    setValidating(change.change_id);
-    try {
-      const result = await validateRewrite(
-        jobId || analysisResult?.job_id || "",
-        change.change_id,
-        rewrite,
-        change.location.section,
-        change.location.sub_location
-      );
-      setValidations((prev) => ({
-        ...prev,
-        [change.change_id]: result,
-      }));
-    } catch (error) {
-      alert(`Validation failed: ${error}`);
-    } finally {
-      setValidating(null);
     }
   };
 
@@ -724,246 +695,6 @@ export default function GapCloser() {
                 </div>
               </div>
             ))}
-          </div>
-        )}
-
-        {analysisResult.gap?.changes && analysisResult.gap.changes.length > 0 && (
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ fontSize: "15px", fontWeight: 700, color: "#111827", marginBottom: "12px" }}>
-              Validate Your Rewrites
-            </div>
-            {analysisResult.gap.changes.map((change) => {
-              const validation = validations[change.change_id];
-              const userRewrite = userRewrites[change.change_id];
-              const isValidating = validating === change.change_id;
-
-              const statusColor = validation
-                ? validation.status === "CLOSED"
-                  ? "#16a34a"
-                  : validation.status === "PARTIAL"
-                  ? "#d97706"
-                  : "#dc2626"
-                : "#6b7280";
-
-              const statusBg = validation
-                ? validation.status === "CLOSED"
-                  ? "#f0fdf4"
-                  : validation.status === "PARTIAL"
-                  ? "#fff7ed"
-                  : "#fef2f2"
-                : "#ffffff";
-
-              return (
-                <div
-                  key={`change-${change.change_id}`}
-                  style={{
-                    background: statusBg,
-                    border: `1.5px solid ${validation ? statusColor : "#e5e7eb"}`,
-                    borderRadius: "16px",
-                    padding: "16px",
-                    marginBottom: "12px",
-                  }}
-                >
-                  <div style={{ marginBottom: "12px" }}>
-                    <div
-                      style={{
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        color: "#111827",
-                        marginBottom: "4px",
-                      }}
-                    >
-                      {change.location.section.charAt(0).toUpperCase() + change.location.section.slice(1)}
-                      {change.location.sub_location && (
-                        <span style={{ fontSize: "12px", fontWeight: 500, color: "#6b7280" }}>
-                          {" "}— {change.location.sub_location}
-                        </span>
-                      )}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        color: "#6b7280",
-                        fontWeight: 500,
-                      }}
-                    >
-                      {change.change_type} ({change.priority})
-                    </div>
-                  </div>
-
-                  <div style={{ marginBottom: "12px" }}>
-                    <div style={{ fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>
-                      Why: {change.why}
-                    </div>
-                  </div>
-
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "12px" }}>
-                    <div>
-                      <div style={{ fontSize: "11px", fontWeight: 700, color: "#4b5563", marginBottom: "4px" }}>
-                        Original Text
-                      </div>
-                      <div
-                        style={{
-                          background: "#ffffff",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          padding: "8px",
-                          fontSize: "12px",
-                          color: "#374151",
-                          minHeight: "60px",
-                          maxHeight: "100px",
-                          overflowY: "auto",
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        {change.original_text}
-                      </div>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: "11px", fontWeight: 700, color: "#4b5563", marginBottom: "4px" }}>
-                        Suggested Text
-                      </div>
-                      <div
-                        style={{
-                          background: "#ffffff",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          padding: "8px",
-                          fontSize: "12px",
-                          color: "#374151",
-                          minHeight: "60px",
-                          maxHeight: "100px",
-                          overflowY: "auto",
-                          fontFamily: "monospace",
-                        }}
-                      >
-                        {change.suggested_text}
-                      </div>
-                    </div>
-                  </div>
-
-                  {!validation && (
-                    <div style={{ marginBottom: "12px" }}>
-                      <div style={{ fontSize: "11px", fontWeight: 700, color: "#374151", marginBottom: "4px" }}>
-                        Your Rewrite
-                      </div>
-                      <textarea
-                        placeholder="Paste your rewritten text here..."
-                        value={userRewrite || ""}
-                        onChange={(e) =>
-                          setUserRewrites((prev) => ({
-                            ...prev,
-                            [change.change_id]: e.target.value,
-                          }))
-                        }
-                        style={{
-                          width: "100%",
-                          minHeight: "80px",
-                          padding: "8px",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          fontSize: "12px",
-                          fontFamily: "monospace",
-                          resize: "vertical",
-                        }}
-                      />
-                    </div>
-                  )}
-
-                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                    {!validation && (
-                      <button
-                        onClick={() => handleValidateRewrite(change)}
-                        disabled={isValidating}
-                        style={{
-                          background: "#6366f1",
-                          color: "#ffffff",
-                          border: "none",
-                          borderRadius: "6px",
-                          padding: "8px 12px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          cursor: isValidating ? "not-allowed" : "pointer",
-                          opacity: isValidating ? 0.6 : 1,
-                          boxShadow: "0 2px 0 #4338ca",
-                        }}
-                      >
-                        {isValidating ? "Validating..." : "Validate"}
-                      </button>
-                    )}
-
-                    {validation && (
-                      <>
-                        <div
-                          style={{
-                            background: statusColor,
-                            color: "#ffffff",
-                            borderRadius: "6px",
-                            padding: "8px 12px",
-                            fontSize: "12px",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {validation.status}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "12px",
-                            color: statusColor,
-                            fontWeight: 600,
-                            display: "flex",
-                            alignItems: "center",
-                          }}
-                        >
-                          Delta: {(validation.delta * 100).toFixed(0)}%
-                        </div>
-                        <button
-                          onClick={() => {
-                            setValidations((prev) => {
-                              const newValidations = { ...prev };
-                              delete newValidations[change.change_id];
-                              return newValidations;
-                            });
-                            setUserRewrites((prev) => {
-                              const newRewrites = { ...prev };
-                              delete newRewrites[change.change_id];
-                              return newRewrites;
-                            });
-                          }}
-                          style={{
-                            background: "#f3f4f6",
-                            color: "#6b7280",
-                            border: "1px solid #d1d5db",
-                            borderRadius: "6px",
-                            padding: "8px 12px",
-                            fontSize: "12px",
-                            fontWeight: 600,
-                            cursor: "pointer",
-                          }}
-                        >
-                          Try Again
-                        </button>
-                      </>
-                    )}
-                  </div>
-
-                  {validation && validation.feedback && (
-                    <div
-                      style={{
-                        marginTop: "12px",
-                        padding: "8px 12px",
-                        background: "#ffffff",
-                        borderRadius: "6px",
-                        fontSize: "12px",
-                        color: "#4b5563",
-                      }}
-                    >
-                      {validation.feedback}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
           </div>
         )}
 
