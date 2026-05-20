@@ -53,7 +53,19 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
         [patch.patch_id],
         patch.risk === "needs_confirmation"
       );
-      // Update local patches array with applied status
+      const outcome = result.results?.find((r) => r.patch_id === patch.patch_id);
+      if (!outcome?.applied || !outcome.found_in_doc) {
+        alert(
+          outcome?.rejection_reason?.trim() ||
+            "Could not apply — text may have changed in the document."
+        );
+        setPatches((prev) =>
+          prev.map((p) =>
+            p.patch_id === patch.patch_id ? { ...p, status: "rejected" } : p
+          )
+        );
+        return;
+      }
       setPatches((prev) =>
         prev.map((p) =>
           p.patch_id === patch.patch_id
@@ -587,7 +599,7 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
                           fontWeight: 600,
                         }}
                       >
-                        ✓ Applied
+                        ✓ Applied (verified)
                       </div>
                       {patchScores[patch.patch_id] && (
                         <div

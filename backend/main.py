@@ -695,15 +695,35 @@ async def apply_patches(req: ApplyPatchesRequest):
     engine = PatchEngine(resume_text, resume_sections=resume_sections)
     all_patches = {p["patch_id"]: ResumePatch(**p) for p in patches_raw}
 
-    applied, rejected = [], []
+    applied, rejected, results = [], [], []
     for pid in req.patch_ids:
         patch = all_patches.get(pid)
         if not patch:
+            results.append({
+                "patch_id": pid,
+                "applied": False,
+                "found_in_doc": False,
+                "rejection_reason": "patch_id not found",
+            })
+            rejected.append(pid)
             continue
         if patch.risk == "needs_confirmation" and not req.user_confirmed:
             rejected.append(pid)
+            results.append({
+                "patch_id": pid,
+                "applied": False,
+                "found_in_doc": False,
+                "rejection_reason": "needs_confirmation",
+            })
             continue
-        if engine.apply(patch):
+        outcome = engine.apply_with_result(patch)
+        results.append({
+            "patch_id": pid,
+            "applied": outcome["applied"],
+            "found_in_doc": outcome["found_in_doc"],
+            "rejection_reason": outcome.get("rejection_reason"),
+        })
+        if outcome["applied"]:
             applied.append(pid)
         else:
             rejected.append(pid)
@@ -724,12 +744,13 @@ async def apply_patches(req: ApplyPatchesRequest):
         req.job_id,
         job,
         "after_fix",
-        extra={"applied": applied, "rejected": rejected},
+        extra={"applied": applied, "rejected": rejected, "results": results},
     )
 
     return {
         "applied": applied,
         "rejected": rejected,
+        "results": results,
         "resume_text": updated_text,
         "score": score,
     }

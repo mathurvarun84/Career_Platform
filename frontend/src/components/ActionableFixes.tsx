@@ -473,10 +473,8 @@ export default function ActionableFixes() {
   };
 
   const applyFix = async (fix: FixItem) => {
-    setAppliedFixes((prev) => new Set([...prev, fix.id]));
     const style: RewriteStyle = selectedMode === "safe" ? "balanced" : "aggressive";
     const sectionText = getAfterText(fix.sectionKey);
-    applySectionFix(fix.sectionKey, style, sectionText);
 
     if (selectedMode === "safe" && jobId) {
       const patch = patchBySection[fix.sectionKey];
@@ -487,14 +485,30 @@ export default function ActionableFixes() {
             [patch.patch_id],
             patch.risk === "needs_confirmation"
           );
+          const outcome = result.results?.find((r) => r.patch_id === patch.patch_id);
+          if (!outcome?.applied || !outcome.found_in_doc) {
+            alert(
+              outcome?.rejection_reason?.trim() ||
+                "Could not apply — text may have changed in the document."
+            );
+            return;
+          }
+          applySectionFix(fix.sectionKey, style, sectionText);
+          setAppliedFixes((prev) => new Set([...prev, fix.id]));
           if (result.score) {
             mergePartialResult({ ats: result.score });
           }
+          return;
         } catch (error) {
           console.error("Failed to apply patch on server:", error);
+          alert(`Error applying patch: ${error}`);
+          return;
         }
       }
     }
+
+    applySectionFix(fix.sectionKey, style, sectionText);
+    setAppliedFixes((prev) => new Set([...prev, fix.id]));
   };
 
   return (

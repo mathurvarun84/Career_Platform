@@ -161,9 +161,17 @@ export const getHistory = async (userId: string): Promise<HistoryResponse> => {
   return response.data;
 };
 
+export interface PatchApplyResult {
+  patch_id: string;
+  applied: boolean;
+  found_in_doc: boolean;
+  rejection_reason?: string | null;
+}
+
 export interface ApplyPatchesResponse {
   applied: string[];
   rejected: string[];
+  results: PatchApplyResult[];
   resume_text: string;
   score: ATSResult;
 }

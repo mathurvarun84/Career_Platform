@@ -30,6 +30,74 @@ HEADER_END           = "##END_HEADER##"
 # Sections that carry sub_entries — content must be built from sub_entries, not full_text
 _SUB_ENTRY_SECTIONS = frozenset({"experience", "projects", "education", "certifications"})
 
+# Monolithic sections (summary, skills, …) emit one REPLACE_TEXT patch for surgical apply
+_MONOLITHIC_PATCH_SECTIONS = frozenset({"summary", "skills", "objective", "projects"})
+
+
+def _resolve_patch_target_in_resume(
+    section: str,
+    original_content: str,
+    resume_text: str,
+) -> str:
+    """Pick original_text anchor that exists verbatim in the full resume."""
+    original = (original_content or "").strip()
+    if not original:
+        return ""
+    if resume_text and original in resume_text:
+        return original
+    if resume_text:
+        try:
+            from parser import _extract_section_blocks
+
+            block = (_extract_section_blocks(resume_text).get(section) or "").strip()
+            if block and block in resume_text:
+                return block
+        except Exception:
+            pass
+    return original
+
+
+def _build_monolithic_section_patch(
+    section: str,
+    original_content: str,
+    rewrite_dict: dict,
+    gap: dict,
+    resume_text: str = "",
+) -> dict | None:
+    """Build a surgical REPLACE_TEXT patch for monolithic section rewrites."""
+    if section not in _MONOLITHIC_PATCH_SECTIONS:
+        return None
+    balanced = (rewrite_dict.get("balanced") or "").strip()
+    if not balanced:
+        return None
+    target = _resolve_patch_target_in_resume(section, original_content, resume_text)
+    if not target:
+        return None
+    if resume_text and target not in resume_text:
+        logging.warning(
+            "RewriterAgent: skip patch for '%s' — anchor not found in resume_text",
+            section,
+        )
+        return None
+    if balanced == target:
+        return None
+    return {
+        "op": "replace_text",
+        "section": section,
+        "original_text": target,
+        "replacement_text": balanced,
+        "issue_detected": (
+            gap.get("description")
+            or gap.get("gap_reason")
+            or f"Improve {section} section"
+        ),
+        "fix_rationale": (
+            gap.get("rewrite_instruction")
+            or gap.get("suggestion")
+            or "Monolithic section rewrite for surgical apply."
+        ),
+    }
+
 # Canonical alias map — maps any raw section key to its canonical name
 _SECTION_CANONICAL_MAP: dict[str, str] = {
     # awards variants
@@ -623,16 +691,17 @@ class RewriterAgent(BaseAgent):
                 top_1_percent=oc,
             ).model_dump(), [])
 
-        return (
-            self._rewrite_monolithic(
-                section,
-                original_content,
-                gap,
-                resume_text=resume_text,
-                jd_intelligence=jd_intelligence,
-            ),
-            [],
+        rewrite_dict = self._rewrite_monolithic(
+            section,
+            original_content,
+            gap,
+            resume_text=resume_text,
+            jd_intelligence=jd_intelligence,
         )
+        patch_raw = _build_monolithic_section_patch(
+            section, original_content, rewrite_dict, gap, resume_text
+        )
+        return (rewrite_dict, [patch_raw] if patch_raw else [])
 
     def _build_add_summary_prompt(
         self,
