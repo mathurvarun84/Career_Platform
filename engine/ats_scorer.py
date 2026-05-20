@@ -66,6 +66,15 @@ DIMENSION_META = {
 }
 
 _DIMENSION_ORDER = ["keyword_match", "formatting", "readability", "impact_metrics"]
+_STRUCTURAL_MARKER_RE = re.compile(r"##(?:COMPANY|ROLE|END_HEADER)##")
+
+
+def _strip_structural_markers(text: str) -> str:
+    """Remove rewriter docx structural markers before ATS scoring."""
+    cleaned = _STRUCTURAL_MARKER_RE.sub(" ", text)
+    return re.sub(r" +", " ", cleaned)
+
+
 _STOPWORDS = {
     "and", "the", "for", "with", "from", "that", "this", "you", "your", "our", "into",
     "across", "using", "used", "build", "built", "have", "has", "had", "were", "was",
@@ -98,6 +107,7 @@ def score_resume(resume_text: str, jd_text: str | None = None) -> dict:
           >>> score_resume("Reduced server latency by 40% using Python.")
           {'score': 87, 'breakdown': {...}, 'ats_issues': [...]}
     """
+    resume_text = _strip_structural_markers(resume_text)
     breakdown = {
         "keyword_match": _score_keyword_match(resume_text, jd_text),
         "formatting": _score_formatting(resume_text),
@@ -310,6 +320,14 @@ def _score_formatting(resume_text: str) -> int:
     return min(25, score)
 
 
+_RUNON_WORD_RE = re.compile(r"\b[a-zA-Z]{22,}\b")
+
+
+def _count_runon_words(resume_text: str) -> int:
+    """Count abnormally long tokens — typical sign of PDF spacing loss."""
+    return len(_RUNON_WORD_RE.findall(resume_text))
+
+
 def _score_readability(resume_text: str) -> int:
     """
       Calculates readability score (0-25):
@@ -352,6 +370,12 @@ def _score_readability(resume_text: str) -> int:
         score = 6
 
     if avg_words > 30:
+        score = max(0, score - 5)
+
+    runon = _count_runon_words(resume_text)
+    if runon >= 3:
+        score = max(0, score - 10)
+    elif runon >= 1:
         score = max(0, score - 5)
 
     return min(25, score)
@@ -428,4 +452,194 @@ def _collect_issues(resume_text: str, breakdown: dict) -> list[str]:
     if breakdown["readability"] < 12:
         issues.append("Readability needs improvement — use shorter, clearer sentences.")
 
+    runon = _count_runon_words(resume_text)
+    if runon >= 1:
+        issues.append(
+            "PDF word-spacing issues detected — words are merged (e.g. Servingasasoftwareengineer). "
+            "Re-upload or re-parse the resume to fix ATS readability."
+        )
+
     return issues
+
+
+def score_rewrites(
+    original_resume_text: str,
+    rewrites: dict,
+    jd_text: str | None = None,
+) -> dict:
+    """
+    Score safe-fix and full-rewrite modes using deterministic ATS scorer.
+
+    Safe fix and full rewrite both use balanced text per section (conservative
+    stitch). Zero LLM calls.
+
+    Args:
+        original_resume_text: Verbatim resume text before rewrites.
+        rewrites: RewriterAgent output shape
+            {section_name: {balanced, aggressive, top_1_percent}}.
+        jd_text: Optional JD text for keyword_match JD boost.
+
+    Returns:
+        Dict with safe_fix, full_rewrite score objects and original_ats.
+    """
+    original_scored = score_resume(original_resume_text, jd_text)
+    original_ats = original_scored["score"]
+
+    section_rewrites = rewrites if isinstance(rewrites, dict) else {}
+    safe_fix_parts: list[str] = []
+    full_rewrite_parts: list[str] = []
+
+    for _section_name, variants in section_rewrites.items():
+        if not isinstance(variants, dict):
+            continue
+        balanced = str(variants.get("balanced") or "").strip()
+        if balanced:
+            safe_fix_parts.append(balanced)
+            full_rewrite_parts.append(balanced)
+
+    safe_fix_resume = _strip_structural_markers(
+        "\n\n".join(safe_fix_parts) if safe_fix_parts else original_resume_text
+    )
+    full_rewrite_resume = _strip_structural_markers(
+        "\n\n".join(full_rewrite_parts) if full_rewrite_parts else original_resume_text
+    )
+
+    safe_fix_scored = score_resume(safe_fix_resume, jd_text)
+    full_rewrite_scored = score_resume(full_rewrite_resume, jd_text)
+
+    return {
+        "safe_fix": {
+            "ats_score": safe_fix_scored["score"],
+            "ats_breakdown": safe_fix_scored["breakdown"],
+            "delta_ats": safe_fix_scored["score"] - original_ats,
+        },
+        "full_rewrite": {
+            "ats_score": full_rewrite_scored["score"],
+            "ats_breakdown": full_rewrite_scored["breakdown"],
+            "delta_ats": full_rewrite_scored["score"] - original_ats,
+        },
+        "original_ats": original_ats,
+    }
+
+
+_PLACEHOLDER_RE = re.compile(
+    r"""
+    \[
+    (?:
+        [A-Z][A-Z0-9_]{2,}
+      | X%
+      | N\s+\w+
+      | \w+/\w+
+      | INR\s+X\s+\w+
+      | Xms
+      | \d*[A-Za-z]+\d*%?
+    )
+    \]
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+
+def _concat_balanced_rewrite_text(
+    original_resume_text: str,
+    rewrites: dict,
+) -> tuple[str, str]:
+    """Build safe-fix and full-rewrite text blobs from balanced section variants."""
+    section_rewrites = rewrites if isinstance(rewrites, dict) else {}
+    parts: list[str] = []
+    for _section_name, variants in section_rewrites.items():
+        if not isinstance(variants, dict):
+            continue
+        balanced = str(variants.get("balanced") or "").strip()
+        if balanced:
+            parts.append(balanced)
+    joined = "\n\n".join(parts) if parts else original_resume_text
+    return joined, joined
+
+
+def build_validation_summary(
+    original_resume_text: str,
+    rewrites: dict,
+    patches: list,
+    jd_match_before: float | None,
+    jd_match_after: float | None,
+    jd_text: str | None = None,
+) -> dict:
+    """
+    Build pass/warn/fail validation summary for both rewrite modes.
+
+    All checks are deterministic (zero LLM):
+      1. ats_improved — mode ATS > original ATS
+      2. jd_improved — jd_match_after > jd_match_before
+      3. no_placeholders — no unfilled bracket placeholders
+      4. no_truncation — rewrite length >= 35% of original
+
+    Args:
+        original_resume_text: Verbatim resume text.
+        rewrites: Section rewrite dict from RewriterAgent.
+        patches: Classified patches (reserved for future patch-aware scoring).
+        jd_match_before: Pre-rewrite JD match score, or None if no JD.
+        jd_match_after: Post-rewrite JD match estimate, or None.
+        jd_text: Optional JD text for ATS keyword boost.
+
+    Returns:
+        Validation summary with safe_fix, full_rewrite checks and scores.
+    """
+    _ = patches  # forwarded for future patch-aware safe-fix scoring
+    scores = score_rewrites(original_resume_text, rewrites, jd_text)
+    original_len = len(original_resume_text.strip())
+    safe_fix_text, full_rewrite_text = _concat_balanced_rewrite_text(
+        original_resume_text,
+        rewrites,
+    )
+
+    def _check_mode(mode_key: str, mode_text: str) -> dict:
+        mode_ats = scores[mode_key]["ats_score"]
+        original_ats = scores["original_ats"]
+
+        ats_check = "pass" if mode_ats > original_ats else "fail"
+
+        if jd_match_before is None:
+            jd_check = "no_jd"
+        elif jd_match_after is None:
+            jd_check = "warn"
+        elif jd_match_after > jd_match_before:
+            jd_check = "pass"
+        else:
+            jd_check = "fail"
+
+        placeholder_check = "fail" if _PLACEHOLDER_RE.search(mode_text) else "pass"
+
+        mode_len = len(mode_text.strip())
+        truncation_check = (
+            "pass"
+            if (original_len == 0 or mode_len / original_len >= 0.35)
+            else "fail"
+        )
+
+        hard_fails = [
+            c for c in (ats_check, placeholder_check, truncation_check) if c == "fail"
+        ]
+        if hard_fails:
+            overall = "fail"
+        elif jd_check in ("warn", "no_jd"):
+            overall = "warn"
+        else:
+            overall = "pass"
+
+        download_enabled = len(hard_fails) == 0
+
+        return {
+            "ats_check": ats_check,
+            "jd_check": jd_check,
+            "placeholder_check": placeholder_check,
+            "truncation_check": truncation_check,
+            "overall": overall,
+            "download_enabled": download_enabled,
+        }
+
+    return {
+        "safe_fix": _check_mode("safe_fix", safe_fix_text),
+        "full_rewrite": _check_mode("full_rewrite", full_rewrite_text),
+        "scores": scores,
+    }

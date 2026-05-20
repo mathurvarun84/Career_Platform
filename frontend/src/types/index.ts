@@ -115,8 +115,10 @@ export interface PriorityFix {
 }
 
 export interface GapResult {
+  /** Set by backend when analysis ran without a job description. */
+  resume_only_mode?: boolean;
   jd_match_score_before: number | null;
-  jd_match_score_after: number;
+  jd_match_score_after: number | null;
   section_gaps: SectionGap[];
   missing_keywords: string[];
   priority_fixes: string[] | PriorityFix[];
@@ -156,6 +158,31 @@ export type PatchOp =
 export type PatchRisk = "safe" | "needs_confirmation";
 export type PatchStatus = "pending" | "applied" | "rejected" | "rolled_back";
 
+export interface ModeValidation {
+  ats_check: "pass" | "fail";
+  jd_check: "pass" | "warn" | "fail" | "no_jd";
+  placeholder_check: "pass" | "fail";
+  truncation_check: "pass" | "fail";
+  overall: "pass" | "warn" | "fail";
+  download_enabled: boolean;
+}
+
+export interface ModeScores {
+  ats_score: number;
+  ats_breakdown: ATSBreakdown;
+  delta_ats: number;
+}
+
+export interface ValidationSummary {
+  safe_fix: ModeValidation;
+  full_rewrite: ModeValidation;
+  scores: {
+    safe_fix: ModeScores;
+    full_rewrite: ModeScores;
+    original_ats: number;
+  };
+}
+
 export interface ResumePatch {
   patch_id: string;
   gap_id: string;
@@ -186,6 +213,7 @@ export interface AnalysisResult {
   percentile: PercentileResult | null;
   positioning: PositioningResult | null;
   patches?: ResumePatch[];
+  validation: ValidationSummary | null;
 }
 
 export interface SSEProgressEvent {

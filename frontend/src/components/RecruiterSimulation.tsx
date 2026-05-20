@@ -656,7 +656,7 @@ export default function RecruiterSimulation() {
               transition: "transform 0.1s, box-shadow 0.1s",
             }}
           >
-            View Recommended Fixes →
+            Go to Fixes →
           </button>
         </div>
 

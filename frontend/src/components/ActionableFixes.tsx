@@ -1,17 +1,21 @@
 import { useState } from "react";
 
-import { getResumeDownloadUrl } from "../api/client";
 import { useWindowSize } from "../hooks/useWindowSize";
 import { pageContainerStyle } from "../utils/pageLayout";
+import { hasJobDescription } from "../utils/hasJobDescription";
+import { getFixModeBaseline, type FixMode } from "../utils/modeScores";
 import { useResumeStore } from "../store/useResumeStore";
+import type { RewriteStyle } from "../types";
 import type {
   ATSDimensionDetail,
   ATSResult,
   GapResult,
   PriorityFix,
-  RewriteStyle,
+  ResumePatch,
 } from "../types";
 import DataSourceNotice from "./DataSourceNotice";
+import FixValidation from "./FixValidation";
+import ModeSelector from "./ModeSelector";
 
 type PriorityLevel = "critical" | "high" | "medium" | "low";
 type FilterValue = "all" | "critical" | "high" | "medium";
@@ -63,52 +67,6 @@ const atsSectionMap: Record<string, { reason: string; instruction: string }> = {
     reason: "Sentence clarity could be improved",
     instruction: "Shorten sentences, use active voice, and avoid filler phrases.",
   },
-};
-
-const stylePillConfig: Record<
-  RewriteStyle,
-  {
-    label: string;
-    sublabel: string;
-    activeColor: string;
-    activeBg: string;
-    activeBorder: string;
-    icon: string;
-  }
-> = {
-  balanced: {
-    label: "Balanced",
-    sublabel: "Safe & Professional",
-    activeColor: "#6366f1",
-    activeBg: "#eef2ff",
-    activeBorder: "#c7d2fe",
-    icon: "⚖",
-  },
-  aggressive: {
-    label: "Aggressive",
-    sublabel: "Punchy & Bold",
-    activeColor: "#d97706",
-    activeBg: "#fffbeb",
-    activeBorder: "#fde68a",
-    icon: "⚡",
-  },
-  top_1_percent: {
-    label: "Top 1%",
-    sublabel: "Maximum Impact",
-    activeColor: "#7c3aed",
-    activeBg: "#f5f0ff",
-    activeBorder: "#e9d5ff",
-    icon: "✦",
-  },
-};
-
-const styleDescriptions: Record<RewriteStyle, string> = {
-  balanced:
-    "Conservative rewrites — safe for any company, ATS-friendly, no risk.",
-  aggressive:
-    "Strong verbs, quantified claims, direct language — works for product startups.",
-  top_1_percent:
-    "Executive-level phrasing with maximum keyword density — for senior/leadership roles.",
 };
 
 const toTitleCase = (value: string): string =>
@@ -302,16 +260,17 @@ const getDimensionDetail = (
 
 export default function ActionableFixes() {
   const analysisResult = useResumeStore((s) => s.analysisResult);
-  const selectedStyle = useResumeStore((s) => s.selectedStyle);
-  const setSelectedStyle = useResumeStore((s) => s.setSelectedStyle);
   const jobId = useResumeStore((s) => s.jobId);
+  const applySectionFix = useResumeStore((s) => s.applySectionFix);
+  const baselineAts = useResumeStore((s) => s.baselineAts);
+  const liveAts = useResumeStore((s) => s.analysisResult?.ats.score ?? 0);
 
+  const [selectedMode, setSelectedMode] = useState<FixMode>("safe");
   const [activeFilter, setActiveFilter] = useState<FilterValue>("all");
   const [sortBy, setSortBy] = useState<SortValue>("impact");
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
   const [appliedFixes, setAppliedFixes] = useState<Set<string>>(new Set());
   const [pressedFixButton, setPressedFixButton] = useState<string | null>(null);
-  const [isAcceptPressed, setIsAcceptPressed] = useState(false);
   const { isMobile } = useWindowSize();
 
   if (!analysisResult) {
@@ -366,12 +325,6 @@ export default function ActionableFixes() {
     });
 
   const allFixes = [...gapFixes, ...atsFixes];
-  const totalGain = allFixes.reduce(
-    (sum, fix) => sum + scoreGainByPriority[fix.priority],
-    0
-  );
-  const allApplied = allFixes.length > 0 && appliedFixes.size === allFixes.length;
-
   const counts = {
     all: allFixes.length,
     critical: allFixes.filter((f) => f.priority === "critical").length,
@@ -418,13 +371,51 @@ export default function ActionableFixes() {
       ? ((analysisResult.rewrites as { rewrites?: Record<string, Record<RewriteStyle, string>> }).rewrites ?? {})
       : ((analysisResult.rewrites as Record<string, Record<RewriteStyle, string>> | null) ?? {});
 
-  const getAfterText = (sectionKey: string, style: RewriteStyle): string => {
+  const patchBySection = (analysisResult.patches ?? []).reduce<
+    Record<string, ResumePatch>
+  >((acc, patch) => {
+    if (!acc[patch.section]) {
+      acc[patch.section] = patch;
+    }
+    return acc;
+  }, {});
+
+  const getAfterText = (sectionKey: string): string => {
     const sectionRewrite = rewriteMap[sectionKey];
+    const patch = patchBySection[sectionKey];
+
+    if (selectedMode === "safe" && patch?.replacement_text) {
+      return patch.replacement_text;
+    }
+
     if (!sectionRewrite) {
       return "[Rewrite not available for this section]";
     }
-    return sectionRewrite[style] ?? `[${stylePillConfig[style].label} rewrite unavailable]`;
+
+    return sectionRewrite.balanced ?? "[Balanced rewrite unavailable]";
   };
+
+  const modeBaseline = getFixModeBaseline(analysisResult);
+  const originalAts = baselineAts ?? modeBaseline.baselineAts;
+
+  const hasJd = hasJobDescription(analysisResult.gap);
+  const originalJd = hasJd ? analysisResult.gap?.jd_match_score_before ?? null : null;
+  const afterJd = hasJd ? analysisResult.gap?.jd_match_score_after ?? null : null;
+
+  const appliedCount = appliedFixes.size;
+
+  const modeHint =
+    selectedMode === "safe"
+      ? "Safe fix: changes only the exact phrases flagged as weak — everything else untouched"
+      : "Full rewrite: entire weak sections are regenerated — review all diffs carefully";
+
+  const afterVersionLabel =
+    selectedMode === "safe" ? "Safe fix version" : "Full rewrite version";
+  const afterAccentColor = selectedMode === "safe" ? "#6366f1" : "#7c3aed";
+  const afterContextHint =
+    selectedMode === "safe"
+      ? "Surgical edits applied only where gaps were flagged."
+      : "Full section rewrite — review carefully before downloading.";
 
   const toggleCard = (key: string) => {
     setExpandedCards((prev) => {
@@ -438,24 +429,11 @@ export default function ActionableFixes() {
     });
   };
 
-  const applyFix = (key: string) => {
-    setAppliedFixes((prev) => new Set([...prev, key]));
-  };
-
-  const applyAll = () => {
-    setAppliedFixes(new Set(allFixes.map((fix) => fix.sectionName)));
-
-    const sessionId = jobId ?? analysisResult.job_id;
-    if (!sessionId) {
-      window.alert("Session id unavailable. Download skipped.");
-      return;
-    }
-
-    window.open(
-      getResumeDownloadUrl(sessionId, selectedStyle),
-      "_blank",
-      "noopener,noreferrer"
-    );
+  const applyFix = (fix: FixItem) => {
+    setAppliedFixes((prev) => new Set([...prev, fix.id]));
+    const style: RewriteStyle = selectedMode === "safe" ? "balanced" : "aggressive";
+    const sectionText = getAfterText(fix.sectionKey);
+    applySectionFix(fix.sectionKey, style, sectionText);
   };
 
   return (
@@ -506,71 +484,41 @@ export default function ActionableFixes() {
               marginTop: "10px",
             }}
           >
-            ↗ Total potential gain: +{totalGain} pts
+            {modeBaseline.hasJd && modeBaseline.jdGain > 0
+              ? `↗ JD match can improve +${modeBaseline.jdGain}%`
+              : `${allFixes.length} content improvements ready`}
           </div>
         </div>
 
-        <div style={{ marginBottom: "24px", textAlign: "center" }}>
-          <div
+        <ModeSelector
+          baseline={modeBaseline}
+          selected={selectedMode}
+          onChange={setSelectedMode}
+        />
+        <div
+          style={{
+            background: "#faf5ff",
+            border: "1px solid #ede9fe",
+            borderRadius: "10px",
+            padding: "11px 15px",
+            marginBottom: "24px",
+            display: "flex",
+            alignItems: "flex-start",
+            gap: "8px",
+          }}
+        >
+          <span style={{ fontSize: "14px", color: "#7c3aed", flexShrink: 0 }}>✦</span>
+          <span
             style={{
-              display: "inline-flex",
-              alignItems: "stretch",
-              flexDirection: isMobile ? "column" : "row",
-              width: isMobile ? "100%" : undefined,
-              maxWidth: "100%",
-              background: "#f9fafb",
-              border: "1.5px solid #e5e7eb",
-              borderRadius: "12px",
-              padding: "4px",
-              gap: "4px",
+              fontSize: "13px",
+              fontWeight: 600,
+              fontStyle: "italic",
+              color: "#7c3aed",
+              lineHeight: 1.5,
             }}
           >
-            {(Object.entries(stylePillConfig) as Array<[RewriteStyle, (typeof stylePillConfig)[RewriteStyle]]>).map(([styleKey, cfg]) => {
-              const isActive = selectedStyle === styleKey;
-              return (
-                <button
-                  key={styleKey}
-                  type="button"
-                  onClick={() => setSelectedStyle(styleKey)}
-                  style={{
-                    border: "none",
-                    borderRadius: "8px",
-                    padding: isMobile ? "10px 12px" : "10px 20px",
-                    width: isMobile ? "100%" : undefined,
-                    fontSize: "13px",
-                    fontWeight: isActive ? 700 : 500,
-                    cursor: "pointer",
-                    transition: "all 0.15s",
-                    background: isActive ? cfg.activeBg : "transparent",
-                    color: isActive ? cfg.activeColor : "#6b7280",
-                    boxShadow: isActive ? "0 2px 0 rgba(0,0,0,0.08)" : "none",
-                  }}
-                >
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: "6px" }}>
-                    <span style={{ fontSize: "14px" }}>{cfg.icon}</span>
-                    <span>{cfg.label}</span>
-                  </div>
-                  <div style={{ fontSize: "11px", fontWeight: 400, color: "inherit", opacity: 0.8 }}>
-                    {cfg.sublabel}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-          <div
-            style={{
-              marginTop: "12px",
-              padding: "10px 16px",
-              background: "#f9fafb",
-              borderRadius: "8px",
-              fontSize: "12px",
-              color: "#6b7280",
-              textAlign: "center",
-              border: "1px solid #e5e7eb",
-            }}
-          >
-            {styleDescriptions[selectedStyle]}
-          </div>
+            {modeHint}
+          </span>
         </div>
 
         <div
@@ -667,18 +615,11 @@ export default function ActionableFixes() {
             const key = fix.id;
             const isExpanded = expandedCards.has(key);
             const isApplied = appliedFixes.has(key);
-            const scoreGain = scoreGainByPriority[fix.priority];
             const improvements = extractImprovementBullets(fix.rewriteInstruction);
             const relevantDimension = mapSectionToDimension(fix.sectionName);
             const detail = relevantDimension
               ? getDimensionDetail(analysisResult.ats, relevantDimension)
               : null;
-            const afterAccentColor = {
-              balanced: "#6366f1",
-              aggressive: "#d97706",
-              top_1_percent: "#7c3aed",
-            }[selectedStyle];
-
             const priorityColors: Record<
               PriorityLevel,
               { bg: string; text: string; border: string }
@@ -778,7 +719,7 @@ export default function ActionableFixes() {
                             fontWeight: 700,
                           }}
                         >
-                          +{scoreGain} pts ATS
+                          {hasJd && fix.missingKeywords.length > 0 ? "JD keywords" : fix.priority}
                         </div>
                       </div>
                     </div>
@@ -801,7 +742,7 @@ export default function ActionableFixes() {
                         aria-label={`Apply fix for ${fix.sectionName}`}
                         onClick={(event) => {
                           event.stopPropagation();
-                          applyFix(key);
+                          applyFix(fix);
                         }}
                         onMouseDown={() => setPressedFixButton(key)}
                         onMouseUp={() => setPressedFixButton(null)}
@@ -869,7 +810,7 @@ export default function ActionableFixes() {
                           textTransform: "uppercase",
                         }}
                       >
-                        ● {stylePillConfig[selectedStyle].label} Version
+                        ● {afterVersionLabel}
                       </div>
                     </div>
                     <div
@@ -907,9 +848,9 @@ export default function ActionableFixes() {
                           letterSpacing: "0.04em",
                         }}
                       >
-                        {styleDescriptions[selectedStyle]}
+                        {afterContextHint}
                       </div>
-                      {getAfterText(fix.sectionKey, selectedStyle)}
+                      {getAfterText(fix.sectionKey)}
                     </div>
                   </div>
 
@@ -1013,52 +954,19 @@ export default function ActionableFixes() {
           })
         )}
 
-        <DataSourceNotice tab="fixes" />
-      </div>
+        <FixValidation
+          selectedMode={selectedMode}
+          originalAts={originalAts}
+          liveAts={liveAts}
+          appliedCount={appliedCount}
+          originalJd={originalJd}
+          afterJd={afterJd}
+          hasJd={hasJd}
+          jobId={jobId ?? analysisResult.job_id}
+          onSwitchMode={setSelectedMode}
+        />
 
-      <div
-        style={{
-          position: "sticky",
-          bottom: 0,
-          background: "rgba(255,255,255,0.95)",
-          backdropFilter: "blur(12px)",
-          borderTop: "1.5px solid #e5e7eb",
-          padding: "16px 32px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          zIndex: 40,
-        }}
-      >
-        <div style={{ fontSize: "13px", color: "#6b7280" }}>
-          {appliedFixes.size} of {allFixes.length} fixes applied
-        </div>
-        <button
-          type="button"
-          onClick={applyAll}
-          onMouseDown={() => setIsAcceptPressed(true)}
-          onMouseUp={() => setIsAcceptPressed(false)}
-          onMouseLeave={() => setIsAcceptPressed(false)}
-          style={{
-            border: "none",
-            borderRadius: "12px",
-            padding: "12px 28px",
-            fontSize: "14px",
-            fontWeight: 700,
-            color: "#ffffff",
-            cursor: "pointer",
-            background: allApplied ? "#16a34a" : "#6366f1",
-            boxShadow: allApplied
-              ? "0 4px 0 #15803d"
-              : isAcceptPressed
-                ? "0 1px 0 #4338ca"
-                : "0 4px 0 #4338ca, 0 6px 16px rgba(99,102,241,0.25)",
-            transform: isAcceptPressed ? "translateY(3px)" : "translateY(0)",
-            transition: "transform 0.1s, box-shadow 0.1s",
-          }}
-        >
-          {allApplied ? "✓ All Changes Applied" : "Accept All Changes"}
-        </button>
+        <DataSourceNotice tab="fixes" />
       </div>
     </div>
   );

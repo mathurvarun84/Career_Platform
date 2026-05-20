@@ -66,19 +66,19 @@ assert len(existing_entries) == 2, f"Expected 2 regex entries, got {len(existing
 assert "falling back to regex" in anomalies[0]
 print("Test 3 passed: regex fallback fires correctly when A1 returns 0 entries")
 
-# Test 4: guard removal
+# Test 4: primary verbatim guard present in _repair_sub_entry_section
 src = pathlib.Path("validator/rewriter_validator.py").read_text(encoding="utf-8")
 tree = ast.parse(src)
 for node in ast.walk(tree):
     if isinstance(node, ast.FunctionDef) and node.name == "_repair_sub_entry_section":
         method_src = ast.get_source_segment(src, node)
-        assert "_entry_verbatim_present" not in method_src, (
-            "FAIL: _entry_verbatim_present still referenced inside "
+        assert method_src and "_entry_verbatim_present" in method_src, (
+            "FAIL: _entry_verbatim_present must be primary guard in "
             "_repair_sub_entry_section"
         )
         print(
-            "Test 4 passed: _entry_verbatim_present removed from "
-            "_repair_sub_entry_section guard"
+            "Test 4 passed: _entry_verbatim_present is primary guard in "
+            "_repair_sub_entry_section"
         )
         break
 else:

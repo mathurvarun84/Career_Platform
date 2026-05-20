@@ -105,17 +105,35 @@ _ROLE_HEADER_HINT_RE = re.compile(r'.+[|–—].+')
 # Section text extraction from raw resume
 # ─────────────────────────────────────────────
 
+# Pre-computed collapsed (no-spaces) forms of every known section alias.
+# Used by _normalize_spaced_heading Case 2 to handle PDFs that split a
+# single heading word: "EXPERI ENCE" → "EXPERIENCE", "AW ARDS" → "AWARDS".
+_COLLAPSED_SECTION_KEYWORDS: frozenset[str] = frozenset(
+    alias.replace(' ', '')
+    for aliases in SECTION_ALIASES.values()
+    for alias in aliases
+)
+
+
 def _normalize_spaced_heading(line: str) -> str:
     """Collapse spaced-character headings to their solid form.
 
-    Handles PDF-extracted headings like 'C E R T I F I C A T I O N S'
-    (every uppercase letter separated by a single space) and returns
-    'CERTIFICATIONS'. Only fires when the stripped line consists solely
-    of single uppercase letters separated by single spaces (≥3 letters).
+    Handles two PDF extraction artifacts:
+
+    Case 1 — every letter spaced: 'C E R T I F I C A T I O N S' → 'CERTIFICATIONS'
+    Case 2 — partial word splits: 'EXPERI ENCE' → 'EXPERIENCE', 'AW ARDS' → 'AWARDS'
+      Only collapses when the result (lowercased) is a known section keyword so
+      two-word phrases like 'WORK EXPERIENCE' are never collapsed.
     """
     stripped = line.strip()
+    # Case 1: every single uppercase letter separated by one space
     if re.match(r'^([A-Z] ){2,}[A-Z]$', stripped):
         return stripped.replace(' ', '')
+    # Case 2: all-uppercase line with spaces — collapse if it forms a known heading
+    if re.match(r'^[A-Z][A-Z ]{2,}[A-Z]$', stripped):
+        collapsed = stripped.replace(' ', '')
+        if collapsed.lower() in _COLLAPSED_SECTION_KEYWORDS:
+            return collapsed
     return stripped
 
 
@@ -812,6 +830,115 @@ def _validate_awards_section(
 
 
 # ─────────────────────────────────────────────
+# Experience-specific checks
+# ─────────────────────────────────────────────
+
+_EXPERIENCE_HEADER_LINE_RE = re.compile(
+    r"""
+    (?:\+\d[\d\s\-]{9,}\d)   # phone with country code
+    |(?:\b\d{10,}\b)          # bare phone
+    |@                         # email
+    |linkedin\.com
+    |github\.com
+    |medium\.com
+    |gmail\.com
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+_EXPERIENCE_BULLET_RE = re.compile(r"(?m)^[\s]*[•\-\*·●]\s")
+
+
+def _strip_resume_header_lines_from_verbatim(verbatim: str) -> str:
+    """Remove contact/header lines mistakenly included in an experience entry."""
+    lines = verbatim.splitlines()
+    kept: list[str] = []
+    stripped_header = False
+    for line in lines:
+        if not line.strip():
+            if kept:
+                kept.append(line)
+            continue
+        if not kept and _EXPERIENCE_HEADER_LINE_RE.search(line):
+            stripped_header = True
+            continue
+        kept.append(line)
+    result = "\n".join(kept).strip()
+    if stripped_header and not result:
+        return ""
+    return result
+
+
+def _experience_entry_has_structure(verbatim: str) -> bool:
+    """True when verbatim looks like a real experience block, not a stray fragment."""
+    text = verbatim.strip()
+    if not text:
+        return False
+    if _DATE_RANGE_RE.search(text):
+        return True
+    first_line = next((ln.strip() for ln in text.splitlines() if ln.strip()), "")
+    if "|" in first_line:
+        return True
+    if _EXPERIENCE_BULLET_RE.search(text):
+        return True
+    return False
+
+
+def _validate_experience_section(
+    section_data: dict,
+) -> tuple[dict, list[str]]:
+    """
+    Repair experience sub_entries before they are finalized.
+
+    - Strip resume header lines (phone, email, LinkedIn) from verbatim_text
+    - Drop entries that become empty after stripping
+    - Merge bullet-continuation fragments into the preceding entry
+    """
+    anomalies: list[str] = []
+    entries = section_data.get("sub_entries") or []
+    if not entries:
+        return section_data, anomalies
+
+    cleaned: list[dict] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        label = str(entry.get("label") or "")
+        verbatim = _strip_resume_header_lines_from_verbatim(
+            str(entry.get("verbatim_text") or "")
+        )
+        if not verbatim:
+            anomalies.append(
+                f"experience: dropped header ghost entry '{label[:50]}'"
+            )
+            continue
+        cleaned.append({**entry, "verbatim_text": verbatim})
+
+    merged: list[dict] = []
+    for entry in cleaned:
+        verbatim = entry.get("verbatim_text", "")
+        if not _experience_entry_has_structure(verbatim) and merged:
+            prev = merged[-1]
+            prev_text = str(prev.get("verbatim_text") or "").rstrip()
+            frag = str(verbatim).strip()
+            prev["verbatim_text"] = f"{prev_text}\n{frag}" if prev_text else frag
+            anomalies.append(
+                f"experience: merged fragment into '{str(prev.get('label', ''))[:40]}'"
+            )
+            continue
+        merged.append(dict(entry))
+
+    section_data = dict(section_data)
+    section_data["sub_entries"] = _dedupe_entries(merged)
+    section_data["full_text"] = "\n\n".join(
+        e.get("verbatim_text", "")
+        for e in section_data["sub_entries"]
+        if e.get("verbatim_text")
+    )
+    return section_data, anomalies
+
+
+# ─────────────────────────────────────────────
 # Education-specific checks
 # ─────────────────────────────────────────────
 
@@ -1117,11 +1244,8 @@ class ResumeUnderstandingValidator:
                     )
 
             exp_data['sub_entries'] = _dedupe_entries(existing_entries)
-            all_texts = [
-                e.get('verbatim_text', '')
-                for e in exp_data['sub_entries']
-            ]
-            exp_data['full_text'] = '\n\n'.join(t for t in all_texts if t)
+            exp_data, exp_anomalies = _validate_experience_section(exp_data)
+            all_anomalies.extend(exp_anomalies)
             sections['experience'] = exp_data
 
         # ── 2. EDUCATION ──────────────────────────────────────────────

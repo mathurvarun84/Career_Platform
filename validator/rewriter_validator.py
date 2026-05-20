@@ -437,21 +437,27 @@ def _repair_sub_entry_section(
             if entry_idx in matched_indexes:
                 continue  # entry present — ok
 
-            # Guard: check if the first meaningful token of the entry label already
-            # appears in the style text — if so, the entry is present but matching failed.
-            # Do NOT inject verbatim on top of existing rewritten content.
-            # Uses only the first meaningful token (company name) as the discriminator;
-            # generic tokens like "Role" or "Engineer" appear in every entry and must be
-            # excluded to avoid false positives.
+            # Two-layer guard — do NOT inject verbatim on top of existing content.
+            if _entry_verbatim_present(entry.verbatim_text, style_text):
+                logging.info(
+                    "%s/%s: entry '%s' — primary guard (verbatim present), skipping injection",
+                    section_name, style, orig_label[:50],
+                )
+                continue
+
+            _INJECTION_STOPWORDS = frozenset({
+                "manager", "engineer", "senior", "consultant",
+                "bengaluru", "bangalore", "altran",
+            })
             label_tokens = [
                 t.lower() for t in re.split(r'[\s|–—(),.\-]+', orig_label)
-                if len(t) > 3
+                if len(t) >= 5 and t.lower() not in _INJECTION_STOPWORDS
             ]
             style_text_lower = _normalize_presence_text(style_text)
             if label_tokens and label_tokens[0] in style_text_lower:
                 logging.info(
-                    "%s/%s: entry '%s' not matched by label but token found in text — skipping injection",
-                    section_name, style, orig_label[:50]
+                    "%s/%s: entry '%s' — secondary guard (token heuristic), skipping injection",
+                    section_name, style, orig_label[:50],
                 )
                 continue
 
@@ -683,6 +689,12 @@ class RewriterValidator:
                         )
                         repaired_variants[style] = single_style_rebuilt[style]
                 rewrites['experience'] = repaired_variants
+            # Persist augmented experience so cached job + docx use full entry list.
+            resume_sections['experience'] = (
+                exp_section.model_dump()
+                if hasattr(exp_section, 'model_dump')
+                else exp_section
+            )
 
         rewrites = collapse_rewrites_to_canonical(rewrites)
         output['rewrites'] = rewrites

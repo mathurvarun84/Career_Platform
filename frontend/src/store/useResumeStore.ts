@@ -1,5 +1,7 @@
 import { create } from "zustand";
 
+import { scoreResume } from "../engine/atsScorer";
+import { composeResumeText } from "../utils/composeResumeText";
 import type {
   AnalysisResult,
   RewriteStyle,
@@ -24,12 +26,22 @@ interface ResumeStoreState {
   fallbackInfo: Record<string, string[]>;
   historyRefreshKey: number;
   userId: string;
+  /** ATS score at end of analysis — frozen until reset. */
+  baselineAts: number | null;
+  /** Section full_text overrides from applied fixes (for live rescoring). */
+  sectionOverrides: Record<string, string>;
   setJobId: (jobId: string | null) => void;
   setAnalysisResult: (analysisResult: AnalysisResult | null) => void;
   setIsFullAnalysisReady: (ready: boolean) => void;
   mergePartialResult: (partial: Partial<AnalysisResult>) => void;
   setSelectedStyle: (style: RewriteStyle) => void;
   acceptSection: (section: string, style: RewriteStyle) => void;
+  /** Apply a section rewrite and re-score ATS in-browser (deterministic). */
+  applySectionFix: (
+    section: string,
+    style: RewriteStyle,
+    sectionText: string
+  ) => void;
   setActiveTab: (tab: TabId) => void;
   setIsAnalyzing: (isAnalyzing: boolean) => void;
   setIsLoading: (isLoading: boolean) => void;
@@ -68,9 +80,16 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
   fallbackInfo: {},
   historyRefreshKey: 0,
   userId: getOrCreateUserId(),
+  baselineAts: null,
+  sectionOverrides: {},
 
   setJobId: (jobId) => set({ jobId }),
-  setAnalysisResult: (analysisResult) => set({ analysisResult }),
+  setAnalysisResult: (analysisResult) =>
+    set({
+      analysisResult,
+      baselineAts: analysisResult?.ats.score ?? null,
+      sectionOverrides: {},
+    }),
   setIsFullAnalysisReady: (ready) => set({ isFullAnalysisReady: ready }),
   mergePartialResult: (partial) =>
     set((state) => {
@@ -100,6 +119,8 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
             sim: normalizedPartial.sim ?? null,
             percentile: normalizedPartial.percentile ?? null,
             positioning: normalizedPartial.positioning ?? null,
+            patches: normalizedPartial.patches ?? undefined,
+            validation: normalizedPartial.validation ?? null,
           },
         };
       }
@@ -113,6 +134,10 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
           resume: normalizedPartial.resume
             ? { ...state.analysisResult.resume, ...normalizedPartial.resume }
             : state.analysisResult.resume,
+          patches:
+            normalizedPartial.patches ?? state.analysisResult.patches,
+          validation:
+            normalizedPartial.validation ?? state.analysisResult.validation,
         },
       };
     }),
@@ -124,6 +149,37 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
         [section]: style,
       },
     })),
+  applySectionFix: (section, style, sectionText) =>
+    set((state) => {
+      if (!state.analysisResult) {
+        return {};
+      }
+      const sectionOverrides = {
+        ...state.sectionOverrides,
+        [section]: sectionText,
+      };
+      const mergedText = composeResumeText(
+        state.analysisResult.resume,
+        sectionOverrides
+      );
+      const scored = scoreResume(mergedText);
+      return {
+        acceptedSections: {
+          ...state.acceptedSections,
+          [section]: style,
+        },
+        sectionOverrides,
+        analysisResult: {
+          ...state.analysisResult,
+          ats: {
+            ...state.analysisResult.ats,
+            score: scored.score,
+            breakdown: scored.breakdown,
+            ats_issues: scored.ats_issues,
+          },
+        },
+      };
+    }),
   setActiveTab: (activeTab) => set({ activeTab }),
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
   setIsLoading: (isLoading) => set({ isLoading }),
@@ -146,5 +202,7 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
       docxId: null,
       fallbackInfo: {},
       historyRefreshKey: 0,
+      baselineAts: null,
+      sectionOverrides: {},
     }),
 }));

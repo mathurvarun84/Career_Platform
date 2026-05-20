@@ -244,23 +244,28 @@ export const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
     synthesizedFixes = fixesFromLegacyGaps;
   }
 
-  const beforeScoreFromGap =
-    (rawGap?.jd_match_score_before as number | null | undefined) ??
-    (rawGap?.match_score as number | null | undefined) ??
-    (raw.ats as { score?: number } | undefined)?.score ??
-    null;
-  const afterScoreFromGap =
-    (rawGap?.jd_match_score_after as number | undefined) ??
-    (rawGap?.estimated_score_after as number | undefined) ??
-    (rawGap?.match_score as number | undefined) ??
-    (raw.ats as { score?: number } | undefined)?.score ??
-    0;
+  const resumeOnlyMode = Boolean(rawGap?.resume_only_mode);
+  let beforeScoreFromGap: number | null = null;
+  let afterScoreFromGap: number | null = null;
+  if (!resumeOnlyMode) {
+    const rawBefore = rawGap?.jd_match_score_before;
+    if (typeof rawBefore === "number" && rawBefore > 0) {
+      beforeScoreFromGap = rawBefore;
+    } else if (typeof rawGap?.match_score === "number" && rawGap.match_score > 0) {
+      beforeScoreFromGap = rawGap.match_score as number;
+    }
+    const rawAfter = rawGap?.jd_match_score_after ?? rawGap?.estimated_score_after;
+    if (typeof rawAfter === "number") {
+      afterScoreFromGap = rawAfter;
+    }
+  }
 
   const normalized = {
     ...(raw as unknown as AnalysisResult),
     gap: rawGap
       ? {
           ...rawGap,
+          resume_only_mode: resumeOnlyMode,
           jd_match_score_before: beforeScoreFromGap,
           jd_match_score_after: afterScoreFromGap,
           section_gaps: (rawGap.section_gaps as unknown[] | undefined) ?? [],

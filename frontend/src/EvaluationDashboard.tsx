@@ -6,6 +6,7 @@ import DataSourceNotice from "./components/DataSourceNotice";
 import { useWindowSize } from "./hooks/useWindowSize";
 import { pageContainerStyle } from "./utils/pageLayout";
 import { useResumeStore } from "./store/useResumeStore";
+import { hasJobDescription } from "./utils/hasJobDescription";
 
 interface EvaluationDashboardProps {
   onTabChange?: (tab: string) => void;
@@ -17,8 +18,8 @@ interface ActionItem {
   description: string;
   gainLabel: string;
   gainType: "ats" | "jd";
-  buttonLabel: string;
-  targetTab: string;
+  linksToGap: boolean;
+  targetTab: "fixes" | "gap";
 }
 
 const detailOrder = ["keyword_match", "formatting", "readability", "impact_metrics"] as const;
@@ -63,21 +64,9 @@ function getDimensionDetails(
   });
 }
 
-function deriveButtonLabel(text: string): string {
-  const t = text.toLowerCase();
-  if (t.includes("metric") || t.includes("quantif") || t.includes("number") || t.includes("achievement"))
-    return "Add Metrics ↗";
-  if (t.includes("keyword") || t.includes("summary") || t.includes("skill"))
-    return "Fix Keywords ↗";
-  if (t.includes("bullet") || t.includes("format") || t.includes("spacing") || t.includes("header"))
-    return "Fix Format ↗";
-  if (t.includes("experience") || t.includes("role") || t.includes("impact"))
-    return "Fix Experience ↗";
-  return "View Fix ↗";
-}
-
 export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const analysisResult = useResumeStore((s) => s.analysisResult);
+  const baselineAts = useResumeStore((s) => s.baselineAts);
   const jobId = useResumeStore((s) => s.jobId);
   const selectedStyle = useResumeStore((s) => s.selectedStyle);
   const isLoading = useResumeStore((s) => s.isLoading);
@@ -94,13 +83,15 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
     return <SkeletonLoader />;
   }
 
-  const hasJD = Boolean(analysisResult.gap?.jd_match_score_before);
+  const hasJD = hasJobDescription(analysisResult.gap);
   const hasSim = Boolean(analysisResult.sim);
   const hasPositioning = Boolean(analysisResult.positioning);
 
   const bd = analysisResult.ats.breakdown;
   const atsDetails = getDimensionDetails(analysisResult.ats.details, bd);
   const atsScore = analysisResult.ats.score;
+  const atsDeltaFromBaseline =
+    baselineAts !== null && atsScore > baselineAts ? atsScore - baselineAts : 0;
   const potentialGain =
     bd.impact_metrics < 12 ? 15 :
     bd.keyword_match  < 12 ? 12 :
@@ -145,8 +136,8 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
       description: issue,
       gainLabel: `+${gainAmount} ATS`,
       gainType: "ats" as const,
-      buttonLabel: deriveButtonLabel(issue),
-      targetTab: "fixes",
+      linksToGap: false,
+      targetTab: "fixes" as const,
     };
   });
 
@@ -167,7 +158,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
           description: fix.rewrite_instruction,
           gainLabel: `+${jdGainPerFix} JD match`,
           gainType: "jd" as const,
-          buttonLabel: deriveButtonLabel(fix.gap_reason),
+          linksToGap: true,
           targetTab: "gap",
         }))
     : []) as ActionItem[];
@@ -294,9 +285,17 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             labelColor="#6366f1"
             score={atsCount}
             denomColor="#a5b4fc"
-            hint={`You can reach ${potentialATS}`}
-            deltaBadge={`↗ +${potentialATS - atsScore}`}
-            infoText="ATS Score shows how well your resume passes applicant tracking systems based on keywords, formatting, readability, and impact."
+            hint={
+              atsDeltaFromBaseline > 0
+                ? `Updated after ${atsDeltaFromBaseline} pt gain from applied fixes`
+                : `You can reach ${potentialATS}`
+            }
+            deltaBadge={
+              atsDeltaFromBaseline > 0
+                ? `↗ +${atsDeltaFromBaseline} live`
+                : `↗ +${potentialATS - atsScore} potential`
+            }
+            infoText="ATS Score shows how well your resume passes applicant tracking systems based on keywords, formatting, readability, and impact. Updates live when you apply fixes."
           />
 
           {/* Card 2 — JD Match */}
@@ -923,13 +922,6 @@ function PriorityActionCard({
     ? { bg: "#dcfce7", color: "#16a34a" }
     : { bg: "#eef2ff", color: "#6366f1" };
 
-  const handleMouseDown = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.currentTarget.style.transform = "translateY(2px)";
-  };
-  const handleMouseUp = (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.currentTarget.style.transform = "translateY(0)";
-  };
-
   return (
     <div style={{
       background: styles.cardBg,
@@ -968,22 +960,19 @@ function PriorityActionCard({
       <button
         type="button"
         onClick={() => onTabChange?.(item.targetTab)}
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
         style={{
-          background: styles.btnBg, color: "#ffffff",
-          border: "none", borderRadius: "8px",
-          padding: "8px 14px", fontSize: "12px", fontWeight: 700,
+          fontSize: "12px",
+          fontWeight: 700,
+          color: "#6366f1",
+          background: "none",
+          border: "none",
           cursor: "pointer",
-          flexShrink: 0,
           whiteSpace: "nowrap",
-          width: isMobile ? "100%" : undefined,
-          boxShadow: "0 2px 0 rgba(0,0,0,0.15)",
-          transition: "transform 0.1s",
+          flexShrink: 0,
+          alignSelf: isMobile ? "flex-start" : "center",
         }}
       >
-        {item.buttonLabel}
+        {item.linksToGap ? "Go to Gap Analysis →" : "Go to Fixes →"}
       </button>
     </div>
   );

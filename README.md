@@ -65,14 +65,6 @@ On macOS or Linux, activate the virtual environment with:
 source .venv/bin/activate
 ```
 
-## Run The Streamlit App
-
-```bash
-streamlit run app.py
-```
-
-The Streamlit app includes resume evaluation, recruiter simulation, gap closing, rewrite review, and DOCX export flows.
-
 ## Run The FastAPI Backend
 
 ```bash

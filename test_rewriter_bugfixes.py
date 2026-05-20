@@ -15,7 +15,7 @@ from backend.agents.rewriter import (
 from backend.schemas.common import SectionText, SubEntry
 from docx import Document
 from parser import _parse_docx
-from validator.rewriter_validator import strip_unfilled_placeholders, _check_placeholder_bleed
+from validator.rewriter_validator import _PLACEHOLDER_RE, _check_placeholder_bleed
 
 
 def test_parse_docx_skips_duplicate_bullet_normal() -> None:
@@ -55,22 +55,22 @@ def test_strip_unfilled_placeholders() -> None:
         "Owned end-to-end development of [feature/module], "
         "delivering [X%] improvement"
     )
-    cleaned = strip_unfilled_placeholders(raw)
+    cleaned = _PLACEHOLDER_RE.sub("", raw).strip()
     assert "[" not in cleaned
     assert "Owned end-to-end" in cleaned
 
 
-def test_placeholder_fallback_to_balanced() -> None:
+def test_placeholder_bleed_strips_from_all_styles() -> None:
     variants = {
         "balanced": "Solid rewrite with metrics.",
         "aggressive": "Improved [feature/module] by [X%] and [N users].",
         "top_1_percent": "Also [Xms] latency [INR X Cr] revenue.",
     }
     repaired, anomalies = _check_placeholder_bleed("summary", variants)
-    assert repaired["aggressive"] == repaired["balanced"]
-    assert repaired["top_1_percent"] == repaired["balanced"]
-    assert any("fallback" in a for a in anomalies)
+    assert repaired["balanced"] == variants["balanced"]
     assert "[" not in repaired["aggressive"]
+    assert "[" not in repaired["top_1_percent"]
+    assert any("stripped" in a for a in anomalies)
 
 
 def test_experience_never_monolithic_without_sub_entries() -> None:

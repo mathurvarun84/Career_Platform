@@ -84,7 +84,7 @@ class SubLocationChange(BaseModel):
 class ScoreDelta(BaseModel):
     """Tracks ATS/JD match score improvement from before-rewrite to after-rewrite.
 
-    Used by gap_session and Streamlit UI to display concrete improvement metrics.
+    Used by gap_session and React frontend to display concrete improvement metrics.
 
     Attributes:
         score_before: ATS or JD match score before rewrite (0-100).

@@ -165,12 +165,12 @@ function AppShell() {
           </div>
           <div
             role="tabpanel"
-            id="panel-fixes"
-            aria-labelledby="tab-fixes"
-            className={activeTab === "fixes" ? "tab-enter" : undefined}
-            style={{ display: activeTab === "fixes" ? "block" : "none" }}
+            id="panel-gap"
+            aria-labelledby="tab-gap"
+            className={activeTab === "gap" ? "tab-enter" : undefined}
+            style={{ display: activeTab === "gap" ? "block" : "none" }}
           >
-            <ActionableFixes />
+            <GapCloser onTabChange={(tab) => setActiveTab(tab)} />
           </div>
           <div
             role="tabpanel"
@@ -183,12 +183,12 @@ function AppShell() {
           </div>
           <div
             role="tabpanel"
-            id="panel-gap"
-            aria-labelledby="tab-gap"
-            className={activeTab === "gap" ? "tab-enter" : undefined}
-            style={{ display: activeTab === "gap" ? "block" : "none" }}
+            id="panel-fixes"
+            aria-labelledby="tab-fixes"
+            className={activeTab === "fixes" ? "tab-enter" : undefined}
+            style={{ display: activeTab === "fixes" ? "block" : "none" }}
           >
-            <GapCloser />
+            <ActionableFixes />
           </div>
           <div
             role="tabpanel"

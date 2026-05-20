@@ -364,8 +364,12 @@ def build_final_docx(
         p.paragraph_format.space_before = Pt(8)
         p.paragraph_format.space_after = Pt(2)
 
+    _MARKER_TOKENS = ("##COMPANY##", "##ROLE##", "##END_HEADER##")
+
     def _get_content(section_name):
         """Return rewrite content, balanced fallback, then structured original."""
+        from parser import _clean_text
+
         rw = rewrites.get(section_name, {})
         if not rw:
             for key, value in rewrites.items():
@@ -380,8 +384,11 @@ def build_final_docx(
         for key in (style, "balanced"):
             val = rw.get(key, "") if isinstance(rw, dict) else ""
             if val and len(val.strip()) >= 10 and not _is_placeholder(val.strip()):
-                return val
-        return _extract_section_content(structured, section_name).strip()
+                if any(tok in val for tok in _MARKER_TOKENS):
+                    return val
+                return _clean_text(val)
+        fallback = _extract_section_content(structured, section_name).strip()
+        return _clean_text(fallback)
 
     for sec_name in SECTION_ORDER:
         content = _get_content(sec_name)

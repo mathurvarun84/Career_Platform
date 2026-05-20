@@ -2,7 +2,7 @@
 Pydantic schemas for Agent 4 — Rewriter.
 
 Input: original resume text, gap analysis from Agent 3, JD intelligence from Agent 2, optional style fingerprint
-Output: 3-style rewritten resume sections for gap_session and Streamlit UI
+Output: 3-style rewritten resume sections for gap_session and React frontend
 """
 
 from pydantic import BaseModel, Field
@@ -63,7 +63,7 @@ class RewriterOutput(BaseModel):
     """
     All three rewrite styles for the candidate's resume sections.
 
-    gap_session.py and Streamlit Tab 3 render these side-by-side for user selection.
+    gap_session.py and the Fixes tab render these side-by-side for user selection.
     All three styles must be present — Agent 4 failure is non-fatal per orchestrator rules.
     """
     rewrites: Dict[str, dict] = Field(

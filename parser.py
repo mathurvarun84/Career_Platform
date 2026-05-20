@@ -6,8 +6,6 @@ import os
 import re
 from typing import Any, Dict, List
 
-import streamlit as st
-
 
 def parse_resume(file_path: str) -> str:
     if not os.path.exists(file_path):
@@ -24,9 +22,6 @@ def parse_resume(file_path: str) -> str:
     else:
         raise ValueError(f"Unsupported format: {ext}")
 
-    if "parsed_resume_structured" not in st.session_state:
-        st.session_state["parsed_resume_structured"] = _build_structured_resume(raw_text)
-
     return raw_text
 
 
@@ -34,7 +29,8 @@ def _build_structured_resume(text: str) -> Dict[str, Any]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     section_blocks = _extract_section_blocks(text)
 
-    name = lines[0] if lines else ""
+    raw_name = lines[0] if lines else ""
+    name = _normalize_spaced_heading(raw_name)
     contact = _extract_contact_line(lines[1:6]) if len(lines) > 1 else ""
     title = ""
     if len(lines) > 1 and lines[1] != contact:
@@ -54,18 +50,68 @@ def _build_structured_resume(text: str) -> Dict[str, Any]:
 
 
 def _parse_pdf(file_path: str) -> str:
+    """Extract text from a PDF file with word-boundary-aware reconstruction.
+
+    Uses pdfplumber's extract_words() as the primary method to avoid the
+    character-concatenation problem that occurs with tightly-kerned PDFs
+    (e.g. 'Servingasasoftwareengineerforthe'). Falls back to extract_text()
+    if no words are detected, then to OCR as a last resort.
+    """
     import pdfplumber
 
     texts = []
     with pdfplumber.open(file_path) as pdf:
         for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                texts.append(text)
+            page_text = _extract_page_text(page)
+            if page_text:
+                texts.append(page_text)
+
     extracted_text = _clean_text("\n".join(texts))
     if _is_text_meaningful(extracted_text):
         return extracted_text
     return _parse_pdf_ocr(file_path)
+
+
+def _extract_page_text(page) -> str:
+    """Reconstruct a single PDF page's text preserving line breaks.
+
+    Calls extract_words() to get bounding-box-aware word tokens, then groups
+    them into lines by their vertical (top) coordinate. Characters that share
+    a y-position within Y_TOLERANCE points are treated as the same line.
+    Falls back to extract_text() if no words are found.
+    """
+    Y_TOLERANCE = 5  # points; lines within this vertical distance are merged
+
+    # x_tolerance=2: word gaps in tightly-kerned PDFs are ~2.4 pts while
+    # intra-word kerning gaps are 0–0.2 pts.  Default of 3 merges entire
+    # lines into one token; 2 correctly splits at word boundaries.
+    words = page.extract_words(
+        x_tolerance=2,
+        y_tolerance=3,
+        keep_blank_chars=False,
+        use_text_flow=True,
+    )
+
+    if not words:
+        return page.extract_text() or ""
+
+    lines: list[list[str]] = []
+    line_tops: list[float] = []
+
+    for word in words:
+        top = word["top"]
+        # Find an existing line whose top is within Y_TOLERANCE
+        matched = False
+        for i, line_top in enumerate(line_tops):
+            if abs(top - line_top) <= Y_TOLERANCE:
+                lines[i].append(word["text"])
+                matched = True
+                break
+        if not matched:
+            lines.append([word["text"]])
+            line_tops.append(top)
+
+    return "\n".join(" ".join(line_words) for line_words in lines)
 
 
 def _is_text_meaningful(text: str) -> bool:
@@ -113,6 +159,12 @@ def _parse_docx(file_path: str) -> str:
         )
 
         if is_bullet:
+            # Skip duplicate when List Bullet repeats preceding Normal paragraph text.
+            if output_lines:
+                prev = output_lines[-1].strip().lstrip("•").strip()
+                if prev.lower() == text.lower():
+                    prev_was_bullet = True
+                    continue
             output_lines.append("• " + text)
             prev_was_bullet = True
         else:
@@ -135,8 +187,118 @@ def _parse_txt(file_path: str) -> str:
         return _clean_text(f.read())
 
 
+_COMMON_STANDALONE_WORDS = frozenset({
+    "the", "and", "for", "are", "was", "were", "been", "have", "has", "had",
+    "not", "but", "you", "your", "our", "can", "will", "may", "new", "york",
+    "delhi", "india", "work", "team", "teams", "year", "years", "with", "from",
+    "this", "that", "they", "their", "what", "when", "where", "which", "while",
+})
+_SKIP_AS_RUN_START = _COMMON_STANDALONE_WORDS | frozenset({
+    "at", "by", "to", "of", "or", "an", "as",
+})
+
+
+def _should_collapse_split_token_run(tokens: list[str]) -> bool:
+    """
+    True when a run of short space-separated tokens is a PDF kerning artifact.
+
+    Example: ['Eng', 'in', 'eer', 'in', 'g'] → collapse to 'Engineering'.
+    """
+    if len(tokens) < 3:
+        return False
+    # Real phrases rarely contain single-letter tokens; PDF shards do ("g", "t").
+    if not any(len(t) == 1 for t in tokens):
+        return False
+    collapsed = "".join(tokens)
+    if len(collapsed) < 5 or not collapsed.isalpha():
+        return False
+    # Real words are mostly longer tokens; artifacts are 1–3 char shards.
+    short_count = sum(1 for t in tokens if len(t) <= 3)
+    short_ratio = short_count / len(tokens)
+    if short_ratio <= (0.66 if any(len(t) == 1 for t in tokens) else 0.75):
+        return False
+    avg_len = sum(len(t) for t in tokens) / len(tokens)
+    if avg_len > 3.5:
+        return False
+    if all(t.lower() in _COMMON_STANDALONE_WORDS for t in tokens):
+        return False
+    # Proper-noun runs: "New York India" — multiple capitalized tokens
+    if sum(1 for t in tokens if len(t) >= 4 and t[0].isupper()) >= 2:
+        return False
+    # Adjacent capitalized words (e.g. "Led Eng") are real phrases, not shards.
+    if (
+        len(tokens) >= 2
+        and len(tokens[0]) >= 3
+        and tokens[0][0].isupper()
+        and tokens[1][0].isupper()
+        and len(tokens[1]) >= 3
+    ):
+        return False
+    return True
+
+
+def _collapse_split_word_artifacts_in_line(line: str) -> str:
+    """Collapse inter-character space artifacts on one line (PDF kerning)."""
+    raw_words = line.split()
+    if len(raw_words) < 3:
+        return line
+    # (raw_token, core_alpha) — core strips trailing sentence punctuation.
+    words: list[tuple[str, str]] = [
+        (w, re.sub(r"[^A-Za-z]+$", "", w)) for w in raw_words
+    ]
+    out: list[str] = []
+    i = 0
+    while i < len(words):
+        raw, core = words[i]
+        if not (core.isalpha() and len(core) <= 6):
+            out.append(raw)
+            i += 1
+            continue
+        if core.lower() in _SKIP_AS_RUN_START and (
+            len(core) >= 4 or core.lower() in {"at", "by", "to", "of", "or", "an", "as"}
+        ):
+            out.append(raw)
+            i += 1
+            continue
+        j = i + 1
+        while j < len(words):
+            _, nxt = words[j]
+            if not (nxt.isalpha() and len(nxt) <= 6):
+                break
+            if len(nxt) >= 4 and nxt.islower():
+                # Mid-word shards (e.g. "sacti") may precede short tails ("on s").
+                k = j + 1
+                while k < len(words) and len(words[k][1]) <= 3 and words[k][1].islower():
+                    k += 1
+                has_singleton_tail = (
+                    k < len(words) and len(words[k][1]) == 1
+                ) or (
+                    k == len(words) and len(words[-1][1]) == 1
+                )
+                if not has_singleton_tail:
+                    break
+            j += 1
+        run = [words[k][1] for k in range(i, j)]
+        if _should_collapse_split_token_run(run):
+            collapsed = "".join(run)
+            # Preserve trailing punctuation from the last raw token in the run.
+            tail = re.search(r"[^A-Za-z]+$", words[j - 1][0])
+            out.append(collapsed + (tail.group(0) if tail else ""))
+        else:
+            out.extend(raw_words[i:j])
+        i = j
+    return " ".join(out)
+
+
+def _collapse_split_word_artifacts(text: str) -> str:
+    """Apply per-line collapse for PDF inter-character spacing artifacts."""
+    return "\n".join(_collapse_split_word_artifacts_in_line(line) for line in text.splitlines())
+
+
 def _clean_text(text: str) -> str:
     import re
+    # Pass 0: collapse PDF inter-character spacing (before any other transforms)
+    text = _collapse_split_word_artifacts(text)
     # Pass 1: rejoin PDF hyphen line-breaks BEFORE anything else
     # "end-to-\ndelivery" → "end-to-delivery"
     text = re.sub(r'([a-zA-Z])-\n([a-zA-Z])', r'\1-\2', text)
@@ -164,36 +326,82 @@ def _clean_text(text: str) -> str:
     text = re.sub(r'\n{3,}', '\n\n', text)
     # Pass 7: tabs → spaces (PDF tables often use tabs between role and dates)
     text = text.replace('\t', ' ')
+    # Pass 8: split any residual concatenated words using common English prepositions
+    # (catches fallback OCR / extract_text() output where spaces were stripped)
+    text = _fix_concatenated_words(text)
     return text.strip()
 
 
+def _split_runon_token(token: str) -> str:
+    """Insert spaces into a single glued token (e.g. Servingasasoftwareengineer)."""
+    if len(token) < 20 or " " in token:
+        return token
+    glued = re.sub(
+        r"(?<=[a-z])(of|in|and|for|at|to|with|the|as|by|on|or|an|is|are|was|were)(?=[a-z])",
+        r" \1 ",
+        token,
+        flags=re.IGNORECASE,
+    )
+    glued = re.sub(r"([a-z])([A-Z])", r"\1 \2", glued)
+    return re.sub(r"\s{2,}", " ", glued).strip()
+
+
 def _fix_concatenated_words(text: str) -> str:
+    """Split glued words on every line, including bullet lines."""
     fixed_lines = []
     for line in text.splitlines():
         stripped = line.lstrip()
-        if stripped.startswith(("-", "*", "\u2022", "http")) or ":" in stripped:
+        prefix = line[: len(line) - len(stripped)]
+        bullet_m = re.match(r"^([\u2022\-\*]\s*)", stripped)
+        if bullet_m:
+            prefix += bullet_m.group(1)
+            stripped = stripped[bullet_m.end() :]
+
+        if stripped.startswith("http"):
             fixed_lines.append(line)
-        else:
-            fixed = re.sub(
-                r"(?<=[a-z])(of|in|and|for|at|to|with|the)(?=[A-Z'])",
-                r" \1 ",
-                line,
-            )
-            fixed_lines.append(re.sub(r"([a-z])([A-Z])", r"\1 \2", fixed))
+            continue
+
+        words = stripped.split()
+        repaired = [_split_runon_token(w) for w in words]
+        fixed_lines.append(prefix + " ".join(repaired))
     return "\n".join(fixed_lines)
+
+
+_KNOWN_SECTION_COLLAPSED = frozenset({
+    # Single-word forms of known headings — used by Case 2 below
+    'experience', 'workexperience', 'professionalexperience',
+    'employmenthistory', 'employment', 'careerhistory', 'workhistory',
+    'education', 'academicbackground', 'academics', 'qualifications',
+    'academicqualifications', 'skills', 'technicalskills',
+    'corecompetencies', 'keyskills', 'competencies', 'technologies',
+    'technicalexpertise', 'summary', 'professionalsummary', 'objective',
+    'profile', 'about', 'careerobjective', 'certifications',
+    'certificates', 'licenses', 'credentials', 'professionalcertifications',
+    'projects', 'personalprojects', 'sideprojects', 'keyprojects',
+    'academicprojects', 'awards', 'achievements', 'honors', 'honours',
+    'awardsandachievements', 'accomplishments', 'publications', 'research',
+    'papers', 'researchpapers', 'journalarticles', 'extracurriculars',
+    'activities', 'volunteer', 'communityservice', 'extracurricular',
+})
 
 
 def _normalize_spaced_heading(line: str) -> str:
     """Collapse spaced-character headings to their solid form.
 
-    Handles PDF-extracted headings like 'C E R T I F I C A T I O N S'
-    (every letter separated by a single space) and returns 'CERTIFICATIONS'.
-    Only fires when the line consists solely of single uppercase letters
-    separated by single spaces (at least 3 letters).
+    Case 1 — every letter spaced: 'C E R T I F I C A T I O N S' → 'CERTIFICATIONS'
+    Case 2 — partial word splits: 'EXPERI ENCE' → 'EXPERIENCE', 'AW ARDS' → 'AWARDS'
+      Only collapses when the collapsed form matches a known section keyword so
+      phrases like 'WORK EXPERIENCE' are not collapsed.
     """
     stripped = line.strip()
+    # Case 1: every single uppercase letter separated by one space
     if re.match(r'^([A-Z] ){2,}[A-Z]$', stripped):
         return stripped.replace(' ', '')
+    # Case 2: all-uppercase line with spaces — collapse only if known heading
+    if re.match(r'^[A-Z][A-Z ]{2,}[A-Z]$', stripped):
+        collapsed = stripped.replace(' ', '')
+        if collapsed.lower() in _KNOWN_SECTION_COLLAPSED:
+            return collapsed
     return stripped
 
 

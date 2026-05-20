@@ -121,13 +121,13 @@ def run_gap_session(
     decisions: Dict[str, str] = {}
 
     # Handle empty sections gracefully. If no sections were returned from the analyzer, notify user and skip the interactive loop.
-    for s in gap_result.get("sections", []):
+    for s in gap_result.get("section_gaps") or gap_result.get("sections") or []:
         sec = SectionResult(
-            name=s.get("section_name", "").strip(),
-            original=s.get("original", ""),
-            rewritten=s.get("rewritten", ""),
+            name=s.get("section", s.get("section_name", "")).strip(),
+            original=s.get("original_content", s.get("original", "")),
+            rewritten=s.get("rewritten", s.get("rewrite_instruction", "")),
             changes_made=s.get("changes_made", []),
-            keywords_added=s.get("keywords_added", []),
+            keywords_added=s.get("missing_keywords", s.get("keywords_added", [])),
         )
         sec.actually_changed = sec.rewritten.strip() != sec.original.strip()
 

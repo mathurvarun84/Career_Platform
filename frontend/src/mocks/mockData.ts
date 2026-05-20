@@ -503,6 +503,95 @@ Prepared to operate as a senior-level force multiplier in organizations with a h
       "Rewrite summary to emphasize ownership of scalable backend architecture.",
     ],
   },
+  validation: {
+    safe_fix: {
+      ats_check: "pass",
+      jd_check: "pass",
+      placeholder_check: "pass",
+      truncation_check: "pass",
+      overall: "pass",
+      download_enabled: true,
+    },
+    full_rewrite: {
+      ats_check: "pass",
+      jd_check: "pass",
+      placeholder_check: "pass",
+      truncation_check: "pass",
+      overall: "pass",
+      download_enabled: true,
+    },
+    scores: {
+      safe_fix: {
+        ats_score: 71,
+        ats_breakdown: {
+          keyword_match: 19,
+          formatting: 21,
+          readability: 18,
+          impact_metrics: 13,
+        },
+        delta_ats: 17,
+      },
+      full_rewrite: {
+        ats_score: 76,
+        ats_breakdown: {
+          keyword_match: 21,
+          formatting: 21,
+          readability: 18,
+          impact_metrics: 16,
+        },
+        delta_ats: 22,
+      },
+      original_ats: 54,
+    },
+  },
+};
+
+const PASS_VALIDATION_CHECKS = {
+  ats_check: "pass" as const,
+  jd_check: "pass" as const,
+  placeholder_check: "pass" as const,
+  truncation_check: "pass" as const,
+  overall: "pass" as const,
+  download_enabled: true,
+};
+
+/** Mock variant: safe fix passes, full rewrite fails ATS check (disabled download). */
+export const MOCK_ANALYSIS_RESULT_FULL_REWRITE_FAIL: AnalysisResult = {
+  ...MOCK_ANALYSIS_RESULT,
+  validation: {
+    safe_fix: PASS_VALIDATION_CHECKS,
+    full_rewrite: {
+      ats_check: "fail",
+      jd_check: "pass",
+      placeholder_check: "pass",
+      truncation_check: "pass",
+      overall: "fail",
+      download_enabled: false,
+    },
+    scores: {
+      safe_fix: {
+        ats_score: 71,
+        ats_breakdown: {
+          keyword_match: 19,
+          formatting: 21,
+          readability: 18,
+          impact_metrics: 13,
+        },
+        delta_ats: 17,
+      },
+      full_rewrite: {
+        ats_score: 49,
+        ats_breakdown: {
+          keyword_match: 12,
+          formatting: 18,
+          readability: 10,
+          impact_metrics: 9,
+        },
+        delta_ats: -5,
+      },
+      original_ats: 54,
+    },
+  },
 };
 
 export const MOCK_SSE_EVENTS: SSEProgressEvent[] = [

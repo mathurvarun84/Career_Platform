@@ -123,8 +123,13 @@ def _parse_experience_header_from_verbatim(text: str) -> dict[str, str]:
     if not lines:
         return dict(company=company, role=role, location=location, dates=dates)
 
-    # Fixed-format path: Line 1 must contain a date range
-    if len(lines) >= 2 and _DATE_RANGE_RE.search(lines[1]):
+    # Fixed-format path (LLM): company-only line 0, role|location|dates on line 1
+    if (
+        len(lines) >= 2
+        and _DATE_RANGE_RE.search(lines[1])
+        and not _DATE_RANGE_RE.search(lines[0])
+        and "|" not in lines[0]
+    ):
         company = lines[0]
         role_line = lines[1]
         date_match = _DATE_RANGE_RE.search(role_line)
@@ -138,7 +143,7 @@ def _parse_experience_header_from_verbatim(text: str) -> dict[str, str]:
             role = role_part
         return dict(company=company, role=role, location=location, dates=dates)
 
-    # Legacy-format fallback: scan all lines for the date range
+    # Legacy-format: scan for first date-bearing line
     date_line_idx = -1
     date_match = None
     for i, line in enumerate(lines):
@@ -148,15 +153,35 @@ def _parse_experience_header_from_verbatim(text: str) -> dict[str, str]:
             date_match = m
             break
 
-    if date_line_idx >= 0 and date_match:
-        dates = date_match.group(0).strip()
-        role = lines[date_line_idx][:date_match.start()].strip().rstrip("|–—-").strip()
-        company_line = lines[0] if date_line_idx > 0 else ""
-    else:
-        company_line = lines[0] if lines else ""
-        role = lines[1] if len(lines) > 1 else ""
+    if date_line_idx < 0 or not date_match:
+        return dict(company=company, role=role, location=location, dates=dates)
 
-    if company_line:
+    dates = date_match.group(0).strip()
+    date_line = lines[date_line_idx]
+    before_dates = date_line[:date_match.start()].strip().rstrip("|–—-").strip()
+
+    def _split_role_company_location(header: str) -> tuple[str, str, str]:
+        """Parse 'Role | Company — Location' into role, company, location."""
+        if " | " not in header:
+            return "", "", ""
+        role_part, company_loc = header.split(" | ", 1)
+        r = role_part.strip()
+        if " — " in company_loc:
+            c, loc = company_loc.split(" — ", 1)
+            return r, c.strip(), loc.strip()
+        return r, company_loc.strip(), ""
+
+    if " | " in before_dates:
+        # Single-line legacy: "Role | Company — Location  Dates"
+        role, company, location = _split_role_company_location(before_dates)
+    elif date_line_idx > 0:
+        # Two-line legacy: header on line above date-only line
+        role, company, location = _split_role_company_location(lines[date_line_idx - 1])
+    elif before_dates:
+        role = before_dates
+    else:
+        # Fallback: company on line 0, partial role text before dates on date line
+        company_line = lines[0]
         parts = _PIPE_OR_DASH_RE.split(company_line, maxsplit=1)
         company = parts[0].strip()
         location = parts[1].strip() if len(parts) > 1 else ""
@@ -238,6 +263,33 @@ def _line_is_experience_header(s: str, is_first_nonbullet: bool) -> bool:
     return False
 
 
+def _is_bare_sentence_fragment(text: str) -> bool:
+    """
+    True when text is a bullet continuation or mid-sentence fragment.
+
+    Such fragments must not be wrapped in ##COMPANY## markers.
+    """
+    if _DATE_RANGE_RE.search(text) or "|" in text:
+        return False
+    lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return False
+    # Multi-line blocks with bullets are structured experience entries, not fragments.
+    if len(lines) >= 2 and any(
+        ln.startswith(("•", "-", "*")) or ln.lower().startswith("tech stack")
+        for ln in lines
+    ):
+        return False
+    first = lines[0]
+    if len(first) >= 120:
+        return False
+    if len(first) < 20 and len(lines) == 1:
+        return True
+    if first[0].islower() or first[0].isdigit():
+        return True
+    return False
+
+
 def _ensure_experience_markers(text: str, sub_label: str) -> str:
     """
     Wraps an experience sub-entry in structural markers for the docx writer.
@@ -254,6 +306,8 @@ def _ensure_experience_markers(text: str, sub_label: str) -> str:
       Tech Stack: lang1, lang2
     """
     if text.startswith(COMPANY_HEADER_START):
+        return text
+    if _is_bare_sentence_fragment(text):
         return text
 
     # Step 1: Parse from verbatim_text — works for any resume format
@@ -555,6 +609,19 @@ class RewriterAgent(BaseAgent):
             return self._rewrite_with_sub_changes(
                 section, [], gap, section_text
             )
+
+        # Pre-marked experience block with no sub_entries — preserve verbatim (no monolithic).
+        if (
+            section == "experience"
+            and COMPANY_HEADER_START in (original_content or "")
+            and not (section_text and section_text.sub_entries)
+        ):
+            oc = original_content
+            return (SectionRewrite(
+                balanced=oc,
+                aggressive=oc,
+                top_1_percent=oc,
+            ).model_dump(), [])
 
         return (
             self._rewrite_monolithic(

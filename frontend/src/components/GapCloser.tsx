@@ -1,10 +1,10 @@
 import { useState } from "react";
 
-import { applyPatches, getResumeDownloadUrl, rollbackPatch } from "../api/client";
+import { applyPatches, rollbackPatch } from "../api/client";
 import { useWindowSize } from "../hooks/useWindowSize";
 import { cardPadding, pageContainerStyle } from "../utils/pageLayout";
 import { useResumeStore } from "../store/useResumeStore";
-import type { PriorityFix, ResumePatch } from "../types";
+import type { PriorityFix, ResumePatch, TabId } from "../types";
 import DataSourceNotice from "./DataSourceNotice";
 
 const toTitle = (value: string): string =>
@@ -27,12 +27,14 @@ const normalizeFixes = (priorityFixes: PriorityFix[] | string[]): PriorityFix[] 
       "needs_change" in item
   );
 
-export default function GapCloser() {
+interface GapCloserProps {
+  onTabChange: (tab: TabId) => void;
+}
+
+export default function GapCloser({ onTabChange }: GapCloserProps) {
   const analysisResult = useResumeStore((s) => s.analysisResult);
   const jobId = useResumeStore((s) => s.jobId);
-  const selectedStyle = useResumeStore((s) => s.selectedStyle);
   const resetAnalysis = useResumeStore((s) => s.resetAnalysis);
-  const [isGeneratePressed, setIsGeneratePressed] = useState(false);
   const [patches, setPatches] = useState<ResumePatch[]>(analysisResult?.patches || []);
   const [applying, setApplying] = useState<string | null>(null);
   const [patchScores, setPatchScores] = useState<Record<string, number | null>>({});
@@ -198,23 +200,6 @@ export default function GapCloser() {
   const mustHaveFixes = fixes.slice(0, 3);
   const niceToHaveFixes = allPriorityFixes.filter((f) => !f.needs_change);
   const progressWidth = Math.max(0, Math.min(100, beforeScore));
-
-  const handleGenerate = () => {
-    if (!analysisResult.rewrites) {
-      window.alert("Rewrites unavailable. Re-run analysis first.");
-      return;
-    }
-    const id = jobId ?? analysisResult.job_id;
-    if (!id) {
-      window.alert("Session id unavailable. Download skipped.");
-      return;
-    }
-    window.open(
-      getResumeDownloadUrl(id, selectedStyle),
-      "_blank",
-      "noopener,noreferrer"
-    );
-  };
 
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
@@ -814,31 +799,54 @@ export default function GapCloser() {
             ))}
           </div>
 
-          <button
-            type="button"
-            onClick={handleGenerate}
-            onMouseDown={() => setIsGeneratePressed(true)}
-            onMouseUp={() => setIsGeneratePressed(false)}
-            onMouseLeave={() => setIsGeneratePressed(false)}
+          <div
             style={{
+              background: "#f5f0ff",
+              border: "1.5px solid #e9d5ff",
+              borderRadius: "14px",
+              padding: "20px 24px",
               marginTop: "16px",
-              background: "#6366f1",
-              color: "#ffffff",
-              border: "none",
-              borderRadius: "12px",
-              padding: "12px 24px",
-              fontSize: "14px",
-              fontWeight: 700,
-              cursor: "pointer",
-              transform: isGeneratePressed ? "translateY(3px)" : "translateY(0)",
-              boxShadow: isGeneratePressed
-                ? "0 1px 0 #4338ca"
-                : "0 4px 0 #4338ca, 0 6px 16px rgba(99,102,241,0.25)",
-              transition: "transform 0.1s, box-shadow 0.1s",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "16px",
+              flexWrap: "wrap",
             }}
           >
-            Generate Optimized Resume
-          </button>
+            <div>
+              <div
+                style={{
+                  fontSize: "14px",
+                  fontWeight: 700,
+                  color: "#5b21b6",
+                  marginBottom: "3px",
+                }}
+              >
+                Ready to apply these fixes?
+              </div>
+              <div style={{ fontSize: "13px", color: "#6d28d9" }}>
+                Patches are waiting in the Fixes tab — estimated improvement shown there.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onTabChange("fixes")}
+              style={{
+                background: "#6366f1",
+                color: "#fff",
+                border: "none",
+                borderRadius: "12px",
+                padding: "13px 24px",
+                fontSize: "14px",
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 0 #4338ca",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Go to Fixes →
+            </button>
+          </div>
         </div>
 
         <DataSourceNotice tab="gap" />

@@ -1,17 +1,34 @@
 import { useResumeStore } from "../../store/useResumeStore";
-import type { TabId } from "../../types/index";
+import type { PriorityFix, TabId } from "../../types/index";
 import { useWindowSize } from "../../hooks/useWindowSize";
+import { hasJobDescription } from "../../utils/hasJobDescription";
 
 const tabs: Array<{ id: TabId; icon: string; label: string }> = [
-  { id: "overview", icon: "⊞", label: "Overview" },
-  { id: "fixes", icon: "✦", label: "Actionable Fixes" },
+  { id: "overview", icon: "📊", label: "Overview" },
+  { id: "gap", icon: "◎", label: "Gap Analysis" },
   { id: "recruiter", icon: "👤", label: "Recruiter View" },
-  { id: "gap", icon: "◎", label: "Gap Closer" },
+  { id: "fixes", icon: "✦", label: "Fixes" },
   { id: "progress", icon: "↗", label: "Progress" },
 ];
 
 const disabledBeforeAnalysis = new Set<TabId>(["fixes", "gap"]);
 const alwaysEnabledTabs = new Set<TabId>(["progress"]);
+
+const countFixesNeedingChange = (
+  priorityFixes: Array<string | PriorityFix> | undefined
+): number => {
+  if (!priorityFixes) {
+    return 0;
+  }
+
+  return priorityFixes.filter(
+    (item): item is PriorityFix =>
+      typeof item === "object" &&
+      item !== null &&
+      "needs_change" in item &&
+      Boolean(item.needs_change)
+  ).length;
+};
 
 export default function TabNav() {
   const activeTab = useResumeStore((state) => state.activeTab);
@@ -19,6 +36,10 @@ export default function TabNav() {
   const analysisResult = useResumeStore((state) => state.analysisResult);
   const fallbackInfo = useResumeStore((state) => state.fallbackInfo);
   const { isMobile } = useWindowSize();
+
+  const hasJd = hasJobDescription(analysisResult?.gap);
+  const fixCount = countFixesNeedingChange(analysisResult?.gap?.priority_fixes);
+
   const unavailableByTab: Partial<Record<TabId, boolean>> = {
     fixes: (fallbackInfo.fixes?.length ?? 0) > 0,
     recruiter:
@@ -27,6 +48,10 @@ export default function TabNav() {
   };
 
   const handleTabClick = (tabId: TabId): void => {
+    if (tabId === "gap" && analysisResult && !hasJd) {
+      return;
+    }
+
     if (
       !analysisResult &&
       disabledBeforeAnalysis.has(tabId) &&
@@ -58,10 +83,12 @@ export default function TabNav() {
     >
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
+        const isGapLocked = tab.id === "gap" && Boolean(analysisResult) && !hasJd;
         const isDisabled =
-          !analysisResult &&
-          disabledBeforeAnalysis.has(tab.id) &&
-          !alwaysEnabledTabs.has(tab.id);
+          isGapLocked ||
+          (!analysisResult &&
+            disabledBeforeAnalysis.has(tab.id) &&
+            !alwaysEnabledTabs.has(tab.id));
 
         return (
           <button
@@ -72,6 +99,7 @@ export default function TabNav() {
             aria-controls={`panel-${tab.id}`}
             aria-selected={isActive}
             aria-label={tab.label}
+            aria-disabled={isDisabled}
             onClick={() => handleTabClick(tab.id)}
             onMouseEnter={(event) => {
               if (!isActive && !isDisabled) {
@@ -82,6 +110,9 @@ export default function TabNav() {
             onMouseLeave={(event) => {
               if (!isActive && !isDisabled) {
                 event.currentTarget.style.color = "#6b7280";
+                event.currentTarget.style.background = "transparent";
+              } else if (isGapLocked) {
+                event.currentTarget.style.color = "#d1d5db";
                 event.currentTarget.style.background = "transparent";
               }
             }}
@@ -105,14 +136,38 @@ export default function TabNav() {
             }}
           >
             <span style={{ lineHeight: 1 }}>{tab.icon}</span>
-            <span>
-              {isMobile && tab.id === "fixes"
-                ? "Fixes"
-                : isMobile && tab.id === "recruiter"
-                  ? "Recruiter"
-                  : tab.label}
-            </span>
-            {unavailableByTab[tab.id] ? (
+            <span>{tab.label}</span>
+            {tab.id === "fixes" && fixCount > 0 ? (
+              <span
+                style={{
+                  marginLeft: "2px",
+                  background: "#dcfce7",
+                  color: "#15803d",
+                  borderRadius: "999px",
+                  padding: "1px 7px",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                }}
+              >
+                {fixCount}
+              </span>
+            ) : null}
+            {isGapLocked ? (
+              <span
+                style={{
+                  marginLeft: "2px",
+                  background: "#f3f4f6",
+                  color: "#9ca3af",
+                  borderRadius: "999px",
+                  padding: "1px 7px",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                }}
+              >
+                🔒
+              </span>
+            ) : null}
+            {unavailableByTab[tab.id] && !isGapLocked ? (
               <span
                 style={{
                   marginLeft: "4px",

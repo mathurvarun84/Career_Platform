@@ -1,8 +1,7 @@
 """
-Test script to verify ISSUE 1 and ISSUE 2 fixes for Gap Closer.
+Test script to verify Gap Closer DOCX export fixes.
 
 ISSUE 1: Verify DOCX export has all sections with fallback text
-ISSUE 2: Verify Streamlit button handler has progress feedback
 """
 
 import sys
@@ -15,7 +14,7 @@ from pathlib import Path
 logging.basicConfig(level=logging.DEBUG, format='%(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("test_gap_session_fixes")
 
-print("=== ISSUE 1 & 2 FIX VERIFICATION ===\n")
+print("=== ISSUE 1 FIX VERIFICATION ===\n")
 
 failures = []
 passes = []
@@ -149,43 +148,6 @@ except Exception as e:
     import traceback
     traceback.print_exc()
     check("ISSUE 1 test completed without exception", False)
-
-# ============================================================================
-# ISSUE 2: Streamlit Button Handler Progress Feedback
-# ============================================================================
-
-print("\n2. ISSUE 2 - STREAMLIT BUTTON PROGRESS FEEDBACK")
-print("-" * 60)
-
-try:
-    # Read app.py and verify button handler has progress feedback
-    with open("app.py", "r", encoding="utf-8") as f:
-        app_content = f.read()
-
-    check("app.py readable", True)
-
-    # Check for required elements in button handler
-    button_checks = [
-        ("Button has generate/download text",
-         "Generate & Download Resume" in app_content),
-        ("build_final_docx wired in button handler",
-         "build_final_docx(" in app_content),
-        ("download_button for docx output",
-         "st.download_button" in app_content),
-        ("Success message displayed",
-         "st.success(" in app_content and "Resume ready" in app_content),
-        ("Error handling with st.error",
-         "st.error(" in app_content and "Docx generation failed" in app_content),
-        ("st.exception(e) for traceback",
-         "st.exception(e)" in app_content),
-    ]
-
-    for check_name, result in button_checks:
-        check(f"  {check_name}", result)
-
-except Exception as e:
-    logger.error(f"Error checking app.py: {e}")
-    check("app.py button handler verification", False)
 
 # ============================================================================
 # Summary

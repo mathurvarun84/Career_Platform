@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Dict, List, Optional
 
 from .base_agent import BaseAgent
@@ -85,6 +86,10 @@ Rules:
 ANTI-HALLUCINATION: Do NOT include original_content or original_text in your output —
 those are handled by the extraction pipeline. Only provide needs_change, gap_reason,
 rewrite_instruction, and missing_keywords.
+
+LABEL CONTRACT: sub_label values in sub_changes MUST be copied VERBATIM from the
+"EXACT sub_entry labels" list in the input. Do NOT abbreviate, slugify, or paraphrase.
+If a sub_entry label is not in that list, do not create a sub_change for it.
 """
 
 EVAL_SYSTEM_PROMPT = """You are a senior technical recruiter evaluating a resume against a specific JD.
@@ -157,6 +162,36 @@ STRICT RULES:
 """
 
 
+def _fuzzy_match_label(sub_label: str, valid_labels: set[str]) -> str | None:
+    """
+    Match an LLM-invented sub_label to the closest known A1/sectioner label.
+
+    Uses exact match, case-insensitive containment, then token overlap (≥2 tokens).
+    """
+    if not sub_label or not valid_labels:
+        return None
+    if sub_label in valid_labels:
+        return sub_label
+    lower_sub = sub_label.lower()
+    for label in valid_labels:
+        lower_entry = label.lower()
+        if lower_sub in lower_entry or lower_entry in lower_sub:
+            return label
+    sub_tokens = {t for t in re.split(r"\W+", lower_sub) if len(t) > 3}
+    if not sub_tokens:
+        return None
+    best_label: str | None = None
+    best_score = 0
+    for label in valid_labels:
+        entry_tokens = {t for t in re.split(r"\W+", label.lower()) if len(t) > 3}
+        score = len(sub_tokens & entry_tokens)
+        if score > best_score:
+            best_score, best_label = score, label
+    if best_score >= 2 and best_label:
+        return best_label
+    return None
+
+
 class GapAnalyzerAgent(BaseAgent):
     """
     Agent 3 — Gap Analyzer.
@@ -221,9 +256,16 @@ class GapAnalyzerAgent(BaseAgent):
             system_prompt = GAP_SYSTEM_PROMPT + build_role_gap_addendum(role_family)
             output_model = GapAnalyzerOutput
 
+        sub_entry_manifest: dict[str, list[str]] = {}
+        for sec_name, sec_text in resume_sections.items():
+            if sec_text and sec_text.sub_entries:
+                sub_entry_manifest[sec_name] = [e.label for e in sec_text.sub_entries]
+
         user_message = (
             f"Resume understanding:\n{json.dumps(resume_analysis, indent=2)}\n\n"
-            f"JD intelligence:\n{json.dumps(jd_analysis, indent=2)}"
+            f"JD intelligence:\n{json.dumps(jd_analysis, indent=2)}\n\n"
+            f"EXACT sub_entry labels per section (use VERBATIM as sub_label values):\n"
+            f"{json.dumps(sub_entry_manifest, indent=2)}"
         )
 
         for attempt in range(2):
@@ -393,13 +435,33 @@ class GapAnalyzerAgent(BaseAgent):
 
             # Backfill original_content from sectioner full_text
             gap["original_content"] = section_text.full_text if section_text else ""
-            gap["present_in_resume"] = section_text is not None
+            gap["present_in_resume"] = self._section_has_content(section_text)
 
+            valid_labels = (
+                {e.label for e in section_text.sub_entries}
+                if section_text and section_text.sub_entries
+                else set()
+            )
             # Backfill original_text on each sub_change from matching sub_entry
             for sub_change in gap.get("sub_changes", []):
                 sub_label = sub_change.get("sub_label", "")
+                if valid_labels and sub_label not in valid_labels:
+                    rescued = _fuzzy_match_label(sub_label, valid_labels)
+                    if rescued:
+                        logging.warning(
+                            "GapAnalyzer: sub_label '%s' rescued → '%s'",
+                            sub_label,
+                            rescued,
+                        )
+                        sub_change["sub_label"] = rescued
+                    else:
+                        logging.warning(
+                            "GapAnalyzer: sub_label '%s' has no match in %s",
+                            sub_label,
+                            section_name,
+                        )
                 sub_change["original_text"] = self._find_verbatim_text(
-                    section_text, sub_label
+                    section_text, sub_change.get("sub_label", "")
                 )
                 sub_change["rewrite_instruction"] = self._build_concrete_instruction(
                     gap_type=sub_change.get("gap_reason", ""),
@@ -423,7 +485,7 @@ class GapAnalyzerAgent(BaseAgent):
                     "missing_keywords": [],
                     "rewrite_instruction": "",
                     "original_content": section_text.full_text if section_text else "",
-                    "present_in_resume": section_text is not None,
+                    "present_in_resume": self._section_has_content(section_text),
                     "sub_changes": [],
                 })
 
@@ -486,6 +548,8 @@ class GapAnalyzerAgent(BaseAgent):
         """
         Looks up verbatim text from a section's sub_entry by sub_label.
 
+        Three-pass match: exact, case-insensitive containment, token overlap.
+
         Args:
             section: SectionText from sectioner, or None if section missing.
             sub_label: Label string to match against sub_entries.
@@ -493,14 +557,31 @@ class GapAnalyzerAgent(BaseAgent):
         Returns:
             verbatim_text if found, empty string otherwise.
         """
-        if not section:
+        if not section or not sub_label:
             return ""
+        # 1. Exact match
         for entry in section.sub_entries:
             if entry.label == sub_label:
                 return entry.verbatim_text
-        # Fallback: partial match on label substring
-        lowered_sub_label = sub_label.lower()
+        # 2. Case-insensitive containment (both directions)
+        lower_sub = sub_label.lower()
         for entry in section.sub_entries:
-            if lowered_sub_label in entry.label.lower():
+            lower_entry = entry.label.lower()
+            if lower_sub in lower_entry or lower_entry in lower_sub:
                 return entry.verbatim_text
+        # 3. Token overlap — significant tokens (len > 3), need ≥2 matches
+        sub_tokens = {t for t in re.split(r"\W+", lower_sub) if len(t) > 3}
+        if not sub_tokens:
+            return ""
+        best_entry = None
+        best_score = 0
+        for entry in section.sub_entries:
+            entry_tokens = {
+                t for t in re.split(r"\W+", entry.label.lower()) if len(t) > 3
+            }
+            score = len(sub_tokens & entry_tokens)
+            if score > best_score:
+                best_score, best_entry = score, entry
+        if best_score >= 2 and best_entry:
+            return best_entry.verbatim_text
         return ""

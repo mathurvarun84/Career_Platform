@@ -199,6 +199,93 @@ def rebuild_experience_rewrites(
     return repaired
 
 
+def _resolve_experience_section(
+    resume_sections: dict[str, Any] | None,
+) -> tuple[str, SectionText | dict[str, Any] | None]:
+    """Return canonical key and experience section payload from resume_sections."""
+    if not resume_sections:
+        return "experience", None
+
+    section = resume_sections.get("experience")
+    if section is not None:
+        return "experience", section
+
+    for key, val in resume_sections.items():
+        if str(key).lower().strip() in (
+            "experience",
+            "work experience",
+            "professional experience",
+            "employment",
+        ):
+            return str(key), val
+    return "experience", None
+
+
+def repair_experience_for_export(
+    resume_text: str,
+    resume_sections: dict[str, Any] | None,
+    rewrites: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    """
+    Backfill missing experience sub_entries and rebuild rewrite variants before docx export.
+
+    Unlike log_experience_audit(), this mutates resume_sections and rewrites so the
+    downloaded file includes every job block detected in the raw resume text.
+    """
+    sections = dict(resume_sections or {})
+    rw = dict(rewrites or {})
+    if not resume_text.strip():
+        return sections, rw, False
+
+    exp_key, exp_raw = _resolve_experience_section(sections)
+    before_n = count_sub_entries(exp_raw)
+    exp_section = ensure_experience_completeness(exp_raw, resume_text)
+    repaired = False
+
+    if exp_section is not None:
+        after_n = count_sub_entries(exp_section)
+        if after_n > before_n:
+            sections[exp_key] = (
+                exp_section.model_dump()
+                if hasattr(exp_section, "model_dump")
+                else exp_section
+            )
+            repaired = True
+            logging.info(
+                "ExperienceAudit: backfilled %d experience sub_entries before docx (%d -> %d)",
+                after_n - before_n,
+                before_n,
+                after_n,
+            )
+    else:
+        exp_section = _coerce_section_text(exp_raw)
+
+    if exp_section is None or not getattr(exp_section, "sub_entries", None):
+        return sections, rw, repaired
+
+    expected = len(exp_section.sub_entries)
+    exp_rw = rw.get("experience") or {}
+    if not isinstance(exp_rw, dict):
+        return sections, rw, repaired
+
+    marker_counts = {
+        style: count_experience_markers(str(exp_rw.get(style, "") or ""))
+        for style in ("balanced", "aggressive", "top_1_percent")
+    }
+    if all(n >= expected for n in marker_counts.values()):
+        return sections, rw, repaired
+
+    rebuilt = rebuild_experience_rewrites(exp_rw, exp_section, prefer_rewritten=True)
+    rw["experience"] = rebuilt
+    repaired = True
+    logging.info(
+        "ExperienceAudit: rebuilt experience rewrites for docx (markers %s -> target %d)",
+        marker_counts,
+        expected,
+    )
+    return sections, rw, repaired
+
+
 def log_experience_audit(
     stage: str,
     resume_text: str,
@@ -213,20 +300,7 @@ def log_experience_audit(
     ground_n = len(ground)
     ground_labels = [b.get("label", "")[:60] for b in ground]
 
-    section = None
-    if resume_sections:
-        section = resume_sections.get("experience")
-        if section is None:
-            for key, val in resume_sections.items():
-                if str(key).lower().strip() in (
-                    "experience",
-                    "work experience",
-                    "professional experience",
-                    "employment",
-                ):
-                    section = val
-                    break
-
+    _, section = _resolve_experience_section(resume_sections)
     sub_n = count_sub_entries(section)
 
     rewrite_n = 0

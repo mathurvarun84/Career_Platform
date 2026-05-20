@@ -39,6 +39,16 @@ job_store: Dict[str, Dict[str, Any]] = {}
 # Persist completed jobs so download still works after uvicorn reload / process restart.
 _JOB_CACHE_DIR = Path(__file__).resolve().parent / ".job_cache"
 _STAGE_CACHE_PATH = _JOB_CACHE_DIR / "stage_cache.json"
+# TTL for A1/A2 stage cache (seconds). 0 = disabled. Default 1 hour.
+_DEFAULT_STAGE_CACHE_TTL = 3600
+
+
+def _stage_cache_ttl_seconds() -> int:
+    raw = os.getenv("STAGE_CACHE_TTL_SECONDS", str(_DEFAULT_STAGE_CACHE_TTL))
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        return _DEFAULT_STAGE_CACHE_TTL
 
 
 def _persist_job(job_id: str) -> None:
@@ -72,12 +82,91 @@ def _require_job(job_id: str) -> Dict[str, Any]:
     return job_store[job_id]
 
 
+def _is_stage_payload(entry: Dict[str, Any]) -> bool:
+    """True when dict is raw stage data (legacy on-disk format)."""
+    return isinstance(entry, dict) and (
+        "resume_und" in entry or "resume_sections" in entry or "jd_intel" in entry
+    )
+
+
+def _prune_expired_stage_cache(
+    stage_cache: Dict[str, Dict[str, Any]],
+    ttl: int,
+) -> Dict[str, Dict[str, Any]]:
+    """Drop expired wrapped entries; legacy unwrapped entries are removed (force refresh)."""
+    if ttl <= 0:
+        return {}
+    now = time.time()
+    kept: Dict[str, Dict[str, Any]] = {}
+    for key, entry in stage_cache.items():
+        if not isinstance(entry, dict):
+            continue
+        if _is_stage_payload(entry):
+            continue
+        cached_at = entry.get("cached_at")
+        data = entry.get("data")
+        if not isinstance(cached_at, (int, float)) or not isinstance(data, dict):
+            continue
+        if now - float(cached_at) <= ttl:
+            kept[key] = entry
+    return kept
+
+
+def _get_stage_cache_entry(
+    stage_cache: Dict[str, Dict[str, Any]],
+    cache_key: str,
+) -> Dict[str, Any] | None:
+    """Return stage payload if present and not expired; None on miss or TTL disabled."""
+    ttl = _stage_cache_ttl_seconds()
+    if ttl <= 0:
+        return None
+    entry = stage_cache.get(cache_key)
+    if not entry or not isinstance(entry, dict):
+        return None
+    if _is_stage_payload(entry):
+        logger.info("Stage cache miss (legacy entry): %s", cache_key[:24])
+        return None
+    cached_at = entry.get("cached_at")
+    data = entry.get("data")
+    if not isinstance(data, dict):
+        return None
+    if not isinstance(cached_at, (int, float)):
+        return None
+    age = time.time() - float(cached_at)
+    if age > ttl:
+        logger.info(
+            "Stage cache expired for %s (age %.0fs > ttl %ds)",
+            cache_key[:24],
+            age,
+            ttl,
+        )
+        return None
+    return data
+
+
+def _set_stage_cache_entry(
+    stage_cache: Dict[str, Dict[str, Any]],
+    cache_key: str,
+    stage_data: Dict[str, Any],
+) -> None:
+    """Store stage payload with timestamp; no-op when TTL disabled."""
+    ttl = _stage_cache_ttl_seconds()
+    if ttl <= 0:
+        return
+    stage_cache[cache_key] = {
+        "cached_at": time.time(),
+        "data": stage_data,
+    }
+
+
 def _load_stage_cache() -> Dict[str, Dict[str, Any]]:
     if not _STAGE_CACHE_PATH.is_file():
         return {}
     try:
         raw = json.loads(_STAGE_CACHE_PATH.read_text(encoding="utf-8"))
-        return raw if isinstance(raw, dict) else {}
+        if not isinstance(raw, dict):
+            return {}
+        return _prune_expired_stage_cache(raw, _stage_cache_ttl_seconds())
     except (OSError, json.JSONDecodeError):
         return {}
 
@@ -85,8 +174,9 @@ def _load_stage_cache() -> Dict[str, Dict[str, Any]]:
 def _persist_stage_cache(stage_cache: Dict[str, Dict[str, Any]]) -> None:
     try:
         _JOB_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        pruned = _prune_expired_stage_cache(stage_cache, _stage_cache_ttl_seconds())
         _STAGE_CACHE_PATH.write_text(
-            json.dumps(stage_cache, default=str),
+            json.dumps(pruned, default=str),
             encoding="utf-8",
         )
     except OSError as exc:
@@ -237,11 +327,16 @@ def _analyze_event_stream(
                 }
             )
 
-            cache_key = f"{resume_hash}:{jd_hash or 'none'}"
-            cached_stage_data = stage_cache.get(cache_key)
+            # v2: invalidate caches created before PDF word-spacing parser fix
+            cache_key = f"v2:{resume_hash}:{jd_hash or 'none'}"
+            cached_stage_data = _get_stage_cache_entry(stage_cache, cache_key)
+            if cached_stage_data:
+                logger.info("Stage cache hit: %s", cache_key[:32])
+            elif _stage_cache_ttl_seconds() > 0:
+                logger.info("Stage cache miss: %s", cache_key[:32])
 
             def stage_cache_cb(stage_data: dict) -> None:
-                stage_cache[cache_key] = stage_data
+                _set_stage_cache_entry(stage_cache, cache_key, stage_data)
                 _persist_stage_cache(stage_cache)
 
             def sse_step_cb(step: int, label: str) -> None:
@@ -473,22 +568,46 @@ def download(job_id: str, style: str = "balanced") -> Response:
         or result.get("resume_sections")
         or {}
     )
+    from validator.experience_audit import (
+        log_experience_audit,
+        repair_experience_for_export,
+    )
+
+    resume_sections, rewrites, repaired = repair_experience_for_export(
+        resume_text,
+        resume_sections,
+        rewrites,
+    )
     missing_sections = assert_structural_completeness(rewrites, resume_sections)
     if missing_sections:
         logging.error(
-            "Structural completeness FAILED — sections missing from rewrites: %s. "
-            "Docx will be incomplete.",
+            "Structural completeness FAILED after repair — missing: %s",
             missing_sections,
         )
-    from validator.experience_audit import log_experience_audit
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Resume export incomplete",
+                "missing": missing_sections,
+            },
+        )
+    if repaired and isinstance(structured, dict):
+        structured = dict(structured)
+        structured["resume_sections"] = resume_sections
 
-    log_experience_audit(
+    audit = log_experience_audit(
         "pre_docx_download",
         resume_text,
         resume_sections,
         rewrites,
         style=style,
     )
+    if audit.get("ground_truth_count", 0) > audit.get("sub_entries_count", 0):
+        logging.warning(
+            "ExperienceAudit: docx may still omit %d role(s) after repair — "
+            "ground-truth detector found extra date blocks or labels did not match",
+            audit["ground_truth_count"] - audit["sub_entries_count"],
+        )
     docx = build_final_docx(
         structured=structured,
         rewrites=rewrites,

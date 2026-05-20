@@ -135,6 +135,39 @@ class Orchestrator:
             for k, v in sections.items()
         }
 
+    def _merge_sectioner_into_sections(
+        self,
+        resume_sections: Dict[str, Any],
+        resume_text: str,
+        resume_und: dict,
+    ) -> Dict[str, Any]:
+        """Run sectioner and merge richer sub_entries into resume_sections before A3."""
+        from backend.schemas.common import SectionText
+
+        try:
+            sectioner_raw = self.sectioner.run({"resume_text": resume_text}) or {}
+            sectioner_sections = {
+                k: SectionText(**v) if isinstance(v, dict) else v
+                for k, v in sectioner_raw.items()
+            }
+            for name, sec in sectioner_sections.items():
+                cur = resume_sections.get(name)
+                if not cur:
+                    resume_sections[name] = sec
+                    continue
+                cur_count = len(cur.sub_entries or [])
+                new_count = len(sec.sub_entries or [])
+                cur_len = len(cur.full_text or "")
+                new_len = len(sec.full_text or "")
+                if (new_count > cur_count) or (
+                    new_count == cur_count and new_len > cur_len
+                ):
+                    resume_sections[name] = sec
+            resume_und["resume_sections"] = self._dump_sections(resume_sections)
+        except Exception as exc:
+            logging.warning("Sectioner merge skipped: %s", exc)
+        return resume_sections
+
     def _sync_experience_sections(
         self,
         resume_sections: Dict[str, Any],
@@ -451,9 +484,14 @@ class Orchestrator:
 
     def _build_gap_fallback_rewrites(self, gap_output: Dict[str, Any]) -> Dict[str, Any]:
         fallback_rewrites: Dict[str, Dict[str, str]] = {}
-        for gap in gap_output.get("gaps", []):
+        for gap in gap_output.get("section_gaps") or gap_output.get("gaps") or []:
             section = gap.get("section", "unknown")
-            hint = gap.get("rewrite_hint") or gap.get("suggestion") or "Improve this section."
+            hint = (
+                gap.get("rewrite_instruction")
+                or gap.get("rewrite_hint")
+                or gap.get("suggestion")
+                or "Improve this section."
+            )
             fallback_rewrites[section] = {
                 "balanced": f"[Rewrite unavailable - {hint}]",
                 "aggressive": f"[Rewrite unavailable - {hint}]",
@@ -513,6 +551,26 @@ class Orchestrator:
             resume_und = dict(cached_stage_data.get("resume_und") or {})
             jd_intel = cached_stage_data.get("jd_intel")
             resume_sections = cached_stage_data.get("resume_sections") or {}
+            # Re-merge parser output so cached A1 sections pick up PDF spacing fixes.
+            from parser import _extract_section_blocks
+            from backend.schemas.common import SectionText
+
+            det_blocks = _extract_section_blocks(resume_text)
+            for sec_name, sec_text in det_blocks.items():
+                if not sec_text.strip():
+                    continue
+                existing = resume_sections.get(sec_name)
+                existing_text = ""
+                if isinstance(existing, dict):
+                    existing_text = str(existing.get("full_text") or "")
+                elif hasattr(existing, "full_text"):
+                    existing_text = str(existing.full_text or "")
+                if len(sec_text.strip()) >= len(existing_text.strip()):
+                    resume_sections[sec_name] = SectionText(
+                        header=sec_name,
+                        full_text=sec_text.strip(),
+                        sub_entries=[],
+                    )
         else:
             if has_jd:
                 with ThreadPoolExecutor(max_workers=2) as executor:
@@ -593,54 +651,20 @@ class Orchestrator:
 
         if has_jd:
             if progress_cb: progress_cb({"step":2,"label":"Analyzing gaps against JD...","pct":45})
-            if cache_hit:
-                gap_result = self.gap_analyzer.run({
-                    "resume_understanding": resume_und,
-                    "jd_intelligence": jd_intel,
-                    "resume_text": resume_text,
-                    "resume_sections": resume_sections,
-                    "jd_text": jd_text,
-                    "mode": "gap_closer",
-                })
-            else:
-                with ThreadPoolExecutor(max_workers=2) as executor:
-                    fut_gap = executor.submit(
-                        self.gap_analyzer.run,
-                        {
-                            "resume_understanding": resume_und,
-                            "jd_intelligence": jd_intel,
-                            "resume_text": resume_text,
-                            "resume_sections": resume_sections,
-                            "jd_text": jd_text,
-                            "mode": "gap_closer",
-                        },
-                    )
-                    fut_sectioner = executor.submit(
-                        self.sectioner.run,
-                        {"resume_text": resume_text},
-                    )
-                    gap_result = fut_gap.result()
-                    try:
-                        from backend.schemas.common import SectionText
-                        sectioner_raw = fut_sectioner.result() or {}
-                        sectioner_sections = {
-                            k: SectionText(**v) if isinstance(v, dict) else v
-                            for k, v in sectioner_raw.items()
-                        }
-                        for name, sec in sectioner_sections.items():
-                            cur = resume_sections.get(name)
-                            if not cur:
-                                resume_sections[name] = sec
-                                continue
-                            cur_count = len(cur.sub_entries or [])
-                            new_count = len(sec.sub_entries or [])
-                            cur_len = len(cur.full_text or "")
-                            new_len = len(sec.full_text or "")
-                            if (new_count > cur_count) or (new_count == cur_count and new_len > cur_len):
-                                resume_sections[name] = sec
-                        resume_und["resume_sections"] = self._dump_sections(resume_sections)
-                    except Exception as exc:
-                        logging.warning("Sectioner merge skipped: %s", exc)
+            resume_sections = self._merge_sectioner_into_sections(
+                resume_sections, resume_text, resume_und
+            )
+            resume_sections = self._sync_experience_sections(
+                resume_sections, resume_text, resume_und
+            )
+            gap_result = self.gap_analyzer.run({
+                "resume_understanding": resume_und,
+                "jd_intelligence": jd_intel,
+                "resume_text": resume_text,
+                "resume_sections": resume_sections,
+                "jd_text": jd_text,
+                "mode": "gap_closer",
+            })
             resume_sections = self._sync_experience_sections(
                 resume_sections, resume_text, resume_und
             )
@@ -681,6 +705,7 @@ class Orchestrator:
         eval_gap = None
         sim_result = None
         patches_raw = []
+        validation_summary = None
         with ThreadPoolExecutor(max_workers=3) as executor:
             fut_rewrite = None
             fut_eval = None
@@ -744,6 +769,9 @@ class Orchestrator:
                                 resume_sections=resume_sections,
                                 resume_text=resume_text,
                             )
+                            resume_und["resume_sections"] = self._dump_sections(
+                                resume_sections
+                            )
                             if progress_cb: progress_cb({"step":3,"label":"Rewrite validated","pct":95})
                         except Exception as exc:
                             logging.warning(
@@ -765,6 +793,38 @@ class Orchestrator:
                                 "Structural completeness FAILED — sections missing from "
                                 "rewrites: %s. Docx will be incomplete.",
                                 missing_sections,
+                            )
+                        try:
+                            from engine.ats_scorer import build_validation_summary
+
+                            jd_match_before = (
+                                gap_result.get("jd_match_score_before")
+                                if has_jd else None
+                            )
+                            jd_match_after = (
+                                gap_result.get("jd_match_score_after")
+                                if has_jd else None
+                            )
+                            validation_summary = build_validation_summary(
+                                original_resume_text=resume_text,
+                                rewrites=(
+                                    rewrites.get("rewrites", {})
+                                    if isinstance(rewrites, dict) else {}
+                                ),
+                                patches=patches_raw,
+                                jd_match_before=jd_match_before,
+                                jd_match_after=jd_match_after,
+                                jd_text=jd_text if has_jd else None,
+                            )
+                            logging.info(
+                                "Validation summary — safe_fix: %s, full_rewrite: %s",
+                                validation_summary["safe_fix"]["overall"],
+                                validation_summary["full_rewrite"]["overall"],
+                            )
+                        except Exception as exc:
+                            logging.warning(
+                                "Validation summary failed: %s. Continuing without it.",
+                                exc,
                             )
                 except Exception as exc:
                     logging.warning("Rewriter failed: %s. Using gap-based fallback.", exc)
@@ -864,6 +924,7 @@ class Orchestrator:
             "positioning": positioning,
             "jd_intelligence": jd_intel,
             "patches": [p.model_dump() if hasattr(p, "model_dump") else p for p in classified_patches],
+            "validation": validation_summary,
         }
         # Save full result to session store
         try:

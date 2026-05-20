@@ -2,7 +2,7 @@
 Pydantic schemas for Agent 5 — Recruiter Simulator.
 
 Input: resume text and/or Agent 1 output
-Output: 10 persona verdicts with aggregate metrics for Streamlit Tab 2
+Output: 10 persona verdicts with aggregate metrics for Recruiter tab
 """
 
 from pydantic import BaseModel, Field
@@ -52,7 +52,7 @@ class RecruiterSimOutput(BaseModel):
     """
     Aggregate recruiter simulation across all 10 personas.
 
-    shortlist_rate is the primary signal shown in Streamlit Tab 2.
+    shortlist_rate is the primary signal shown in the Recruiter tab.
     most_critical_fix drives the top recommendation card.
     """
     personas: List[PersonaVerdict] = Field(..., min_length=10, max_length=10)
