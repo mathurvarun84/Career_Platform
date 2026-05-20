@@ -327,8 +327,8 @@ def _analyze_event_stream(
                 }
             )
 
-            # v2: invalidate caches created before PDF word-spacing parser fix
-            cache_key = f"v2:{resume_hash}:{jd_hash or 'none'}"
+            # v3: invalidate caches created before bullet-continuation parser fix
+            cache_key = f"v3:{resume_hash}:{jd_hash or 'none'}"
             cached_stage_data = _get_stage_cache_entry(stage_cache, cache_key)
             if cached_stage_data:
                 logger.info("Stage cache hit: %s", cache_key[:32])
@@ -608,12 +608,53 @@ def download(job_id: str, style: str = "balanced") -> Response:
             "ground-truth detector found extra date blocks or labels did not match",
             audit["ground_truth_count"] - audit["sub_entries_count"],
         )
-    docx = build_final_docx(
-        structured=structured,
-        rewrites=rewrites,
-        style=style,
-        resume_text=resume_text,
-    )
+    patched_text = job.get("resume_text_patched") or ""
+    original_text = job.get("resume_text") or ""
+    has_surgical_patches = patched_text.strip() and patched_text != original_text
+    # Use surgical export for any non-aggressive download when patches were applied.
+    if has_surgical_patches and style != "aggressive":
+        from backend.surgical_debug import write_surgical_snapshot
+        from engine.surgical_export import prepare_surgical_export
+
+        write_surgical_snapshot(
+            job_id,
+            job,
+            "before_download",
+            extra={"download_style": style, "path": "surgical_patched"},
+        )
+        structured_for_export = prepare_surgical_export(
+            structured if isinstance(structured, dict) else {},
+            resume_sections,
+            patched_text,
+        )
+        docx = build_final_docx(
+            structured=structured_for_export,
+            rewrites={},
+            style="balanced",
+            resume_text=patched_text,
+        )
+        write_surgical_snapshot(
+            job_id,
+            job,
+            "after_download",
+            extra={
+                "download_style": style,
+                "experience_markers": (
+                    (structured_for_export.get("resume_sections") or {})
+                    .get("experience", {})
+                    .get("full_text", "")
+                    if isinstance(structured_for_export.get("resume_sections"), dict)
+                    else ""
+                ).count("##COMPANY##"),
+            },
+        )
+    else:
+        docx = build_final_docx(
+            structured=structured,
+            rewrites=rewrites,
+            style=style,
+            resume_text=resume_text,
+        )
     return Response(
         content=docx,
         media_type="application/octet-stream",
@@ -647,6 +688,10 @@ async def apply_patches(req: ApplyPatchesRequest):
     from engine.patch_engine import PatchEngine, rescore
     from backend.schemas.common import ResumePatch
 
+    from backend.surgical_debug import write_surgical_snapshot
+
+    write_surgical_snapshot(req.job_id, job, "before_fix")
+
     engine = PatchEngine(resume_text, resume_sections=resume_sections)
     all_patches = {p["patch_id"]: ResumePatch(**p) for p in patches_raw}
 
@@ -674,6 +719,13 @@ async def apply_patches(req: ApplyPatchesRequest):
         elif p["patch_id"] in rejected:
             p["status"] = "rejected"
     _persist_job(req.job_id)
+
+    write_surgical_snapshot(
+        req.job_id,
+        job,
+        "after_fix",
+        extra={"applied": applied, "rejected": rejected},
+    )
 
     return {
         "applied": applied,

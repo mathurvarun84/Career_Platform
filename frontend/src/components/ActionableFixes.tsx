@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { applyPatches } from "../api/client";
 import { useWindowSize } from "../hooks/useWindowSize";
 import { pageContainerStyle } from "../utils/pageLayout";
 import { hasJobDescription } from "../utils/hasJobDescription";
@@ -262,6 +263,7 @@ export default function ActionableFixes() {
   const analysisResult = useResumeStore((s) => s.analysisResult);
   const jobId = useResumeStore((s) => s.jobId);
   const applySectionFix = useResumeStore((s) => s.applySectionFix);
+  const mergePartialResult = useResumeStore((s) => s.mergePartialResult);
   const baselineAts = useResumeStore((s) => s.baselineAts);
   const liveAts = useResumeStore((s) => s.analysisResult?.ats.score ?? 0);
 
@@ -380,12 +382,53 @@ export default function ActionableFixes() {
     return acc;
   }, {});
 
+  const getOriginalSectionText = (sectionKey: string): string =>
+    analysisResult.resume.resume_sections?.[sectionKey]?.full_text?.trim() ?? "";
+
+  const splicePatchIntoText = (
+    base: string,
+    originalText: string,
+    replacementText: string
+  ): string => {
+    if (!base) {
+      return replacementText;
+    }
+
+    let idx = base.indexOf(originalText);
+    if (idx !== -1) {
+      return (
+        base.slice(0, idx) +
+        replacementText +
+        base.slice(idx + originalText.length)
+      );
+    }
+
+    const norm = (s: string) => s.replace(/\s+/g, " ").trim();
+    const normBase = norm(base);
+    const normOrig = norm(originalText);
+    idx = normBase.indexOf(normOrig);
+    if (idx !== -1) {
+      return (
+        normBase.slice(0, idx) +
+        replacementText +
+        normBase.slice(idx + normOrig.length)
+      );
+    }
+
+    return base;
+  };
+
   const getAfterText = (sectionKey: string): string => {
     const sectionRewrite = rewriteMap[sectionKey];
     const patch = patchBySection[sectionKey];
 
-    if (selectedMode === "safe" && patch?.replacement_text) {
-      return patch.replacement_text;
+    if (selectedMode === "safe" && patch?.replacement_text && patch.original_text) {
+      const originalBase = getOriginalSectionText(sectionKey);
+      return splicePatchIntoText(
+        originalBase,
+        patch.original_text,
+        patch.replacement_text
+      );
     }
 
     if (!sectionRewrite) {
@@ -429,11 +472,29 @@ export default function ActionableFixes() {
     });
   };
 
-  const applyFix = (fix: FixItem) => {
+  const applyFix = async (fix: FixItem) => {
     setAppliedFixes((prev) => new Set([...prev, fix.id]));
     const style: RewriteStyle = selectedMode === "safe" ? "balanced" : "aggressive";
     const sectionText = getAfterText(fix.sectionKey);
     applySectionFix(fix.sectionKey, style, sectionText);
+
+    if (selectedMode === "safe" && jobId) {
+      const patch = patchBySection[fix.sectionKey];
+      if (patch?.patch_id) {
+        try {
+          const result = await applyPatches(
+            jobId,
+            [patch.patch_id],
+            patch.risk === "needs_confirmation"
+          );
+          if (result.score) {
+            mergePartialResult({ ats: result.score });
+          }
+        } catch (error) {
+          console.error("Failed to apply patch on server:", error);
+        }
+      }
+    }
   };
 
   return (

@@ -329,6 +329,28 @@ def _clean_text(text: str) -> str:
     # Pass 8: split any residual concatenated words using common English prepositions
     # (catches fallback OCR / extract_text() output where spaces were stripped)
     text = _fix_concatenated_words(text)
+    # Pass 9: rejoin soft-wrapped bullet continuation lines
+    lines = text.splitlines()
+    sentence_enders = (".", "!", "?", ":")
+    merged = []
+    for line in lines:
+        stripped = line.strip()
+        is_bullet = stripped.startswith(("•", "-", "*"))
+        if merged:
+            prev = merged[-1].strip()
+            prev_is_bullet = prev.startswith(("•", "-", "*"))
+            prev_ends_open = prev and prev[-1] not in sentence_enders
+            if (
+                stripped
+                and not is_bullet
+                and prev_is_bullet
+                and prev_ends_open
+                and (stripped[0].islower() or stripped[0].isdigit())
+            ):
+                merged[-1] = merged[-1].rstrip() + " " + stripped
+                continue
+        merged.append(line)
+    text = "\n".join(merged)
     return text.strip()
 
 

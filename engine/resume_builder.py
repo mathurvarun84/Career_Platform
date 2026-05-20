@@ -145,16 +145,17 @@ def _role(doc, role: str, dates: str = "") -> None:
     p.paragraph_format.space_after = Pt(1)
 
 
-def _bullet(doc, text: str) -> None:
-    """List Bullet paragraph with placeholder guard."""
+def _bullet(doc, text: str):
+    """List Bullet paragraph with placeholder guard. Returns paragraph or None."""
     t = text.lstrip("-•* ").strip()
     if not t or _is_placeholder_text(t):
-        return
+        return None
     p = doc.add_paragraph(style="List Bullet")
     r = p.add_run(t)
     r.font.size = Pt(9.5)
     r.font.color.rgb = RGBColor(0x2E, 0x2E, 0x2E)
     p.paragraph_format.space_after = Pt(1)
+    return p
 
 
 def _normal(doc, text: str) -> None:
@@ -202,16 +203,23 @@ def _render_experience_from_markers(doc, content: str) -> None:
             _company(doc, co, loc)
         if ro:
             _role(doc, ro, dt)
+        current_bullet_para = None
         for line in body.splitlines():
             s = line.strip()
             if not s:
+                current_bullet_para = None
                 continue
             if s.startswith(bullet_markers):
-                _bullet(doc, s)
+                current_bullet_para = _bullet(doc, s)
             elif s.lower().startswith("tech stack:"):
                 _tech_stack(doc, s)
+                current_bullet_para = None
             else:
-                _normal(doc, s)
+                if current_bullet_para is not None and current_bullet_para.runs:
+                    current_bullet_para.runs[-1].text += " " + s
+                else:
+                    _normal(doc, s)
+                    current_bullet_para = None
 
 
 def _render_experience_heuristic(doc, content: str) -> None:
@@ -222,16 +230,20 @@ def _render_experience_heuristic(doc, content: str) -> None:
     """
     year_re = re.compile(r"\b(19|20)\d{2}\b|[Pp]resent")
     bullet_markers = ("•", "-", "*")
+    current_bullet_para = None
 
     for raw in content.splitlines():
         s = raw.strip()
         if not s:
+            current_bullet_para = None
             continue
         if s.startswith(bullet_markers):
-            _bullet(doc, s)
+            current_bullet_para = _bullet(doc, s)
         elif s.lower().startswith("tech stack:"):
             _tech_stack(doc, s)
+            current_bullet_para = None
         elif '|' in s and year_re.search(s):
+            current_bullet_para = None
             # Compound line: "Role | Company — Location   Date–Date"
             role_part, rest = s.split('|', 1)
             role_part = role_part.strip()
@@ -251,11 +263,17 @@ def _render_experience_heuristic(doc, content: str) -> None:
             if role_part:
                 _role(doc, role_part, date_part)
         elif year_re.search(s) and '|' not in s:
+            current_bullet_para = None
             _role(doc, s)
         elif s[0].isupper() and len(s) < 80:
+            current_bullet_para = None
             _company(doc, s)
         else:
-            _normal(doc, s)
+            if current_bullet_para is not None and current_bullet_para.runs:
+                current_bullet_para.runs[-1].text += " " + s
+            else:
+                _normal(doc, s)
+                current_bullet_para = None
 
 
 def _write_experience_unified(doc, content: str) -> None:
@@ -381,13 +399,25 @@ def build_final_docx(
                 if _normalize_key(str(key).lower().strip()) == section_name:
                     rw = value
                     break
+        val = ""
         for key in (style, "balanced"):
-            val = rw.get(key, "") if isinstance(rw, dict) else ""
-            if val and len(val.strip()) >= 10 and not _is_placeholder(val.strip()):
-                if any(tok in val for tok in _MARKER_TOKENS):
-                    return val
-                return _clean_text(val)
+            candidate = rw.get(key, "") if isinstance(rw, dict) else ""
+            if candidate and len(candidate.strip()) >= 10 and not _is_placeholder(candidate.strip()):
+                val = candidate
+                break
+        if section_name == "experience" and val:
+            rewrite_bullets = val.count("•")
+            fallback_text = _extract_section_content(structured, section_name)
+            fallback_bullets = fallback_text.count("•")
+            if fallback_bullets > 0 and rewrite_bullets < fallback_bullets * 0.4:
+                val = ""
+        if val:
+            if any(tok in val for tok in _MARKER_TOKENS):
+                return val
+            return _clean_text(val)
         fallback = _extract_section_content(structured, section_name).strip()
+        if any(tok in fallback for tok in _MARKER_TOKENS):
+            return fallback
         return _clean_text(fallback)
 
     for sec_name in SECTION_ORDER:
@@ -459,12 +489,11 @@ def build_final_docx(
     doc.save(buf)
     result = buf.getvalue()
     assert len(result) > 5000, f"Docx too small: {len(result)} bytes"
-    exp_rw = rewrites.get("experience", {})
-    if isinstance(exp_rw, dict):
-        exp_text = exp_rw.get(style, "") or exp_rw.get("balanced", "")
-    else:
-        exp_text = ""
-    if COMPANY_HEADER_START not in (exp_text or ""):
+    exp_content = _extract_section_content(structured, "experience")
+    exp_rendered = (
+        exp_content if isinstance(exp_content, str) else str(exp_content or "")
+    )
+    if COMPANY_HEADER_START not in exp_rendered:
         logging.warning(
             "build_final_docx: experience section for style '%s' has no ##COMPANY## "
             "markers — heuristic renderer will be used. Verify output visually.",
