@@ -22,6 +22,7 @@ from backend.agents.recruiter_sim import RecruiterSimulatorAgent
 from backend.agents.resume_understanding import ResumeUnderstandingAgent
 from backend.agents.sectioner_agent import SectionerAgent
 from backend.agents.rewriter import RewriterAgent
+from backend.role_fit import compute_role_fit
 from engine.ats_scorer import score_resume
 from engine.percentile import get_percentile
 from validators import ResumeUnderstandingValidator
@@ -914,6 +915,20 @@ class Orchestrator:
                 logging.warning("Patch classification failed: %s", exc)
                 classified_patches = []
 
+        role_fit = None
+        try:
+            if has_jd and jd_intel and resume_und:
+                role_fit = compute_role_fit(resume_und, jd_intel, gap_result or {})
+                logging.info(
+                    "Role fit — fitness: %s, score: %s, exp_gap: %s, seniority_gap: %s",
+                    role_fit["fitness"],
+                    role_fit["score"],
+                    role_fit["experience_gap"],
+                    role_fit["seniority_gap"],
+                )
+        except Exception as exc:
+            logging.warning("Role fit computation failed: %s", exc)
+
         final_result = {
             "ats": ats_result,
             "resume": resume_und,
@@ -925,6 +940,7 @@ class Orchestrator:
             "jd_intelligence": jd_intel,
             "patches": [p.model_dump() if hasattr(p, "model_dump") else p for p in classified_patches],
             "validation": validation_summary,
+            "role_fit": role_fit,
         }
         # Save full result to session store
         try:

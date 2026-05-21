@@ -5,10 +5,25 @@ Input: raw job description text pasted by user
 Output: structured JD intelligence for downstream agents
 """
 
+from enum import Enum
+
 from pydantic import BaseModel, Field
 from typing import List, Dict, Optional
 
 from .common import Seniority, CompanyType
+
+
+class SeniorityLevel(str, Enum):
+    """JD seniority band — broader than resume Seniority enum."""
+    junior = "junior"
+    mid = "mid"
+    senior = "senior"
+    staff = "staff"
+    manager = "manager"
+    director = "director"
+    vp = "vp"
+    c_suite = "c-suite"
+    unknown = "unknown"
 
 
 class HiddenSignal(BaseModel):
@@ -39,3 +54,5 @@ class JDIntelligenceOutput(BaseModel):
     )
     seniority_expected: Seniority = Field(..., description="Inferred from responsibilities, not just title")
     company_type: CompanyType = Field(..., description="Canonical company category")
+    min_years_required: int = Field(default=0, ge=0)
+    jd_seniority_level: SeniorityLevel = Field(default=SeniorityLevel.unknown)

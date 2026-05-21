@@ -38,6 +38,8 @@ export interface SectionGap {
   rewrite_instruction: string;
   present_in_resume: boolean;
   sub_changes: SubLocationChange[];
+  gap_type?: string;
+  requires_user_input?: boolean;
 }
 
 export interface ActionableChange {
@@ -112,6 +114,8 @@ export interface PriorityFix {
   rewrite_instruction: string;
   missing_keywords: string[];
   needs_change: boolean;
+  gap_type?: string;
+  requires_user_input?: boolean;
 }
 
 export interface GapResult {
@@ -203,6 +207,29 @@ export interface ResumePatch {
   score_delta?: number;
 }
 
+export type FitnessBand = "qualified" | "stretch" | "underqualified";
+
+export interface RoleFit {
+  fitness: FitnessBand;
+  score: number;
+  experience_gap: number;
+  seniority_gap: number;
+  unanswerable_evidence_gaps: number;
+  candidate_years: number;
+  jd_min_years: number;
+  recommended_roles: string[];
+  next_step_roles: string[];
+}
+
+export interface JDIntelligence {
+  role_title: string;
+  must_have_skills?: string[];
+  nice_to_have_skills?: string[];
+  seniority_expected?: string;
+  min_years_required?: number;
+  jd_seniority_level?: string;
+}
+
 export interface AnalysisResult {
   job_id: string;
   ats: ATSResult;
@@ -214,6 +241,8 @@ export interface AnalysisResult {
   positioning: PositioningResult | null;
   patches?: ResumePatch[];
   validation: ValidationSummary | null;
+  jd_intelligence?: JDIntelligence | null;
+  role_fit?: RoleFit | null;
 }
 
 export interface SSEProgressEvent {

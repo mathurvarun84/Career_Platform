@@ -6,6 +6,7 @@ import { pageContainerStyle } from "../utils/pageLayout";
 import { hasJobDescription } from "../utils/hasJobDescription";
 import { getFixModeBaseline, type FixMode } from "../utils/modeScores";
 import { useResumeStore } from "../store/useResumeStore";
+import { isEvidenceGap } from "../utils/roleFitEvidence";
 import type { RewriteStyle } from "../types";
 import type {
   ATSDimensionDetail,
@@ -265,7 +266,11 @@ export default function ActionableFixes() {
   const applySectionFix = useResumeStore((s) => s.applySectionFix);
   const mergePartialResult = useResumeStore((s) => s.mergePartialResult);
   const baselineAts = useResumeStore((s) => s.baselineAts);
+  const applyAnywayAccepted = useResumeStore((s) => s.applyAnywayAccepted);
   const liveAts = useResumeStore((s) => s.analysisResult?.ats.score ?? 0);
+
+  const suppressedEvidenceGaps =
+    applyAnywayAccepted && analysisResult?.role_fit?.fitness === "underqualified";
 
   const [selectedMode, setSelectedMode] = useState<FixMode>("safe");
   const [activeFilter, setActiveFilter] = useState<FilterValue>("all");
@@ -281,8 +286,13 @@ export default function ActionableFixes() {
 
   const normalizedGapFixes = normalizePriorityFixes(analysisResult.gap);
 
+  const hiddenEvidenceCount = normalizedGapFixes.filter(
+    (f) => f.needs_change && isEvidenceGap(f)
+  ).length;
+
   const gapFixes: FixItem[] = normalizedGapFixes
     .filter((f) => f.needs_change)
+    .filter((f) => !(suppressedEvidenceGaps && isEvidenceGap(f)))
     .map((f, i) => {
       const sectionKey = inferSectionKey(f.section);
       return ({
@@ -514,6 +524,51 @@ export default function ActionableFixes() {
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
       <div style={pageContainerStyle(isMobile, isMobile ? 88 : 72)}>
+        {suppressedEvidenceGaps && hiddenEvidenceCount > 0 ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-start",
+              gap: "10px",
+              background: "#fefce8",
+              borderRadius: "12px",
+              padding: "13px 15px",
+              marginBottom: "20px",
+            }}
+          >
+            <div
+              style={{
+                width: "18px",
+                height: "18px",
+                borderRadius: "50%",
+                background: "#fde68a",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: "10px",
+                fontWeight: 800,
+                color: "#d97706",
+                flexShrink: 0,
+              }}
+            >
+              !
+            </div>
+            <p
+              style={{
+                fontSize: "12.5px",
+                fontWeight: 400,
+                color: "#4b5563",
+                margin: 0,
+                lineHeight: 1.55,
+              }}
+            >
+              {hiddenEvidenceCount} coaching question{hiddenEvidenceCount !== 1 ? "s" : ""} hidden —
+              they require experience this role needs but your profile doesn&apos;t yet show.
+              Surface and structural fixes are shown below.
+            </p>
+          </div>
+        ) : null}
+
         <div style={{ marginBottom: "32px", textAlign: "center" }}>
           <div
             style={{

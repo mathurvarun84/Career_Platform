@@ -1,12 +1,17 @@
 import { useEffect, useState } from "react";
 
 import { downloadResumeReport } from "./api/client";
+import CareerPathPanel from "./components/CareerPathPanel";
+import QualifiedRolesPanel from "./components/QualifiedRolesPanel";
+import RoleFitBanner from "./components/RoleFitBanner";
 import type { ATSDimensionDetail, PriorityFix } from "./types";
 import DataSourceNotice from "./components/DataSourceNotice";
 import { useWindowSize } from "./hooks/useWindowSize";
 import { pageContainerStyle } from "./utils/pageLayout";
 import { useResumeStore } from "./store/useResumeStore";
 import { hasJobDescription } from "./utils/hasJobDescription";
+
+type RoleFitPanelView = "none" | "qualified_roles" | "career_path";
 
 interface EvaluationDashboardProps {
   onTabChange?: (tab: string) => void;
@@ -70,10 +75,14 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const jobId = useResumeStore((s) => s.jobId);
   const selectedStyle = useResumeStore((s) => s.selectedStyle);
   const isLoading = useResumeStore((s) => s.isLoading);
+  const setApplyAnywayAccepted = useResumeStore((s) => s.setApplyAnywayAccepted);
+  const setPendingAnalyseRole = useResumeStore((s) => s.setPendingAnalyseRole);
+  const resetAnalysis = useResumeStore((s) => s.resetAnalysis);
   const { isMobile, isTablet } = useWindowSize();
   const [barsAnimated, setBarsAnimated] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadPressed, setIsDownloadPressed] = useState(false);
+  const [roleFitPanel, setRoleFitPanel] = useState<RoleFitPanelView>("none");
   useEffect(() => {
     const t = window.setTimeout(() => setBarsAnimated(true), 100);
     return () => window.clearTimeout(t);
@@ -86,6 +95,16 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const hasJD = hasJobDescription(analysisResult.gap);
   const hasSim = Boolean(analysisResult.sim);
   const hasPositioning = Boolean(analysisResult.positioning);
+  const roleFit = analysisResult.role_fit ?? null;
+  const showRoleFitCard = roleFit?.fitness === "qualified";
+  const targetRoleTitle =
+    analysisResult.jd_intelligence?.role_title ?? "Target role";
+  const roleFitCount = useCountUp(roleFit?.score ?? 0);
+
+  const handleAnalyseRole = (role: string): void => {
+    setPendingAnalyseRole(role);
+    resetAnalysis();
+  };
 
   const bd = analysisResult.ats.breakdown;
   const atsDetails = getDimensionDetails(analysisResult.ats.details, bd);
@@ -226,6 +245,30 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
           </div>
         </div>
 
+        {roleFit ? (
+          <RoleFitBanner
+            roleFit={roleFit}
+            onShowQualifiedRoles={() => setRoleFitPanel("qualified_roles")}
+            onShowCareerPath={() => setRoleFitPanel("career_path")}
+            onApplyAnyway={() => {
+              setApplyAnywayAccepted(true);
+              setRoleFitPanel("none");
+            }}
+          />
+        ) : null}
+
+        {roleFitPanel === "qualified_roles" && roleFit ? (
+          <QualifiedRolesPanel
+            recommendedRoles={roleFit.recommended_roles}
+            nextStepRoles={roleFit.next_step_roles}
+            onAnalyseRole={handleAnalyseRole}
+          />
+        ) : null}
+
+        {roleFitPanel === "career_path" && roleFit ? (
+          <CareerPathPanel roleFit={roleFit} targetRoleTitle={targetRoleTitle} />
+        ) : null}
+
         {/* ── SECTION 2: Score Cards Grid ── */}
         <div
           style={{
@@ -273,9 +316,11 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             ? "1fr"
             : isTablet
               ? "repeat(2, 1fr)"
-              : hasJD && hasSim
-                ? "repeat(4, 1fr)"
-                : "repeat(3, 1fr)",
+              : hasJD && hasSim && showRoleFitCard
+                ? "repeat(5, 1fr)"
+                : hasJD && (hasSim || showRoleFitCard)
+                  ? "repeat(4, 1fr)"
+                  : "repeat(3, 1fr)",
           gap: "16px",
           marginBottom: "28px",
         }}>
@@ -325,6 +370,18 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             deltaBadge={pctGain !== null ? `↗ +${pctGain}` : undefined}
             infoText="Market Percentile compares your composite resume strength against similar candidates at your seniority level."
           />
+
+          {showRoleFitCard && roleFit ? (
+            <ScoreCard
+              label="Role Fit"
+              labelColor="#16a34a"
+              score={roleFitCount}
+              denomColor="#86efac"
+              hint="Strong alignment with this role"
+              deltaBadge="✓ Qualified"
+              infoText="Role Fit compares your experience and seniority to the job description — no keyword stuffing."
+            />
+          ) : null}
 
           {/* Card 4 — Shortlist Probability */}
           {hasJD && hasSim && (

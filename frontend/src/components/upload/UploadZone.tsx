@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 
 import { fetchUsageLimit } from "../../api/analyze";
@@ -108,6 +108,9 @@ interface UploadZoneProps {
 }
 
 export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
+  const pendingAnalyseRole = useResumeStore((s) => s.pendingAnalyseRole);
+  const setPendingAnalyseRole = useResumeStore((s) => s.setPendingAnalyseRole);
+
   const [file, setFile] = useState<File | null>(null);
   const [jdText, setJdText] = useState("");
   const [isDragging, setIsDragging] = useState(false);
@@ -132,6 +135,19 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { isMobile, isTablet } = useWindowSize();
+
+  useEffect(() => {
+    if (!pendingAnalyseRole) {
+      return;
+    }
+    setRole("other");
+    setCustomRole(pendingAnalyseRole);
+    setJdTab("fetch");
+    setJdText(
+      `Job Description — ${pendingAnalyseRole}\n\nPaste or fetch the full JD for this role to run a targeted analysis.`
+    );
+    setPendingAnalyseRole(null);
+  }, [pendingAnalyseRole, setPendingAnalyseRole]);
   const jdFetchUrl = `${import.meta.env.VITE_API_URL ?? ""}/api/fetch-jd`;
   const loadingSteps = [
     "Analyzing your resume...",

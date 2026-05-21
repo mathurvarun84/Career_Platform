@@ -13,6 +13,7 @@ const tabs: Array<{ id: TabId; icon: string; label: string }> = [
 
 const disabledBeforeAnalysis = new Set<TabId>(["fixes", "gap"]);
 const alwaysEnabledTabs = new Set<TabId>(["progress"]);
+const roleFitLockedTabs = new Set<TabId>(["fixes", "gap", "progress"]);
 
 const countFixesNeedingChange = (
   priorityFixes: Array<string | PriorityFix> | undefined
@@ -34,10 +35,13 @@ export default function TabNav() {
   const activeTab = useResumeStore((state) => state.activeTab);
   const setActiveTab = useResumeStore((state) => state.setActiveTab);
   const analysisResult = useResumeStore((state) => state.analysisResult);
+  const applyAnywayAccepted = useResumeStore((state) => state.applyAnywayAccepted);
   const fallbackInfo = useResumeStore((state) => state.fallbackInfo);
   const { isMobile } = useWindowSize();
 
   const hasJd = hasJobDescription(analysisResult?.gap);
+  const roleFitLocked =
+    analysisResult?.role_fit?.fitness === "underqualified" && !applyAnywayAccepted;
   const fixCount = countFixesNeedingChange(analysisResult?.gap?.priority_fixes);
 
   const unavailableByTab: Partial<Record<TabId, boolean>> = {
@@ -49,6 +53,10 @@ export default function TabNav() {
 
   const handleTabClick = (tabId: TabId): void => {
     if (tabId === "gap" && analysisResult && !hasJd) {
+      return;
+    }
+
+    if (roleFitLocked && roleFitLockedTabs.has(tabId)) {
       return;
     }
 
@@ -84,8 +92,10 @@ export default function TabNav() {
       {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         const isGapLocked = tab.id === "gap" && Boolean(analysisResult) && !hasJd;
+        const isRoleFitLocked = roleFitLocked && roleFitLockedTabs.has(tab.id);
         const isDisabled =
           isGapLocked ||
+          isRoleFitLocked ||
           (!analysisResult &&
             disabledBeforeAnalysis.has(tab.id) &&
             !alwaysEnabledTabs.has(tab.id));
@@ -152,7 +162,7 @@ export default function TabNav() {
                 {fixCount}
               </span>
             ) : null}
-            {isGapLocked ? (
+            {isGapLocked || isRoleFitLocked ? (
               <span
                 style={{
                   marginLeft: "2px",

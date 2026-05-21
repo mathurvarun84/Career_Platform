@@ -21,8 +21,61 @@ import json
 from typing import Dict, List
 
 from .base_agent import BaseAgent
-from backend.schemas.agent2_schema import JDIntelligenceInput, JDIntelligenceOutput, HiddenSignal
-from backend.schemas.common import Seniority, CompanyType
+from backend.schemas.agent2_schema import JDIntelligenceInput, JDIntelligenceOutput
+from backend.schemas.common import CompanyType
+
+# Few-shot block teaches the two seniority fields — primary fix for enum validation errors.
+_JD_SENIORITY_FEW_SHOT = """
+SENIORITY FIELD RULE (two separate fields — never swap them):
+- seniority_expected: IC band ONLY → "junior" | "mid" | "senior" | "staff"
+- jd_seniority_level: actual role level → includes "manager" | "director" | "vp" | "c-suite"
+
+FEW-SHOT EXAMPLES (copy this split exactly):
+
+Example A — JD: "Director of Engineering, 12+ years, define org-wide architecture, hire and mentor EMs"
+CORRECT:
+{"seniority_expected": "staff", "jd_seniority_level": "director", "min_years_required": 12}
+WRONG (causes validation failure):
+{"seniority_expected": "director", "jd_seniority_level": "director"}
+
+Example B — JD: "Engineering Manager, 8+ years, people management, 1:1s, delivery ownership"
+CORRECT:
+{"seniority_expected": "senior", "jd_seniority_level": "manager", "min_years_required": 8}
+WRONG:
+{"seniority_expected": "manager", "jd_seniority_level": "unknown"}
+
+Example C — JD: "Senior Software Engineer, 5+ years, hands-on coding, no people management"
+CORRECT:
+{"seniority_expected": "senior", "jd_seniority_level": "senior", "min_years_required": 5}
+
+Example D — JD: "VP Engineering, 15+ years, board/exec stakeholder management"
+CORRECT:
+{"seniority_expected": "staff", "jd_seniority_level": "vp", "min_years_required": 15}
+WRONG:
+{"seniority_expected": "vp", "jd_seniority_level": "staff"}
+"""
+
+_IC_SENIORITY = frozenset({"junior", "mid", "senior", "staff"})
+_LEADERSHIP_LEVELS = frozenset({"manager", "director", "vp", "c-suite"})
+
+
+def _guard_seniority_fields(parsed: dict) -> dict:
+    """Tiny fallback if the model still puts a leadership title in seniority_expected."""
+    out = dict(parsed)
+    exp = str(out.get("seniority_expected") or "").lower().strip().replace("_", "-")
+    jd = str(out.get("jd_seniority_level") or "").lower().strip().replace("_", "-")
+
+    if exp in _LEADERSHIP_LEVELS:
+        if jd in ("", "unknown") or jd in _IC_SENIORITY:
+            out["jd_seniority_level"] = exp
+        out["seniority_expected"] = "staff" if exp in ("director", "vp", "c-suite") else "senior"
+
+    try:
+        out["min_years_required"] = int(out.get("min_years_required") or 0)
+    except (TypeError, ValueError):
+        out["min_years_required"] = 0
+
+    return out
 
 
 class JDIntelligenceAgent(BaseAgent):
@@ -84,10 +137,20 @@ class JDIntelligenceAgent(BaseAgent):
             "  e.g. {\"signal\": \"owns roadmap\", \"implication\": \"no PM, high ownership expected\"}\n"
             "- semantic_skill_map (dict): maps each JD skill/phrase → list of resume terms a candidate might use instead — "
             "  e.g. {\"event streaming\": [\"Kafka\", \"Pulsar\", \"Kinesis\", \"message queue\"]}\n"
-            "- seniority_expected (string): one of 'junior','mid','senior','staff' — "
-            "  infer from responsibilities and expectations, not just the title\n"
-            "- company_type (string): one of 'faang','product-unicorn','funded-startup','enterprise','service-based','unknown'\n\n"
-            "No extra keys. No markdown fences. No explanations."
+            "- seniority_expected (string): MUST be exactly one of 'junior','mid','senior','staff' ONLY. "
+            "  This is the IC experience band for resume matching — never put manager/director/vp here. "
+            "  Map leadership titles to the nearest IC band: Director/VP/Principal → 'staff', EM/Tech Lead → 'senior'.\n"
+            "- company_type (string): one of 'faang','product-unicorn','funded-startup','enterprise','service-based','unknown'\n"
+            "- min_years_required (int): minimum years of experience explicitly or implicitly required. "
+            "  Infer from phrases like \"10+ years\", \"minimum 8 years\", \"senior IC with 5+ years\". "
+            "  If completely unstated, estimate from jd_seniority_level: junior=0, mid=2, senior=5, staff=7, "
+            "  manager=6, director=10, vp=14, c-suite=18. Return 0 if truly unknown.\n"
+            "- jd_seniority_level (string): the ACTUAL role level — one of \"junior\",\"mid\",\"senior\",\"staff\","
+            "\"manager\",\"director\",\"vp\",\"c-suite\",\"unknown\". "
+            "  Put Director/VP/EM titles HERE, not in seniority_expected. "
+            "  Infer from title AND responsibilities — use responsibilities over title.\n"
+            + _JD_SENIORITY_FEW_SHOT
+            + "\nNo extra keys. No markdown fences. No explanations."
         )
 
         user_message = jd_text
@@ -95,8 +158,7 @@ class JDIntelligenceAgent(BaseAgent):
         # Call LLM and parse JSON response
         raw_response = self._call_llm(system_prompt, user_message)
         parsed_output = self._parse_json(raw_response)
-        # Validate and structure using Pydantic model
-        # Pydantic will coerce seniority_expected and company_type to enums
+        parsed_output = _guard_seniority_fields(parsed_output)
         output = JDIntelligenceOutput(**parsed_output)
  
         return output.model_dump()

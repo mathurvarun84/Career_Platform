@@ -30,6 +30,10 @@ interface ResumeStoreState {
   baselineAts: number | null;
   /** Section full_text overrides from applied fixes (for live rescoring). */
   sectionOverrides: Record<string, string>;
+  /** User opted in to fixes despite underqualified role fit gate. */
+  applyAnywayAccepted: boolean;
+  /** Pre-fill role on upload when analysing a recommended role. */
+  pendingAnalyseRole: string | null;
   setJobId: (jobId: string | null) => void;
   setAnalysisResult: (analysisResult: AnalysisResult | null) => void;
   setIsFullAnalysisReady: (ready: boolean) => void;
@@ -50,6 +54,8 @@ interface ResumeStoreState {
   setDocxId: (docxId: string | null) => void;
   setFallbackInfo: (fallbackInfo: Record<string, string[]>) => void;
   bumpHistoryRefresh: () => void;
+  setApplyAnywayAccepted: (accepted: boolean) => void;
+  setPendingAnalyseRole: (role: string | null) => void;
   resetAnalysis: () => void;
 }
 
@@ -82,6 +88,8 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
   userId: getOrCreateUserId(),
   baselineAts: null,
   sectionOverrides: {},
+  applyAnywayAccepted: false,
+  pendingAnalyseRole: null,
 
   setJobId: (jobId) => set({ jobId }),
   setAnalysisResult: (analysisResult) =>
@@ -89,6 +97,7 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
       analysisResult,
       baselineAts: analysisResult?.ats.score ?? null,
       sectionOverrides: {},
+      applyAnywayAccepted: false,
     }),
   setIsFullAnalysisReady: (ready) => set({ isFullAnalysisReady: ready }),
   mergePartialResult: (partial) =>
@@ -121,6 +130,8 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
             positioning: normalizedPartial.positioning ?? null,
             patches: normalizedPartial.patches ?? undefined,
             validation: normalizedPartial.validation ?? null,
+            jd_intelligence: normalizedPartial.jd_intelligence ?? null,
+            role_fit: normalizedPartial.role_fit ?? null,
           },
         };
       }
@@ -189,6 +200,8 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
   setFallbackInfo: (fallbackInfo) => set({ fallbackInfo }),
   bumpHistoryRefresh: () =>
     set((state) => ({ historyRefreshKey: state.historyRefreshKey + 1 })),
+  setApplyAnywayAccepted: (applyAnywayAccepted) => set({ applyAnywayAccepted }),
+  setPendingAnalyseRole: (pendingAnalyseRole) => set({ pendingAnalyseRole }),
   resetAnalysis: () =>
     set({
       jobId: null,
@@ -204,5 +217,6 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
       historyRefreshKey: 0,
       baselineAts: null,
       sectionOverrides: {},
+      applyAnywayAccepted: false,
     }),
 }));
