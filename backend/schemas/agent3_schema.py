@@ -2,9 +2,11 @@
 Pydantic schemas for Agent 3 - Gap Analyzer.
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from pydantic import BaseModel, Field, model_validator
+
+from backend.schemas.common import GapType
 
 
 class SubLocationChange(BaseModel):
@@ -45,6 +47,33 @@ class SectionGap(BaseModel):
         default_factory=list,
         description="Per-entry decomposition for multi-entry sections (experience, education, etc.)"
     )
+    gap_type: GapType = Field(
+        default=GapType.STRUCTURAL,
+        description="Coach UX type: surface, structural, or evidence",
+    )
+    requires_user_input: bool = Field(default=False)
+    coaching_question: str | None = Field(default=None)
+    coaching_hint: List[str] = Field(default_factory=list)
+    auto_apply: bool = Field(default=False)
+    sub_label: str | None = Field(
+        default=None,
+        description="Experience entry label when gap targets one sub-entry",
+    )
+
+
+class PriorityFix(BaseModel):
+    """Structured fix card for the Fixes tab (coach UX)."""
+    section: str
+    gap_reason: str
+    rewrite_instruction: str
+    missing_keywords: List[str] = Field(default_factory=list)
+    needs_change: bool = True
+    gap_type: GapType = GapType.STRUCTURAL
+    requires_user_input: bool = False
+    coaching_question: str | None = None
+    coaching_hint: List[str] = Field(default_factory=list)
+    auto_apply: bool = False
+    sub_label: str | None = None
 
 
 class GapAnalyzerInput(BaseModel):
@@ -122,7 +151,10 @@ class GapAnalyzerOutput(BaseModel):
     jd_match_score_before: int = Field(..., ge=0, le=100)
     section_gaps: List[SectionGap] = Field(...)
     missing_keywords: List[str] = Field(default_factory=list)
-    priority_fixes: List[str] = Field(default_factory=list)
+    priority_fixes: List[Union[str, PriorityFix]] = Field(
+        default_factory=list,
+        description="Legacy string hints from LLM or structured PriorityFix after classification",
+    )
     sections_changed: List[str] = Field(default_factory=list)
     sections_unchanged: List[str] = Field(default_factory=list)
 

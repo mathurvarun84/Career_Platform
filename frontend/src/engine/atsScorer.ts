@@ -61,6 +61,46 @@ function countRunonWords(resumeText: string): number {
   return (resumeText.match(RUNON_WORD_RE) ?? []).length;
 }
 
+const SKILLS_CATEGORY_HEADERS = [
+  "Languages:",
+  "Frontend:",
+  "Backend:",
+  "Databases:",
+  "Architecture & Concepts:",
+  "Architecture:",
+  "Cloud:",
+  "DevOps:",
+  "Tools:",
+  "Frameworks:",
+  "Observability:",
+  "Methodologies:",
+  "Other:",
+];
+
+/** Restore line breaks in flattened skills blocks (mirrors Python normalize_skills_layout). */
+export function normalizeSkillsLayout(text: string): string {
+  if (!text.trim()) {
+    return text;
+  }
+  let result = text.replace(
+    /(?<=\.)\s+([A-Z][A-Za-z][A-Za-z0-9 /&()]*:)/g,
+    "\n$1"
+  );
+  const sorted = [...SKILLS_CATEGORY_HEADERS].sort((a, b) => b.length - a.length);
+  for (const header of sorted) {
+    const escaped = header.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    result = result.replace(
+      new RegExp(`(?<=[a-z0-9%)])\\s+(${escaped})`, "gi"),
+      `\n$1`
+    );
+  }
+  return result;
+}
+
+export function normalizeResumeForAtsScoring(text: string): string {
+  return normalizeSkillsLayout(text);
+}
+
 function scoreKeywordMatch(resumeText: string, jdText?: string | null): number {
   const textLower = resumeText.toLowerCase();
   const words = new Set((textLower.match(WORD_RE) ?? []));
@@ -222,17 +262,18 @@ export function scoreResume(
   resumeText: string,
   jdText?: string | null
 ): Pick<ATSResult, "score" | "breakdown" | "ats_issues"> {
+  const normalizedText = normalizeResumeForAtsScoring(resumeText);
   const breakdown: ATSBreakdown = {
-    keyword_match: scoreKeywordMatch(resumeText, jdText),
-    formatting: scoreFormatting(resumeText),
-    readability: scoreReadability(resumeText),
-    impact_metrics: scoreImpactMetrics(resumeText),
+    keyword_match: scoreKeywordMatch(normalizedText, jdText),
+    formatting: scoreFormatting(normalizedText),
+    readability: scoreReadability(normalizedText),
+    impact_metrics: scoreImpactMetrics(normalizedText),
   };
   const score =
     breakdown.keyword_match +
     breakdown.formatting +
     breakdown.readability +
     breakdown.impact_metrics;
-  const ats_issues = collectIssues(resumeText, breakdown);
+  const ats_issues = collectIssues(normalizedText, breakdown);
   return { score, breakdown, ats_issues };
 }

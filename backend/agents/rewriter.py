@@ -70,6 +70,10 @@ def _build_monolithic_section_patch(
     balanced = (rewrite_dict.get("balanced") or "").strip()
     if not balanced:
         return None
+    if section == "skills":
+        from engine.ats_scorer import normalize_skills_layout
+
+        balanced = normalize_skills_layout(balanced)
     target = _resolve_patch_target_in_resume(section, original_content, resume_text)
     if not target:
         return None
@@ -168,6 +172,62 @@ _DATE_RANGE_RE = _re.compile(
 _PIPE_OR_DASH_RE = _re.compile(r'\s*[\|]\s*|\s+[–—]\s+')
 # Whitespace/comma gaps on company lines (used after pipe/dash split)
 _CO_LOC_SEP_RE = _re.compile(r'\s{2,}|\s*[,]\s+(?=[A-Z])')
+# "Company Name City, Country" — split from the right on City, Country
+_COMPANY_CITY_COUNTRY_RE = _re.compile(r"^(.*)\s+([^,]+,\s*[^,]+)$")
+
+
+def _split_company_line_location(company_line: str) -> tuple[str, str]:
+    """
+    Split a company-only header line into company name and location.
+
+    Handles: "Vimeo Bengaluru, India", "BT India Bengaluru, India",
+    "Company | Location", and double-space separators.
+    """
+    line = (company_line or "").strip()
+    if not line:
+        return "", ""
+    parts = _PIPE_OR_DASH_RE.split(line, maxsplit=1)
+    if len(parts) > 1:
+        return parts[0].strip(), parts[1].strip()
+    city_country = _COMPANY_CITY_COUNTRY_RE.match(line)
+    if city_country:
+        return city_country.group(1).strip(), city_country.group(2).strip()
+    gap_match = _re.search(r"\s{2,}", line)
+    if gap_match:
+        return line[: gap_match.start()].strip(), line[gap_match.end() :].strip()
+    return line, ""
+
+
+def _reconcile_company_with_sub_label(
+    company: str,
+    location: str,
+    sub_label: str,
+) -> tuple[str, str]:
+    """Prefer sub_label company prefix when parsed company absorbed city text."""
+    label_company = ""
+    if " — " in sub_label:
+        label_company = sub_label.split(" — ", 1)[0].strip()
+    elif " - " in sub_label:
+        label_company = sub_label.split(" - ", 1)[0].strip()
+
+    if not label_company:
+        return company, location
+
+    lc = label_company.lower()
+    co = company.lower()
+    if not company:
+        return label_company, location
+    if co == lc:
+        return company, location
+    if co.startswith(lc) and co != lc:
+        rest = company[len(label_company) :].strip()
+        company = label_company
+        if rest:
+            if location and rest.lower() not in location.lower():
+                location = f"{rest}, {location}"
+            elif not location:
+                location = rest
+    return company, location
 
 
 def _parse_experience_header_from_verbatim(text: str) -> dict[str, str]:
@@ -198,7 +258,7 @@ def _parse_experience_header_from_verbatim(text: str) -> dict[str, str]:
         and not _DATE_RANGE_RE.search(lines[0])
         and "|" not in lines[0]
     ):
-        company = lines[0]
+        company, location = _split_company_line_location(lines[0])
         role_line = lines[1]
         date_match = _DATE_RANGE_RE.search(role_line)
         dates = date_match.group(0).strip()
@@ -401,6 +461,8 @@ def _ensure_experience_markers(text: str, sub_label: str) -> str:
         else:
             company = sub_label.strip()
 
+    company, location = _reconcile_company_with_sub_label(company, location, sub_label)
+
     # Build the marker header
     co_loc = f"{company} | {location}" if location else company
     ro_dt  = f"{role} | {dates}"       if dates    else role
@@ -425,6 +487,16 @@ def _ensure_experience_markers(text: str, sub_label: str) -> str:
         else:
             break
     content = '\n'.join(text_lines[content_start:]).strip()
+
+    # PDF parser produces single-line verbatim_text (no \n). Recover inline bullets.
+    if not content and len(text_lines) == 1:
+        raw = text_lines[0]
+        first_bullet = raw.find('•')
+        if first_bullet > 0:
+            bullet_parts = raw[first_bullet:].split('•')
+            content = '\n'.join(
+                f'• {b.strip()}' for b in bullet_parts if b.strip()
+            )
 
     return f"{header}\n{content}"
 

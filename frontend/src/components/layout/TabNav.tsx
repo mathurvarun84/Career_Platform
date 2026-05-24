@@ -35,13 +35,11 @@ export default function TabNav() {
   const activeTab = useResumeStore((state) => state.activeTab);
   const setActiveTab = useResumeStore((state) => state.setActiveTab);
   const analysisResult = useResumeStore((state) => state.analysisResult);
-  const applyAnywayAccepted = useResumeStore((state) => state.applyAnywayAccepted);
   const fallbackInfo = useResumeStore((state) => state.fallbackInfo);
   const { isMobile } = useWindowSize();
 
   const hasJd = hasJobDescription(analysisResult?.gap);
-  const roleFitLocked =
-    analysisResult?.role_fit?.fitness === "underqualified" && !applyAnywayAccepted;
+  const roleFitLocked = analysisResult?.role_fit?.fitness === "underqualified";
   const fixCount = countFixesNeedingChange(analysisResult?.gap?.priority_fixes);
 
   const unavailableByTab: Partial<Record<TabId, boolean>> = {

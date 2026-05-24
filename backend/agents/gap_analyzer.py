@@ -24,7 +24,7 @@ from backend.schemas.agent3_schema import (
     SubLocationChange,
 )
 from backend.few_shot_prompts import build_role_gap_addendum
-from backend.schemas.common import SectionText
+from backend.schemas.common import GapType, SectionText
 
 # Canonical sections every analysis must cover
 CANONICAL_SECTIONS = [
@@ -161,6 +161,202 @@ STRICT RULES:
 - Return valid JSON only — no markdown, no fences, no preamble.
 """
 
+_EVIDENCE_SIGNALS = {
+    "mentor", "coaching", "coach", "1:1", "one-on-one", "performance management",
+    "promotion", "career development", "technical guidance", "knowledge transfer",
+    "conflict resolution", "stakeholder", "executive communication", "board",
+    "p&l ownership", "budget", "hiring decision", "interview", "org design",
+    "succession planning", "vision", "strategy", "roadmap ownership",
+    # EM / director role signals
+    "leading engineering", "lead engineering", "engineering leadership",
+    "people management", "engineering management", "direct report",
+    "architecture evaluation", "technical leadership", "technical direction",
+    "cross-functional", "operational risk", "performance review",
+}
+
+_SURFACE_SIGNALS = {
+    "missing keyword", "typo", "spelling", "abbreviation", "acronym",
+    "add keyword", "include term", "mention", "lacks the word", "not present",
+}
+
+
+def _build_coaching_question(gap: dict) -> tuple[str, list[str]]:
+    """
+    Generate a focused coaching question and hint examples for an evidence gap.
+    Maps gap_reason to a targeted question. Zero LLM calls.
+    """
+    reason = (gap.get("gap_reason") or "").lower()
+
+    if any(w in reason for w in ["mentor", "coach", "guidance", "develop"]):
+        return (
+            "Did you mentor, coach, or develop engineers on your team?",
+            [
+                "Conducted regular 1:1s with direct reports",
+                "Mentored junior engineers through architecture decisions",
+                "Helped team members get promoted",
+                "Ran knowledge-sharing sessions or tech talks",
+                "Built onboarding plans for new hires",
+            ],
+        )
+
+    if any(w in reason for w in [
+        "leading engineering", "lead engineering", "people management",
+        "engineering management", "engineering leadership", "direct report",
+    ]):
+        return (
+            "Can you describe your experience leading and managing engineering teams?",
+            [
+                "Managed a team of N engineers across multiple squads",
+                "Led hiring, onboarding, and performance reviews for direct reports",
+                "Set team OKRs and tracked delivery against them",
+                "Resolved conflicts and unblocked delivery bottlenecks",
+                "Built high-performing teams through mentoring and goal-setting",
+            ],
+        )
+
+    if any(w in reason for w in [
+        "architecture evaluation", "technical leadership", "technical direction",
+        "operational risk",
+    ]):
+        return (
+            "Can you share how you shaped technical architecture or direction at your org?",
+            [
+                "Led architecture reviews for major platform redesigns",
+                "Defined technical standards and engineering best practices",
+                "Evaluated and approved technology choices across teams",
+                "Drove technical risk assessment and mitigation strategies",
+                "Set the architectural direction for a new product or platform",
+            ],
+        )
+
+    if any(w in reason for w in ["stakeholder", "executive", "leadership", "communication"]):
+        return (
+            "Did you present to or work directly with senior leadership or external stakeholders?",
+            [
+                "Presented quarterly OKR reviews to VP/C-suite",
+                "Aligned with cross-functional stakeholders on roadmap",
+                "Represented engineering in business planning discussions",
+                "Managed escalations with external clients or vendors",
+            ],
+        )
+
+    if any(w in reason for w in ["p&l", "budget", "cost", "business ownership", "revenue"]):
+        return (
+            "Did you have ownership of budget, costs, or business outcomes?",
+            [
+                "Managed team headcount and hiring budget",
+                "Made build-vs-buy decisions with cost implications",
+                "Tracked and reported engineering cost metrics",
+                "Owned cost optimisation initiatives",
+            ],
+        )
+
+    if any(w in reason for w in ["strategy", "vision", "roadmap", "direction"]):
+        return (
+            "Did you define or significantly shape the technical strategy or roadmap?",
+            [
+                "Defined the 6-month or annual engineering roadmap",
+                "Proposed and drove adoption of a new technical direction",
+                "Led architecture reviews that shaped the product strategy",
+            ],
+        )
+
+    return (
+        f"Can you share a specific example related to: {gap.get('gap_reason', 'this area')}?",
+        [
+            "Describe a situation where this was relevant",
+            "Include the outcome and your specific contribution",
+        ],
+    )
+
+
+def classify_gap(gap: dict, resume_text: str = "") -> dict:
+    """
+    Classify a gap as surface / structural / evidence.
+    Pure heuristic — zero LLM calls.
+
+    Args:
+        gap: Section gap dict from Agent 3 enrichment.
+        resume_text: Full resume text (reserved for future heuristics).
+
+    Returns:
+        Gap dict with gap_type, coaching fields, and auto_apply set.
+    """
+    del resume_text  # reserved; classification is text-in-gap only today
+    reason = (gap.get("gap_reason") or "").lower()
+    instruction = (gap.get("rewrite_instruction") or "").lower()
+    keywords = [k.lower() for k in (gap.get("missing_keywords") or [])]
+    combined = reason + " " + instruction + " " + " ".join(keywords)
+
+    if any(signal in combined for signal in _EVIDENCE_SIGNALS):
+        question, hints = _build_coaching_question(gap)
+        return {
+            **gap,
+            "gap_type": GapType.EVIDENCE.value,
+            "requires_user_input": True,
+            "coaching_question": question,
+            "coaching_hint": hints,
+            "auto_apply": False,
+        }
+
+    missing_kw = gap.get("missing_keywords") or []
+    if (
+        any(signal in combined for signal in _SURFACE_SIGNALS)
+        or (len(missing_kw) <= 2 and not gap.get("needs_change", True))
+    ):
+        return {
+            **gap,
+            "gap_type": GapType.SURFACE.value,
+            "requires_user_input": False,
+            "coaching_question": None,
+            "coaching_hint": [],
+            "auto_apply": True,
+        }
+
+    return {
+        **gap,
+        "gap_type": GapType.STRUCTURAL.value,
+        "requires_user_input": False,
+        "coaching_question": None,
+        "coaching_hint": [],
+        "auto_apply": False,
+    }
+
+
+def classify_section_gaps(gaps: list[dict], resume_text: str = "") -> list[dict]:
+    """Run classify_gap over every section gap."""
+    return [classify_gap(g, resume_text) for g in gaps]
+
+
+def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
+    """
+    Build structured priority_fixes for the Fixes tab from classified section gaps.
+    """
+    fixes: list[dict] = []
+    for gap in section_gaps:
+        if not gap.get("needs_change"):
+            continue
+        sub_label = gap.get("sub_label")
+        if not sub_label:
+            for sub in gap.get("sub_changes") or []:
+                if sub.get("needs_change"):
+                    sub_label = sub.get("sub_label")
+                    break
+        fixes.append({
+            "section": gap.get("section", ""),
+            "gap_reason": gap.get("gap_reason", ""),
+            "rewrite_instruction": gap.get("rewrite_instruction", ""),
+            "missing_keywords": gap.get("missing_keywords") or [],
+            "needs_change": True,
+            "gap_type": gap.get("gap_type", GapType.STRUCTURAL.value),
+            "requires_user_input": gap.get("requires_user_input", False),
+            "coaching_question": gap.get("coaching_question"),
+            "coaching_hint": gap.get("coaching_hint") or [],
+            "auto_apply": gap.get("auto_apply", False),
+            "sub_label": sub_label,
+        })
+    return fixes[:12]
+
 
 def _fuzzy_match_label(sub_label: str, valid_labels: set[str]) -> str | None:
     """
@@ -281,6 +477,7 @@ class GapAnalyzerAgent(BaseAgent):
                         resume_sections,
                         resume_analysis=resume_analysis,
                         jd_analysis=jd_analysis or {},
+                        resume_text=inp.resume_text or "",
                     )
 
                 output = output_model(**parsed)
@@ -414,6 +611,7 @@ class GapAnalyzerAgent(BaseAgent):
         resume_sections: Dict[str, SectionText],
         resume_analysis: dict | None = None,
         jd_analysis: dict | None = None,
+        resume_text: str = "",
     ) -> dict:
         """
         Backfills original_content on SectionGap and original_text on SubLocationChange
@@ -513,13 +711,19 @@ class GapAnalyzerAgent(BaseAgent):
             resume_analysis or {},
             jd_analysis or {},
         )
-        parsed["section_gaps"] = enriched_gaps
+        if not resume_text:
+            resume_text = (resume_analysis or {}).get("raw_text", "") or ""
+        classified = classify_section_gaps(enriched_gaps, resume_text)
+        parsed["section_gaps"] = classified
         parsed["sections_changed"] = [
-            g["section"] for g in enriched_gaps if g.get("needs_change")
+            g["section"] for g in classified if g.get("needs_change")
         ]
         parsed["sections_unchanged"] = [
-            g["section"] for g in enriched_gaps if not g.get("needs_change")
+            g["section"] for g in classified if not g.get("needs_change")
         ]
+        structured_fixes = priority_fixes_from_gaps(classified)
+        if structured_fixes:
+            parsed["priority_fixes"] = structured_fixes
 
         return parsed
 

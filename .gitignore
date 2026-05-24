@@ -43,3 +43,9 @@ Thumbs.db
 
 # Generated project knowledge graph
 graphify-out/cache/
+
+# Eval harness (captures, reports, corpus, scripts)
+eval/
+
+# Local debug JSON dumps
+tempjsons/

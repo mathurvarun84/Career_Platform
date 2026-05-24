@@ -75,7 +75,16 @@ from backend.schemas.agent1_schema import ResumeUnderstandingInput, ResumeUnders
 from backend.schemas.agent2_schema import JDIntelligenceInput, JDIntelligenceOutput
 from backend.schemas.agent3_schema import GapAnalyzerInput, GapAnalyzerOutput
 from backend.schemas.agent4_schema import RewriterInput, RewriterOutput, ProjectRewrite, ExperienceRewrite, SkillsMap, StyleOutput
-from backend.schemas.common import Seniority, CompanyType, RewriteStyle, GapSeverity, GapType, ResumeSection
+from backend.schemas.common import (
+    Seniority,
+    CompanyType,
+    RewriteStyle,
+    GapSeverity,
+    GapCategory,
+    GapType,
+    GapClassification,
+    ResumeSection,
+)
 from backend.schemas.agent2_schema import HiddenSignal
 
 schema_checks = [
@@ -95,7 +104,9 @@ schema_checks = [
     "CompanyType",
     "RewriteStyle",
     "GapSeverity",
+    "GapCategory",
     "GapType",
+    "GapClassification",
     "ResumeSection",
 ]
 for name in schema_checks:

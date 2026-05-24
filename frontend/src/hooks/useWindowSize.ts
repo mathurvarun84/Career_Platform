@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 interface WindowSizeFlags {
+  width: number;
   isMobile: boolean;
   isTablet: boolean;
 }
@@ -9,6 +10,7 @@ export function useWindowSize(): WindowSizeFlags {
   const compute = (): WindowSizeFlags => {
     const width = window.innerWidth;
     return {
+      width,
       isMobile: width < 640,
       isTablet: width < 1024,
     };

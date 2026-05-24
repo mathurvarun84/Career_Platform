@@ -240,6 +240,17 @@ class RollbackRequest(BaseModel):
     patch_id: str = "all"
 
 
+class GenerateBulletRequest(BaseModel):
+    """Coaching bullet generation for evidence gaps (no LLM — template only)."""
+    session_id: str
+    gap_id: str
+    section: str
+    sub_label: str | None = None
+    raw_answer: str
+    coaching_question: str = ""
+    skill_category: str = ""
+
+
 def _json_event(payload: dict) -> str:
     """Serialize one SSE data event."""
     return f"data: {json.dumps(payload, default=str)}\n\n"
@@ -675,6 +686,180 @@ def reset_limit(user_id: str = None) -> dict:
         raise HTTPException(status_code=400, detail=str(exc))
 
 
+@app.get("/api/session/{session_id}/rescore")
+def rescore_session(session_id: str) -> dict:
+    """Recalculate ATS score from current document state."""
+    job = _require_job(session_id)
+    from engine.patch_engine import PatchEngine, rescore
+
+    original = job.get("result", {}).get("ats", {})
+    original_score = original.get("score", 0)
+    current_text = job.get("resume_text_patched") or job.get("resume_text", "")
+    resume_sections = job.get("result", {}).get("resume", {}).get("resume_sections", {})
+    jd_text = job.get("jd_text")
+    engine = PatchEngine(current_text, resume_sections=resume_sections)
+    score = rescore(engine, jd_text, baseline_score=original_score)
+
+    return {
+        "ats_score": score.get("score", original_score),
+        "raw_ats_score": score.get("raw_score", score.get("score", original_score)),
+        "delta_from_original": score.get("score", original_score) - original_score,
+        "breakdown": score.get("breakdown", original.get("breakdown", {})),
+        "ats_issues": score.get("ats_issues", original.get("ats_issues", [])),
+    }
+
+
+@app.post("/api/coaching/generate-bullet")
+def generate_coaching_bullet(req: GenerateBulletRequest) -> dict:
+    """
+    Turn a coaching answer into a resume bullet using Claude.
+    """
+    from backend.agents.coaching_agent import CoachingAgent
+    import uuid as uuid_module
+
+    if len((req.raw_answer or "").strip()) < 15:
+        raise HTTPException(status_code=400, detail="raw_answer too short (min 15 chars)")
+
+    agent = CoachingAgent()
+    result = agent.generate_bullet(
+        section=req.section,
+        gap_reason=req.coaching_question or "strengthen this skill",
+        raw_answer=req.raw_answer,
+        coaching_question=req.coaching_question or "strengthen this skill",
+        skill_category=req.skill_category or req.section,
+    )
+
+    # Generate unique memory ID for this coaching answer
+    career_memory_id = str(uuid_module.uuid4())
+
+    # Store in session for later retrieval (Day 6: move to persistent storage)
+    job = _require_job(req.session_id)
+    if "coaching_answers" not in job:
+        job["coaching_answers"] = {}
+    job["coaching_answers"][career_memory_id] = {
+        "gap_id": req.gap_id,
+        "section": req.section,
+        "sub_label": req.sub_label,
+        "raw_answer": req.raw_answer,
+        "generated_bullet": result["generated_bullet"],
+        "skill_category": req.skill_category or req.section,
+        "user_approved": False,
+        "timestamp": time.time(),
+    }
+    _persist_job(req.session_id)
+
+    return {
+        "generated_bullet": result["generated_bullet"],
+        "career_memory_id": career_memory_id,
+        "grounding_check": result.get("grounding_check", True),
+        "error": result.get("error"),
+    }
+
+
+@app.post("/api/coaching/add-bullet")
+def add_bullet_to_resume(req: dict) -> dict:
+    """Add coaching-generated bullet to resume document."""
+    session_id = req.get("session_id")
+    bullet_text = req.get("bullet_text")
+    section = req.get("section")
+    placement = req.get("placement", "start")
+    memory_id = req.get("career_memory_id")
+
+    if not all([session_id, bullet_text, section]):
+        raise HTTPException(status_code=400, detail="Missing required fields")
+
+    job = _require_job(session_id)
+    current_text = job.get("resume_text_patched") or job.get("resume_text", "")
+
+    from backend.engine.patch_engine import PatchEngine as CoachingPatchEngine
+
+    engine = CoachingPatchEngine(current_text)
+    inserted = engine.add_bullet(section, bullet_text, placement)
+    updated_text = engine.current_text if inserted else current_text
+    found_in_doc = bullet_text in updated_text or bullet_text.strip("• ").strip() in updated_text
+
+    if inserted:
+        job["resume_text_patched"] = updated_text
+        if memory_id and memory_id in job.get("coaching_answers", {}):
+            job["coaching_answers"][memory_id]["user_approved"] = True
+        _persist_job(session_id)
+
+    return {
+        "inserted": inserted,
+        "found_in_doc": inserted and found_in_doc,
+    }
+
+
+@app.get("/api/coaching/career-memory")
+def get_career_memory(session_id: str) -> dict:
+    """Retrieve user's coaching-generated career memory entries."""
+    job = _require_job(session_id)
+
+    answers = job.get("coaching_answers", {})
+    entries = []
+
+    for memory_id, data in answers.items():
+        entries.append({
+            "id": memory_id,
+            "session_id": session_id,
+            "gap_id": data.get("gap_id", ""),
+            "section": data.get("section", ""),
+            "sub_label": data.get("sub_label"),
+            "raw_answer": data.get("raw_answer", ""),
+            "generated_bullet": data.get("generated_bullet", ""),
+            "skill_category": data.get("skill_category", "technical"),
+            "company": data.get("company"),
+            "user_approved": data.get("user_approved", False),
+            "timestamp": time.strftime(
+                "%Y-%m-%dT%H:%M:%SZ", time.gmtime(data.get("timestamp", 0))
+            ),
+        })
+
+    return {
+        "entries": sorted(entries, key=lambda e: e["timestamp"], reverse=True),
+        "total": len(entries),
+    }
+
+
+@app.get("/api/session/{session_id}/download")
+def get_download_verification(session_id: str) -> dict:
+    """Verify applied patches and approved coaching bullets exist in current document."""
+    job = _require_job(session_id)
+    current_text = job.get("resume_text_patched") or job.get("resume_text", "")
+    patches = job.get("result", {}).get("patches", []) or []
+    coaching_answers = job.get("coaching_answers", {}) or {}
+
+    missing_patches = []
+    for patch in patches:
+        if patch.get("status") != "applied":
+            continue
+        replacement = (patch.get("replacement_text") or "").strip()
+        if replacement and replacement not in current_text:
+            missing_patches.append(patch.get("patch_id", "unknown"))
+
+    approved_answers = [
+        answer for answer in coaching_answers.values()
+        if answer.get("user_approved") and answer.get("generated_bullet")
+    ]
+    missing_bullets = []
+    for answer in approved_answers:
+        bullet_text = str(answer.get("generated_bullet", ""))
+        clean_bullet = bullet_text.strip("• ").strip()
+        if clean_bullet and clean_bullet not in current_text and bullet_text not in current_text:
+            missing_bullets.append(bullet_text[:60])
+
+    total_applied = len([p for p in patches if p.get("status") == "applied"]) + len(approved_answers)
+    total_verified = max(total_applied - len(missing_patches) - len(missing_bullets), 0)
+
+    return {
+        "clean": len(missing_patches) == 0 and len(missing_bullets) == 0,
+        "missing_patches": missing_patches,
+        "missing_bullets": missing_bullets,
+        "total_applied": total_applied,
+        "total_verified": total_verified,
+    }
+
+
 @app.post("/api/patches/apply")
 async def apply_patches(req: ApplyPatchesRequest):
     """Apply patches to resume text and return updated text + rescored result."""
@@ -728,7 +913,8 @@ async def apply_patches(req: ApplyPatchesRequest):
         else:
             rejected.append(pid)
 
-    score = rescore(engine, jd_text)
+    original_ats = job.get("result", {}).get("ats", {}).get("score", 0)
+    score = rescore(engine, jd_text, baseline_score=original_ats)
     updated_text = engine.get_current_text()
 
     # Persist updated text and patch states back to job cache
@@ -778,7 +964,8 @@ async def rollback_patch(req: RollbackRequest):
     engine = PatchEngine(resume_text, resume_sections=resume_sections)
     engine.apply_batch(patches_to_keep)
 
-    score = rescore(engine, jd_text)
+    original_ats = job.get("result", {}).get("ats", {}).get("score", 0)
+    score = rescore(engine, jd_text, baseline_score=original_ats)
     updated_text = engine.get_current_text()
 
     # Update status
@@ -790,5 +977,4 @@ async def rollback_patch(req: RollbackRequest):
     _persist_job(req.job_id)
 
     return {"resume_text": updated_text, "score": score}
-
 

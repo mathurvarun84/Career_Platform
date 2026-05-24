@@ -3,10 +3,15 @@ import axios, { AxiosError } from "axios";
 import type {
   AnalysisResult,
   ATSResult,
+  CareerMemoryResponse,
+  DownloadVerification,
   GapCloseRequest,
   GapCloseResponse,
   HistoryResponse,
+  PatchApplyResult,
 } from "../types/index";
+
+export type { PatchApplyResult };
 
 const normalizeRecruiterSim = (payload: AnalysisResult): AnalysisResult => {
   if (payload.sim) {
@@ -161,13 +166,6 @@ export const getHistory = async (userId: string): Promise<HistoryResponse> => {
   return response.data;
 };
 
-export interface PatchApplyResult {
-  patch_id: string;
-  applied: boolean;
-  found_in_doc: boolean;
-  rejection_reason?: string | null;
-}
-
 export interface ApplyPatchesResponse {
   applied: string[];
   rejected: string[];
@@ -197,6 +195,33 @@ export interface RollbackResponse {
   score: ATSResult;
 }
 
+export interface GenerateBulletRequest {
+  session_id: string;
+  gap_id: string;
+  section: string;
+  sub_label: string | null;
+  raw_answer: string;
+  coaching_question: string;
+  skill_category: string;
+}
+
+export interface GenerateBulletResponse {
+  generated_bullet: string;
+  career_memory_id: string;
+  grounding_check?: boolean;
+  error?: string | null;
+}
+
+export const generateCoachingBullet = async (
+  req: GenerateBulletRequest
+): Promise<GenerateBulletResponse> => {
+  const response = await axiosInstance.post<GenerateBulletResponse>(
+    "/api/coaching/generate-bullet",
+    req
+  );
+  return response.data;
+};
+
 export const rollbackPatch = async (
   jobId: string,
   patchId: string = "all",
@@ -207,6 +232,50 @@ export const rollbackPatch = async (
       job_id: jobId,
       patch_id: patchId,
     }
+  );
+  return response.data;
+};
+
+export interface AddBulletRequest {
+  session_id: string;
+  gap_id: string;
+  section: string;
+  sub_label: string | null;
+  bullet_text: string;
+  placement: "start" | "end";
+  career_memory_id: string;
+}
+
+export interface AddBulletResponse {
+  inserted: boolean;
+  found_in_doc: boolean;
+}
+
+export const addBulletToResume = async (
+  req: AddBulletRequest
+): Promise<AddBulletResponse> => {
+  const response = await axiosInstance.post<AddBulletResponse>(
+    "/api/coaching/add-bullet",
+    req
+  );
+  return response.data;
+};
+
+export const getCareerMemory = async (
+  sessionId: string
+): Promise<CareerMemoryResponse> => {
+  const response = await axiosInstance.get<CareerMemoryResponse>(
+    "/api/coaching/career-memory",
+    { params: { session_id: sessionId } }
+  );
+  return response.data;
+};
+
+export const getDownloadVerification = async (
+  sessionId: string
+): Promise<DownloadVerification> => {
+  const response = await axiosInstance.get<DownloadVerification>(
+    `/api/session/${sessionId}/download`
   );
   return response.data;
 };

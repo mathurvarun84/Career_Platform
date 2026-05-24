@@ -2,6 +2,7 @@ import { create } from "zustand";
 
 import { scoreResume } from "../engine/atsScorer";
 import { composeResumeText } from "../utils/composeResumeText";
+import { hasJobDescription } from "../utils/hasJobDescription";
 import type {
   AnalysisResult,
   RewriteStyle,
@@ -28,6 +29,8 @@ interface ResumeStoreState {
   userId: string;
   /** ATS score at end of analysis — frozen until reset. */
   baselineAts: number | null;
+  /** JD text from the current analysis session (for live rescoring). */
+  analysisJdText: string | null;
   /** Section full_text overrides from applied fixes (for live rescoring). */
   sectionOverrides: Record<string, string>;
   /** User opted in to fixes despite underqualified role fit gate. */
@@ -56,8 +59,12 @@ interface ResumeStoreState {
   bumpHistoryRefresh: () => void;
   setApplyAnywayAccepted: (accepted: boolean) => void;
   setPendingAnalyseRole: (role: string | null) => void;
+  setAnalysisJdText: (jdText: string | null) => void;
   resetAnalysis: () => void;
 }
+
+const capAtsAtBaseline = (score: number, baseline: number | null): number =>
+  baseline !== null ? Math.max(baseline, score) : score;
 
 const getOrCreateUserId = (): string => {
   const storageKey = "rip_user_id";
@@ -87,11 +94,13 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
   historyRefreshKey: 0,
   userId: getOrCreateUserId(),
   baselineAts: null,
+  analysisJdText: null,
   sectionOverrides: {},
   applyAnywayAccepted: false,
   pendingAnalyseRole: null,
 
   setJobId: (jobId) => set({ jobId }),
+  setAnalysisJdText: (analysisJdText) => set({ analysisJdText }),
   setAnalysisResult: (analysisResult) =>
     set({
       analysisResult,
@@ -135,10 +144,20 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
           },
         };
       }
+      const mergedAts = normalizedPartial.ats
+        ? {
+            ...normalizedPartial.ats,
+            score: capAtsAtBaseline(
+              normalizedPartial.ats.score,
+              state.baselineAts
+            ),
+          }
+        : undefined;
       return {
         analysisResult: {
           ...state.analysisResult,
           ...normalizedPartial,
+          ...(mergedAts ? { ats: mergedAts } : {}),
           gap: normalizedPartial.gap
             ? { ...(state.analysisResult.gap ?? {}), ...normalizedPartial.gap }
             : state.analysisResult.gap,
@@ -149,6 +168,10 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
             normalizedPartial.patches ?? state.analysisResult.patches,
           validation:
             normalizedPartial.validation ?? state.analysisResult.validation,
+          role_fit:
+            normalizedPartial.role_fit !== undefined
+              ? normalizedPartial.role_fit
+              : state.analysisResult.role_fit,
         },
       };
     }),
@@ -173,7 +196,8 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
         state.analysisResult.resume,
         sectionOverrides
       );
-      const scored = scoreResume(mergedText);
+      const scored = scoreResume(mergedText, state.analysisJdText);
+      const cappedScore = capAtsAtBaseline(scored.score, state.baselineAts);
       return {
         acceptedSections: {
           ...state.acceptedSections,
@@ -184,14 +208,28 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
           ...state.analysisResult,
           ats: {
             ...state.analysisResult.ats,
-            score: scored.score,
+            score: cappedScore,
             breakdown: scored.breakdown,
             ats_issues: scored.ats_issues,
           },
         },
       };
     }),
-  setActiveTab: (activeTab) => set({ activeTab }),
+  setActiveTab: (activeTab) =>
+    set((state) => {
+      const { analysisResult, applyAnywayAccepted } = state;
+      if (activeTab === "gap" && analysisResult && !hasJobDescription(analysisResult.gap)) {
+        return {};
+      }
+      const roleFitLocked =
+        analysisResult?.role_fit?.fitness === "underqualified" &&
+        !applyAnywayAccepted;
+      const roleFitLockedTabs = new Set<TabId>(["fixes", "gap", "progress"]);
+      if (roleFitLocked && roleFitLockedTabs.has(activeTab)) {
+        return {};
+      }
+      return { activeTab };
+    }),
   setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
   setIsLoading: (isLoading) => set({ isLoading }),
   setAnalysisError: (analysisError) => set({ analysisError }),
@@ -216,6 +254,7 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
       fallbackInfo: {},
       historyRefreshKey: 0,
       baselineAts: null,
+      analysisJdText: null,
       sectionOverrides: {},
       applyAnywayAccepted: false,
     }),

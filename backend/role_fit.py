@@ -70,7 +70,7 @@ def _enum_value(raw: Any) -> str:
 def compute_role_fit(
     resume_und: dict,
     jd_intel: dict,
-    gap_result: dict,
+    gap_result: dict | None = None,
 ) -> dict:
     """
     Deterministic role fit computation. Zero LLM calls.
@@ -100,6 +100,7 @@ def compute_role_fit(
     jd_rank = _SENIORITY_RANK.get(raw_jd_seniority, 0)
     seniority_gap = max(0, jd_rank - resume_rank) if jd_rank > 0 else 0
 
+    gap_result = gap_result or {}
     unanswerable = 0
     for gap in (gap_result.get("section_gaps") or gap_result.get("gaps") or []):
         reason = (gap.get("gap_reason") or "").lower()

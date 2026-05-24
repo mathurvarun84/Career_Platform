@@ -12,6 +12,7 @@ import AuthModal from "./components/auth/AuthModal";
 import RequireAuth from "./components/auth/RequireAuth";
 import ResumeUpload from "./components/ResumeUpload";
 import AnalysisProgress from "./components/upload/AnalysisProgress";
+import { useProgressStore } from "./hooks/useProgressStore";
 import { supabase } from "./lib/supabase";
 import { useAuthStore } from "./store/authStore";
 import { useResumeStore } from "./store/useResumeStore";
@@ -31,6 +32,7 @@ function AppShell() {
   const isAnalyzing = useResumeStore((state) => state.isAnalyzing);
   const setActiveTab = useResumeStore((state) => state.setActiveTab);
   const setJobId = useResumeStore((state) => state.setJobId);
+  const setAnalysisJdText = useResumeStore((state) => state.setAnalysisJdText);
   const setAnalysisResult = useResumeStore((state) => state.setAnalysisResult);
   const setFallbackInfo = useResumeStore((state) => state.setFallbackInfo);
   const setIsLoading = useResumeStore((state) => state.setIsLoading);
@@ -40,6 +42,14 @@ function AppShell() {
   );
   const bumpHistoryRefresh = useResumeStore((state) => state.bumpHistoryRefresh);
   const activeTab = useResumeStore((state) => state.activeTab);
+  const {
+    addCareerEntry,
+    addSnapshot,
+    career_record,
+    snapshots,
+    totalCoaching,
+    totalPatches,
+  } = useProgressStore();
 
   const [streamInputs, setStreamInputs] = useState<{
     file: File;
@@ -70,6 +80,7 @@ function AppShell() {
   const handleBeginAnalysis = useCallback(
     (file: File, jdText: string): void => {
       setStreamInputs({ file, jdText });
+      setAnalysisJdText(jdText.trim() || null);
       setJobId(null);
       setAnalysisResult(null);
       setIsFullAnalysisReady(false);
@@ -78,6 +89,7 @@ function AppShell() {
     },
     [
       setJobId,
+      setAnalysisJdText,
       setAnalysisResult,
       setIsFullAnalysisReady,
       setIsLoading,
@@ -93,6 +105,16 @@ function AppShell() {
       setFallbackInfo(hydrated.debugByTab);
       setJobId(hydrated.analysis.job_id);
       setActiveTab("overview");
+      addSnapshot({
+        timestamp: new Date().toISOString(),
+        ats_score: hydrated.analysis.ats.score,
+        jd_match: hydrated.analysis.gap?.jd_match_score_before ?? null,
+        percentile: hydrated.analysis.percentile?.percentile ?? null,
+        label: "Initial Analysis",
+        patches_applied: 0,
+        coaching_answers: 0,
+        session_id: hydrated.analysis.job_id,
+      });
       setStreamInputs(null);
       setIsLoading(false);
       setIsAnalyzing(false);
@@ -104,6 +126,7 @@ function AppShell() {
       setFallbackInfo,
       setJobId,
       setActiveTab,
+      addSnapshot,
       setIsLoading,
       setIsAnalyzing,
       bumpHistoryRefresh,
@@ -133,7 +156,12 @@ function AppShell() {
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           onViewProgress={() => setActiveTab("progress")}
         />
-        <ProgressTracking />
+        <ProgressTracking
+          sessionId={analysisResult?.job_id ?? null}
+          snapshots={snapshots}
+          careerRecord={career_record}
+          addCareerEntry={addCareerEntry}
+        />
         {isAuthModalOpen ? (
           <AuthModal onClose={() => setIsAuthModalOpen(false)} />
         ) : null}
@@ -188,7 +216,12 @@ function AppShell() {
             className={activeTab === "fixes" ? "tab-enter" : undefined}
             style={{ display: activeTab === "fixes" ? "block" : "none" }}
           >
-            <ActionableFixes />
+            <ActionableFixes
+              addSnapshot={addSnapshot}
+              addCareerEntry={addCareerEntry}
+              totalPatchesApplied={totalPatches}
+              totalCoachingAnswers={totalCoaching}
+            />
           </div>
           <div
             role="tabpanel"
@@ -197,7 +230,12 @@ function AppShell() {
             className={activeTab === "progress" ? "tab-enter" : undefined}
             style={{ display: activeTab === "progress" ? "block" : "none" }}
           >
-            <ProgressTracking />
+            <ProgressTracking
+              sessionId={analysisResult?.job_id ?? null}
+              snapshots={snapshots}
+              careerRecord={career_record}
+              addCareerEntry={addCareerEntry}
+            />
           </div>
         </div>
         {isAuthModalOpen ? (

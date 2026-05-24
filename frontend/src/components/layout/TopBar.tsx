@@ -1,16 +1,17 @@
 import { useEffect, useRef, useState } from "react";
 
-import { downloadResumeReport } from "../../api/client";
+import { downloadResumeReport, getDownloadVerification } from "../../api/client";
 import { useWindowSize } from "../../hooks/useWindowSize";
-import { useAuthStore } from "../../store/authStore";
 import { useResumeStore } from "../../store/useResumeStore";
-import type { TopBarProps } from "../../types";
+import { useAuthStore } from "../../store/authStore";
+import type { DownloadVerification, TopBarProps } from "../../types";
 
 export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps) {
   const analysisResult = useResumeStore((state) => state.analysisResult);
   const jobId = useResumeStore((state) => state.jobId);
   const selectedStyle = useResumeStore((state) => state.selectedStyle);
   const isLoading = useResumeStore((state) => state.isLoading);
+  const baselineAts = useResumeStore((state) => state.baselineAts);
   const resetAnalysis = useResumeStore((state) => state.resetAnalysis);
   const setActiveTab = useResumeStore((state) => state.setActiveTab);
   const user = useAuthStore((state) => state.user);
@@ -25,6 +26,8 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
   const [isSignOutHovered, setIsSignOutHovered] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isTooltipVisible, setIsTooltipVisible] = useState(false);
+  const [verificationResult, setVerificationResult] = useState<DownloadVerification | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const displayName = user?.user_metadata.full_name ?? user?.email ?? "";
@@ -39,6 +42,15 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
     "User";
   const downloadJobId = jobId ?? analysisResult?.job_id;
   const canDownload = Boolean(downloadJobId) && !isLoading && !isDownloading;
+
+  // Calculate score delta (simplified: count applied patches)
+  const originalAts = baselineAts ?? analysisResult?.ats?.score ?? 0;
+  const currentAts = analysisResult?.ats?.score ?? 0;
+  const scoreImprovement = Math.max(0, currentAts - originalAts);
+
+  const downloadLabel = scoreImprovement > 0
+    ? `Download (+${scoreImprovement} pts)`
+    : "Download Report";
 
   useEffect(() => {
     if (!isMenuOpen) {
@@ -65,6 +77,30 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [isMenuOpen]);
+
+  useEffect(() => {
+    if (!isMenuOpen || !downloadJobId) {
+      return;
+    }
+
+    let cancelled = false;
+    getDownloadVerification(downloadJobId)
+      .then((result) => {
+        if (!cancelled) {
+          setVerificationResult(result);
+        }
+      })
+      .catch((error) => {
+        console.error("Download verification failed:", error);
+        if (!cancelled) {
+          setVerificationResult(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [downloadJobId, isMenuOpen]);
 
   const handleSignOut = async (): Promise<void> => {
     setIsSigningOut(true);
@@ -357,38 +393,82 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                   </button>
                 ) : null}
 
-                <button
-                  type="button"
-                  onClick={() => void handleDownload()}
-                  disabled={!canDownload}
-                  onMouseEnter={() => setIsDownloadHovered(true)}
-                  onMouseLeave={() => setIsDownloadHovered(false)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    padding: "9px 12px",
-                    borderRadius: "8px",
-                    fontSize: "13px",
-                    color: canDownload ? "#374151" : "#9ca3af",
-                    cursor: canDownload ? "pointer" : "not-allowed",
-                    background: canDownload && isDownloadHovered ? "#f9fafb" : "#ffffff",
-                    border: "none",
-                    width: "100%",
-                    marginTop: "2px",
-                  }}
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path
-                      d="M8 2.5V9.5M8 9.5L5.5 7M8 9.5L10.5 7M3 11.5V12C3 12.5523 3.44772 13 4 13H12C12.5523 13 13 12.5523 13 12V11.5"
-                      stroke={canDownload ? "#6b7280" : "#9ca3af"}
-                      strokeWidth="1.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  {isDownloading ? "Downloading..." : "Download Report"}
-                </button>
+                <div style={{ position: "relative" }}>
+                  {verificationResult && !verificationResult.clean ? (
+                    <div
+                      style={{
+                        background: "#fffbeb",
+                        border: "1.5px solid #fbbf24",
+                        borderRadius: "10px",
+                        padding: "10px 14px",
+                        fontSize: "13px",
+                        color: "#92400e",
+                        marginBottom: "12px",
+                      }}
+                    >
+                      ⚠ {verificationResult.total_verified} of {verificationResult.total_applied} changes confirmed in document. Download may be missing some edits.
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void handleDownload()}
+                    disabled={!canDownload}
+                    onMouseEnter={() => {
+                      setIsDownloadHovered(true);
+                      setIsTooltipVisible(true);
+                    }}
+                    onMouseLeave={() => {
+                      setIsDownloadHovered(false);
+                      setIsTooltipVisible(false);
+                    }}
+                    title={`ATS Score: ${originalAts}${scoreImprovement > 0 ? ` → ${currentAts}` : ""}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "9px 12px",
+                      borderRadius: "8px",
+                      fontSize: "13px",
+                      color: canDownload ? "#374151" : "#9ca3af",
+                      cursor: canDownload ? "pointer" : "not-allowed",
+                      background: canDownload && isDownloadHovered ? "#f9fafb" : "#ffffff",
+                      border: "none",
+                      width: "100%",
+                      marginTop: "2px",
+                      position: "relative",
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                      <path
+                        d="M8 2.5V9.5M8 9.5L5.5 7M8 9.5L10.5 7M3 11.5V12C3 12.5523 3.44772 13 4 13H12C12.5523 13 13 12.5523 13 12V11.5"
+                        stroke={canDownload ? "#6b7280" : "#9ca3af"}
+                        strokeWidth="1.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    {isDownloading ? "Downloading..." : downloadLabel}
+                  </button>
+                  {isTooltipVisible && canDownload && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "calc(100% + 8px)",
+                        left: 0,
+                        background: "#111827",
+                        color: "#ffffff",
+                        borderRadius: "6px",
+                        padding: "6px 10px",
+                        fontSize: "11px",
+                        whiteSpace: "nowrap",
+                        zIndex: 300,
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {`Download your resume • ATS: ${originalAts}${scoreImprovement > 0 ? ` → ${currentAts}` : ""}`}
+                    </div>
+                  )}
+                </div>
 
                 <button
                   type="button"

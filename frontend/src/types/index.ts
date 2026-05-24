@@ -30,6 +30,8 @@ export interface SubLocationChange {
   missing_keywords: string[];
 }
 
+export type GapType = "surface" | "structural" | "evidence";
+
 export interface SectionGap {
   section: string;
   needs_change: boolean;
@@ -38,8 +40,12 @@ export interface SectionGap {
   rewrite_instruction: string;
   present_in_resume: boolean;
   sub_changes: SubLocationChange[];
-  gap_type?: string;
+  gap_type?: GapType;
   requires_user_input?: boolean;
+  coaching_question?: string | null;
+  coaching_hint?: string[];
+  auto_apply?: boolean;
+  sub_label?: string | null;
 }
 
 export interface ActionableChange {
@@ -114,8 +120,34 @@ export interface PriorityFix {
   rewrite_instruction: string;
   missing_keywords: string[];
   needs_change: boolean;
-  gap_type?: string;
+  gap_type?: GapType;
   requires_user_input?: boolean;
+  coaching_question?: string | null;
+  coaching_hint?: string[];
+  auto_apply?: boolean;
+  sub_label?: string | null;
+}
+
+export interface CoachingAnswer {
+  id: string;
+  session_id?: string;
+  gap_id: string;
+  section: string;
+  sub_label: string | null;
+  raw_answer: string;
+  generated_bullet: string | null;
+  applied: boolean;
+  user_approved?: boolean;
+  timestamp: string;
+  skill_category: string;
+  company: string | null;
+}
+
+export interface PatchApplyResult {
+  applied: boolean;
+  found_in_doc: boolean;
+  patch_id: string;
+  rejection_reason: string | null;
 }
 
 export interface GapResult {
@@ -205,6 +237,7 @@ export interface ResumePatch {
   score_before?: number;
   score_after?: number;
   score_delta?: number;
+  found_in_doc?: boolean;
 }
 
 export type FitnessBand = "qualified" | "stretch" | "underqualified";
@@ -328,4 +361,57 @@ export interface UserProfile {
   is_pro: boolean;
   created_at: string;
   updated_at: string;
+}
+
+export interface CareerMemoryEntry {
+  id: string;
+  session_id: string;
+  gap_id: string;
+  section: string;
+  sub_label: string | null;
+  raw_answer: string;
+  generated_bullet: string;
+  skill_category: "leadership" | "technical" | "delivery" | "communication";
+  company: string | null;
+  timestamp: string;
+  user_approved?: boolean;
+}
+
+export interface CareerMemoryResponse {
+  entries: CareerMemoryEntry[];
+  total: number;
+}
+
+export interface ProgressSnapshot {
+  timestamp: string;
+  ats_score: number;
+  jd_match: number | null;
+  percentile: number | null;
+  label: string;
+  patches_applied: number;
+  coaching_answers: number;
+  session_id: string;
+}
+
+export interface ProgressStore {
+  snapshots: ProgressSnapshot[];
+  career_record: CareerMemoryEntry[];
+  last_updated: string;
+}
+
+export interface DownloadVerification {
+  clean: boolean;
+  missing_patches: string[];
+  missing_bullets: string[];
+  total_applied: number;
+  total_verified: number;
+}
+
+export interface DownloadState {
+  patchesApplied: number;
+  coachingBulletsAdded: number;
+  atsScoreOriginal: number;
+  atsScoreAfterFixes: number;
+  verified: boolean;
+  missingCount: number;
 }

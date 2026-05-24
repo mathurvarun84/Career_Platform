@@ -140,6 +140,26 @@ def _parse_pdf_ocr(file_path: str) -> str:
     return _clean_text("\n".join(texts))
 
 
+def _docx_paragraph_style_name(paragraph) -> str:
+    """Return lowercased style name, or empty string when style is unset."""
+    style = paragraph.style
+    if style is None or style.name is None:
+        return ""
+    return style.name.lower()
+
+
+def _docx_paragraph_is_bullet(paragraph) -> bool:
+    """True when a DOCX paragraph is a list/bullet line."""
+    style_name = _docx_paragraph_style_name(paragraph)
+    if "bullet" in style_name or "list" in style_name:
+        return True
+    p_pr = paragraph._element.pPr
+    if p_pr is not None and p_pr.numPr is not None:
+        return True
+    text = paragraph.text.strip()
+    return bool(text) and text[0] in "\u2022\u25cf\u25cb\u2013\u2014-*"
+
+
 def _parse_docx(file_path: str) -> str:
     from docx import Document
 
@@ -154,9 +174,7 @@ def _parse_docx(file_path: str) -> str:
             output_lines.append("")
             continue
 
-        is_bullet = (
-            "bullet" in p.style.name.lower() or "list" in p.style.name.lower()
-        )
+        is_bullet = _docx_paragraph_is_bullet(p)
 
         if is_bullet:
             # Skip duplicate when List Bullet repeats preceding Normal paragraph text.
@@ -434,7 +452,14 @@ def _extract_section_blocks(text: str) -> Dict[str, str]:
         "experience": ["experience", "work experience", "professional experience", "employment"],
         "education": ["education", "academic background", "academics"],
         "certifications": ["certifications", "certificates"],
-        "awards": ["awards", "achievements"],
+        "awards": [
+            "awards",
+            "achievements",
+            "awards & achievements",
+            "awards and achievements",
+            "honours",
+            "accomplishments",
+        ],
     }
     blocks = {key: "" for key in headings}
     all_headings = [name for aliases in headings.values() for name in aliases]

@@ -16,7 +16,11 @@ from memory.session_store import (
     save_agent_output,
     save_full_run_result,
 )
-from backend.agents.gap_analyzer import GapAnalyzerAgent
+from backend.agents.gap_analyzer import (
+    GapAnalyzerAgent,
+    classify_section_gaps,
+    priority_fixes_from_gaps,
+)
 from backend.agents.jd_intelligence import JDIntelligenceAgent
 from backend.agents.recruiter_sim import RecruiterSimulatorAgent
 from backend.agents.resume_understanding import ResumeUnderstandingAgent
@@ -236,6 +240,26 @@ class Orchestrator:
         _build_no_jd_gaps directly.
         """
         return self._build_no_jd_gaps(resume_und, resume_sections or {})
+
+    def _apply_gap_classification(
+        self,
+        gap_result: dict,
+        resume_text: str,
+        *,
+        structured_priority_fixes: bool = True,
+    ) -> dict:
+        """
+        Classify every section gap and optionally rebuild priority_fixes for the UI.
+        """
+        section_gaps = gap_result.get("section_gaps") or gap_result.get("gaps") or []
+        classified = classify_section_gaps(section_gaps, resume_text)
+        gap_result["section_gaps"] = classified
+        gap_result["gaps"] = classified
+        if structured_priority_fixes:
+            fixes = priority_fixes_from_gaps(classified)
+            if fixes:
+                gap_result["priority_fixes"] = fixes
+        return gap_result
 
     def _build_actionable_changes(self, gap_result: dict) -> list:
         """Convert section_gaps into ActionableChange objects for the UI.
@@ -650,6 +674,54 @@ class Orchestrator:
             partial_result_cb({"resume": resume_und})
         if progress_cb: progress_cb({"step":1,"label":"Resume parsed successfully","pct":30})
 
+        # ── Role Fit Gate ────────────────────────────────────────────────────
+        # Compute before A3/A4/A5. If underqualified, return early to save
+        # ~75% of token cost (skips GapAnalyzer, Sectioner, Rewriter, RecruiterSim).
+        role_fit: dict | None = None
+        if has_jd and jd_intel and resume_und:
+            try:
+                role_fit = compute_role_fit(resume_und, jd_intel)
+                logging.info(
+                    "Role fit — fitness=%s score=%s exp_gap=%s seniority_gap=%s",
+                    role_fit["fitness"], role_fit["score"],
+                    role_fit["experience_gap"], role_fit["seniority_gap"],
+                )
+            except Exception as _rf_exc:
+                logging.warning("compute_role_fit failed (non-fatal): %s", _rf_exc)
+                role_fit = None
+
+        # Early exit: underqualified → skip A3, Sectioner, A4, A5 entirely.
+        # A1 + A2 output is enough for the frontend gate screen.
+        if (
+            has_jd
+            and role_fit is not None
+            and role_fit.get("fitness") == "underqualified"
+        ):
+            logging.info("Role fit: underqualified — early exit, skipping A3/A4/A5")
+            if progress_cb:
+                progress_cb({"step": 2, "label": "Analysis complete", "pct": 100})
+            if sse_step_cb:
+                sse_step_cb(3, "Insights ready")
+            early_result = {
+                "ats": ats_result,
+                "resume": resume_und,
+                "gap": None,
+                "rewrites": None,
+                "sim": None,
+                "percentile": None,
+                "positioning": None,
+                "jd_intelligence": jd_intel,
+                "patches": [],
+                "validation": None,
+                "role_fit": role_fit,
+            }
+            try:
+                save_full_run_result(uid, run_id, early_result)
+            except Exception as _save_exc:
+                logging.warning("Failed to save early_result to session store: %s", _save_exc)
+            return early_result
+        # ─────────────────────────────────────────────────────────────────────
+
         if has_jd:
             if progress_cb: progress_cb({"step":2,"label":"Analyzing gaps against JD...","pct":45})
             resume_sections = self._merge_sectioner_into_sections(
@@ -679,6 +751,12 @@ class Orchestrator:
             gap_result = self._build_no_jd_gaps(resume_und, resume_sections)
             if sse_step_cb:
                 sse_step_cb(1, "Resume analysed")
+        if isinstance(gap_result, dict):
+            gap_result = self._apply_gap_classification(
+                gap_result,
+                resume_text,
+                structured_priority_fixes=has_jd,
+            )
         # Build actionable changes from section gaps
         try:
             if isinstance(gap_result, dict):
@@ -914,20 +992,6 @@ class Orchestrator:
             except Exception as exc:
                 logging.warning("Patch classification failed: %s", exc)
                 classified_patches = []
-
-        role_fit = None
-        try:
-            if has_jd and jd_intel and resume_und:
-                role_fit = compute_role_fit(resume_und, jd_intel, gap_result or {})
-                logging.info(
-                    "Role fit — fitness: %s, score: %s, exp_gap: %s, seniority_gap: %s",
-                    role_fit["fitness"],
-                    role_fit["score"],
-                    role_fit["experience_gap"],
-                    role_fit["seniority_gap"],
-                )
-        except Exception as exc:
-            logging.warning("Role fit computation failed: %s", exc)
 
         final_result = {
             "ats": ats_result,

@@ -75,6 +75,51 @@ def _strip_structural_markers(text: str) -> str:
     return re.sub(r" +", " ", cleaned)
 
 
+_SKILLS_CATEGORY_HEADERS = (
+    "Languages:",
+    "Frontend:",
+    "Backend:",
+    "Databases:",
+    "Architecture & Concepts:",
+    "Architecture:",
+    "Cloud:",
+    "DevOps:",
+    "Tools:",
+    "Frameworks:",
+    "Observability:",
+    "Methodologies:",
+    "Other:",
+)
+
+
+def normalize_skills_layout(text: str) -> str:
+    """
+    Restore line breaks in flattened skills blocks before ATS scoring.
+
+    LLM patches often join categories into one line (hurts readability/formatting).
+    """
+    if not text:
+        return text
+    result = re.sub(
+        r"(?<=\.)\s+([A-Z][A-Za-z][A-Za-z0-9 /&()]*:)",
+        r"\n\1",
+        text,
+    )
+    for header in sorted(_SKILLS_CATEGORY_HEADERS, key=len, reverse=True):
+        result = re.sub(
+            rf"(?<=[a-z0-9%)])\s+({re.escape(header)})",
+            r"\n\1",
+            result,
+            flags=re.IGNORECASE,
+        )
+    return result
+
+
+def normalize_resume_for_ats_scoring(text: str) -> str:
+    """Apply deterministic pre-scoring normalizations for fair patch rescoring."""
+    return normalize_skills_layout(text)
+
+
 _STOPWORDS = {
     "and", "the", "for", "with", "from", "that", "this", "you", "your", "our", "into",
     "across", "using", "used", "build", "built", "have", "has", "had", "were", "was",
@@ -107,7 +152,9 @@ def score_resume(resume_text: str, jd_text: str | None = None) -> dict:
           >>> score_resume("Reduced server latency by 40% using Python.")
           {'score': 87, 'breakdown': {...}, 'ats_issues': [...]}
     """
-    resume_text = _strip_structural_markers(resume_text)
+    resume_text = normalize_resume_for_ats_scoring(
+        _strip_structural_markers(resume_text)
+    )
     breakdown = {
         "keyword_match": _score_keyword_match(resume_text, jd_text),
         "formatting": _score_formatting(resume_text),

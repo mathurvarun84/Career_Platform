@@ -1,85 +1,50 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 
-import { applyPatches } from "../api/client";
+import { applyPatches, generateCoachingBullet, rollbackPatch } from "../api/client";
+import { IS_MOCK } from "../hooks/useMockData";
 import { useWindowSize } from "../hooks/useWindowSize";
+import { useRescore } from "../hooks/useRescore";
 import { pageContainerStyle } from "../utils/pageLayout";
 import { hasJobDescription } from "../utils/hasJobDescription";
-import { getFixModeBaseline, type FixMode } from "../utils/modeScores";
+import { getFixModeBaseline } from "../utils/modeScores";
 import { useResumeStore } from "../store/useResumeStore";
 import { isEvidenceGap } from "../utils/roleFitEvidence";
-import type { RewriteStyle } from "../types";
 import type {
-  ATSDimensionDetail,
-  ATSResult,
-  GapResult,
+  CareerMemoryEntry,
+  GapType,
   PriorityFix,
+  ProgressSnapshot,
   ResumePatch,
+  RewriteStyle,
 } from "../types";
 import DataSourceNotice from "./DataSourceNotice";
+import EvidenceCoachingCard from "./cards/EvidenceCoachingCard";
+import StructuralPatchCard from "./cards/StructuralPatchCard";
+import SurfacePatchCard from "./cards/SurfacePatchCard";
+import type { ApplyState, CardHandlers } from "./cards/cardTypes";
 import FixValidation from "./FixValidation";
-import ModeSelector from "./ModeSelector";
+import CareerRecordPanel from "./CareerRecordPanel";
 
-type PriorityLevel = "critical" | "high" | "medium" | "low";
-type FilterValue = "all" | "critical" | "high" | "medium";
-type SortValue = "impact" | "section" | "score_gain";
-
-interface FixItem {
-  id: string;
-  sectionKey: string;
-  sectionName: string;
-  gapReason: string;
-  rewriteInstruction: string;
-  missingKeywords: string[];
-  priority: PriorityLevel;
-  source: "gap" | "ats";
-  needsChange: boolean;
-  originalContent?: string;
+interface ActionableFixesProps {
+  addSnapshot?: (snapshot: ProgressSnapshot) => void;
+  addCareerEntry?: (entry: CareerMemoryEntry) => void;
+  totalPatchesApplied?: number;
+  totalCoachingAnswers?: number;
 }
 
-const priorityOrder: Record<PriorityLevel, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
+const GAP_TYPE_ORDER: Record<GapType, number> = {
+  surface: 0,
+  structural: 1,
+  evidence: 2,
 };
 
-const scoreGainByPriority: Record<PriorityLevel, number> = {
-  critical: 18,
-  high: 12,
-  medium: 7,
-  low: 2,
+const scoreDeltaByType: Record<GapType, number> = {
+  surface: 2,
+  structural: 4,
+  evidence: 0,
 };
 
-const atsSectionMap: Record<string, { reason: string; instruction: string }> = {
-  impact_metrics: {
-    reason: "Missing quantified impact in bullets",
-    instruction: "Add numbers, percentages, and scale to show measurable results.",
-  },
-  keyword_match: {
-    reason: "Low keyword density",
-    instruction:
-      "Add more domain-specific keywords and action verbs from the job description.",
-  },
-  formatting: {
-    reason: "Formatting inconsistencies detected",
-    instruction:
-      "Align bullet styles, date formats, and section headers consistently.",
-  },
-  readability: {
-    reason: "Sentence clarity could be improved",
-    instruction: "Shorten sentences, use active voice, and avoid filler phrases.",
-  },
-};
-
-const toTitleCase = (value: string): string =>
-  value
-    .replace(/_/g, " ")
-    .split(" ")
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-
-const canonicalSections = new Set([
+const canonicalSections = [
   "summary",
   "skills",
   "experience",
@@ -87,488 +52,461 @@ const canonicalSections = new Set([
   "certifications",
   "awards",
   "projects",
-]);
+] as const;
+
+const toTitleCase = (s: string): string =>
+  s.replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
 
 const inferSectionKey = (value: string): string => {
   const lower = value.toLowerCase();
-  if (canonicalSections.has(lower)) return lower;
+  if (canonicalSections.includes(lower as (typeof canonicalSections)[number])) return lower;
   if (lower.includes("summary")) return "summary";
   if (lower.includes("skill") || lower.includes("keyword")) return "skills";
   if (lower.includes("experience") || lower.includes("bullet")) return "experience";
-  if (lower.includes("education") || lower.includes("degree")) return "education";
-  if (lower.includes("certification") || lower.includes("certificate")) return "certifications";
+  if (lower.includes("education")) return "education";
+  if (lower.includes("certification")) return "certifications";
   if (lower.includes("award")) return "awards";
   if (lower.includes("project")) return "projects";
   return "summary";
 };
 
-const normalizePriorityFixes = (gap: GapResult | null): PriorityFix[] => {
-  if (!gap?.priority_fixes) {
-    return [];
-  }
+const normalizePriorityFixes = (
+  priorityFixes: Array<string | PriorityFix> | undefined
+): PriorityFix[] => {
+  if (!priorityFixes?.length) return [];
 
-  return (gap.priority_fixes as Array<string | PriorityFix>)
-    .filter(Boolean)
-    .flatMap((item, idx): PriorityFix[] => {
-      // No-JD mode: item is a plain string from A1's improvement_areas
-      if (typeof item === "string") {
-        return [{
+  return priorityFixes.flatMap((item): PriorityFix[] => {
+    if (typeof item === "string") {
+      return [
+        {
           section: inferSectionKey(item),
           needs_change: true,
           gap_reason: item,
           rewrite_instruction: item,
           missing_keywords: [],
-        }];
-      }
-      // JD mode: item must be a properly-shaped object
-      if (
-        typeof item === "object" &&
-        item !== null &&
-        "section" in item &&
-        "gap_reason" in item &&
-        "rewrite_instruction" in item &&
-        "missing_keywords" in item &&
-        "needs_change" in item
-      ) {
-        void idx;
-        return [item];
-      }
-      return [];
-    });
+          gap_type: "structural",
+        },
+      ];
+    }
+    if (
+      typeof item === "object" &&
+      item !== null &&
+      "section" in item &&
+      "gap_reason" in item
+    ) {
+      return [item];
+    }
+    return [];
+  });
 };
 
-const derivePriority = (
-  sectionName: string,
-  ats: ATSResult,
-  gap: GapResult | null,
-  fixIndex: number
-): PriorityLevel => {
-  const normalizedFixes = normalizePriorityFixes(gap);
+const fixesFromSectionGaps = (
+  sectionGaps: Array<{
+    section: string;
+    needs_change: boolean;
+    gap_reason: string;
+    rewrite_instruction: string;
+    missing_keywords: string[];
+    gap_type?: GapType;
+    requires_user_input?: boolean;
+    coaching_question?: string | null;
+    coaching_hint?: string[];
+    auto_apply?: boolean;
+    sub_label?: string | null;
+  }>
+): PriorityFix[] =>
+  sectionGaps
+    .filter((g) => g.needs_change)
+    .map((g) => ({
+      section: g.section,
+      gap_reason: g.gap_reason,
+      rewrite_instruction: g.rewrite_instruction,
+      missing_keywords: g.missing_keywords ?? [],
+      needs_change: true,
+      gap_type: g.gap_type ?? "structural",
+      requires_user_input: g.requires_user_input,
+      coaching_question: g.coaching_question,
+      coaching_hint: g.coaching_hint,
+      auto_apply: g.auto_apply,
+      sub_label: g.sub_label,
+    }));
 
-  if (sectionName === "experience" && ats.breakdown.impact_metrics < 12) {
-    return "critical";
+function renderCard(
+  fix: PriorityFix,
+  fixKey: string,
+  handlers: CardHandlers,
+  sessionId: string,
+  onCoachingDone: (entry: CareerMemoryEntry) => void | Promise<void>
+): ReactElement | null {
+  const gapType = fix.gap_type ?? "structural";
+  if (gapType === "surface") {
+    return <SurfacePatchCard key={fixKey} fix={fix} fixKey={fixKey} handlers={handlers} />;
   }
-  if (sectionName === "summary" && ats.breakdown.impact_metrics < 12) {
-    return "critical";
+  if (gapType === "structural") {
+    return (
+      <StructuralPatchCard key={fixKey} fix={fix} fixKey={fixKey} handlers={handlers} />
+    );
   }
-  if (normalizedFixes[fixIndex]?.needs_change && fixIndex === 0) {
-    return "critical";
-  }
-  if (ats.breakdown.keyword_match < 12) {
-    return "high";
-  }
-  if (normalizedFixes[fixIndex]?.needs_change && fixIndex === 1) {
-    return "high";
-  }
-  if (ats.breakdown.formatting < 16) {
-    return "medium";
-  }
-  if (normalizedFixes[fixIndex]?.needs_change) {
-    return "medium";
-  }
-  return "low";
-};
-
-const extractImprovementBullets = (instruction: string): string[] => {
-  const parts = instruction
-    .split(/[.;]/)
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .slice(0, 3);
-
-  if (parts.length === 0 || instruction.length < 30) {
-    return [
-      "Add measurable outcomes",
-      "Use stronger action verbs",
-      "Include scale indicators",
-    ];
-  }
-
-  while (parts.length < 3) {
-    parts.push("Add measurable outcomes");
-  }
-
-  return parts.slice(0, 3);
-};
-
-type DimensionKey = "keyword_match" | "formatting" | "readability" | "impact_metrics";
-
-const dimensionIndexMap: Record<DimensionKey, number> = {
-  keyword_match: 0,
-  formatting: 1,
-  readability: 2,
-  impact_metrics: 3,
-};
-
-const fallbackDimensionMeta: Record<
-  DimensionKey,
-  { label: string; icon: string; benchmark: number }
-> = {
-  keyword_match: { label: "Keyword Match", icon: "🔑", benchmark: 20 },
-  formatting: { label: "Formatting", icon: "📐", benchmark: 21 },
-  readability: { label: "Readability", icon: "📖", benchmark: 19 },
-  impact_metrics: { label: "Impact & Metrics", icon: "📊", benchmark: 18 },
-};
-
-const mapSectionToDimension = (section: string): DimensionKey | null => {
-  const lower = section.toLowerCase();
-  if (
-    lower.includes("keyword") ||
-    lower.includes("skill") ||
-    lower.includes("tech")
-  ) {
-    return "keyword_match";
-  }
-  if (
-    lower.includes("format") ||
-    lower.includes("bullet") ||
-    lower.includes("structure")
-  ) {
-    return "formatting";
-  }
-  if (
-    lower.includes("impact") ||
-    lower.includes("metric") ||
-    lower.includes("number") ||
-    lower.includes("quantif")
-  ) {
-    return "impact_metrics";
+  if (gapType === "evidence") {
+    return (
+      <EvidenceCoachingCard
+        key={fixKey}
+        fix={fix}
+        fixKey={fixKey}
+        sessionId={sessionId}
+        onDone={onCoachingDone}
+      />
+    );
   }
   return null;
-};
+}
 
-const getDimensionDetail = (
-  ats: ATSResult,
-  dimension: DimensionKey
-): ATSDimensionDetail => {
-  const detailIdx = dimensionIndexMap[dimension];
-  const details = ats.details ?? [];
-  const detail = details[detailIdx];
-  if (detail) {
-    return detail;
-  }
-
-  const score = ats.breakdown[dimension];
-  const benchmark = fallbackDimensionMeta[dimension].benchmark;
-  return {
-    score,
-    benchmark,
-    gap: Math.max(0, benchmark - score),
-    gap_reason: "Below benchmark for this dimension.",
-    label: fallbackDimensionMeta[dimension].label,
-    icon: fallbackDimensionMeta[dimension].icon,
-  };
-};
-
-export default function ActionableFixes() {
+export default function ActionableFixes({
+  addSnapshot,
+  addCareerEntry,
+  totalPatchesApplied = 0,
+  totalCoachingAnswers = 0,
+}: ActionableFixesProps) {
   const analysisResult = useResumeStore((s) => s.analysisResult);
   const jobId = useResumeStore((s) => s.jobId);
   const applySectionFix = useResumeStore((s) => s.applySectionFix);
   const mergePartialResult = useResumeStore((s) => s.mergePartialResult);
   const baselineAts = useResumeStore((s) => s.baselineAts);
   const applyAnywayAccepted = useResumeStore((s) => s.applyAnywayAccepted);
-  const liveAts = useResumeStore((s) => s.analysisResult?.ats.score ?? 0);
+
+  const [applyState, setApplyState] = useState<Record<string, ApplyState>>({});
+  const [quickWinsExpanded, setQuickWinsExpanded] = useState(false);
+  const [careerMemoryVersion, setCareerMemoryVersion] = useState(0);
+  const autoAppliedRef = useRef<Set<string>>(new Set());
+  const patchCountRef = useRef(totalPatchesApplied);
+  const coachingCountRef = useRef(totalCoachingAnswers);
+  const { isMobile } = useWindowSize();
+  const { rescore } = useRescore(jobId ?? analysisResult?.job_id ?? "");
+
+  useEffect(() => {
+    patchCountRef.current = totalPatchesApplied;
+  }, [totalPatchesApplied]);
+
+  useEffect(() => {
+    coachingCountRef.current = totalCoachingAnswers;
+  }, [totalCoachingAnswers]);
 
   const suppressedEvidenceGaps =
     applyAnywayAccepted && analysisResult?.role_fit?.fitness === "underqualified";
 
-  const [selectedMode, setSelectedMode] = useState<FixMode>("safe");
-  const [activeFilter, setActiveFilter] = useState<FilterValue>("all");
-  const [sortBy, setSortBy] = useState<SortValue>("impact");
-  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
-  const [appliedFixes, setAppliedFixes] = useState<Set<string>>(new Set());
-  const [pressedFixButton, setPressedFixButton] = useState<string | null>(null);
-  const { isMobile } = useWindowSize();
+  const fixes = useMemo(() => {
+    if (!analysisResult?.gap) return [];
+
+    const fromPriority = normalizePriorityFixes(
+      analysisResult.gap.priority_fixes as Array<string | PriorityFix>
+    );
+    const hasStructured =
+      fromPriority.length > 0 &&
+      typeof analysisResult.gap.priority_fixes?.[0] === "object";
+
+    let list = hasStructured
+      ? fromPriority.filter((f) => f.needs_change)
+      : fixesFromSectionGaps(analysisResult.gap.section_gaps ?? []);
+
+    if (suppressedEvidenceGaps) {
+      list = list.filter((f) => !isEvidenceGap(f));
+    }
+
+    return [...list].sort((a, b) => {
+      const orderA = GAP_TYPE_ORDER[a.gap_type ?? "structural"];
+      const orderB = GAP_TYPE_ORDER[b.gap_type ?? "structural"];
+      return orderA - orderB;
+    });
+  }, [analysisResult, suppressedEvidenceGaps]);
+
+  const patchBySection = useMemo(() => {
+    const acc: Record<string, ResumePatch> = {};
+    for (const patch of analysisResult?.patches ?? []) {
+      if (!acc[patch.section]) {
+        acc[patch.section] = patch;
+      }
+    }
+    return acc;
+  }, [analysisResult?.patches]);
+
+  const getSectionKey = (fix: PriorityFix) => inferSectionKey(fix.section);
+  const getDisplaySection = (fix: PriorityFix) => toTitleCase(inferSectionKey(fix.section));
+  const getFixKey = (fix: PriorityFix, index: number) =>
+    `${getDisplaySection(fix)}-${fix.sub_label ?? "main"}-${index}`;
+
+  const getBeforeText = useCallback(
+    (fix: PriorityFix): string => {
+      const key = getSectionKey(fix);
+      return (
+        analysisResult?.resume.resume_sections?.[key]?.full_text?.trim() ??
+        "[Original text from your resume]"
+      );
+    },
+    [analysisResult]
+  );
+
+  const getAfterText = useCallback(
+    (fix: PriorityFix): string => {
+      const key = getSectionKey(fix);
+      const patch = patchBySection[key];
+
+      if (patch?.replacement_text && patch.original_text) {
+        const base = analysisResult?.resume.resume_sections?.[key]?.full_text?.trim() ?? "";
+        const idx = base.indexOf(patch.original_text);
+        if (idx !== -1) {
+          return base.slice(0, idx) + patch.replacement_text + base.slice(idx + patch.original_text.length);
+        }
+        return patch.replacement_text;
+      }
+
+      return fix.rewrite_instruction || "[Rewrite not available for this section]";
+    },
+    [analysisResult, patchBySection]
+  );
+
+  const getPatchDiff = useCallback(
+    (fix: PriorityFix): { original: string; replacement: string } | null => {
+      const patch = patchBySection[getSectionKey(fix)];
+      if (patch?.original_text && patch.replacement_text) {
+        return { original: patch.original_text, replacement: patch.replacement_text };
+      }
+      const kw = fix.missing_keywords[0];
+      if (kw) {
+        return {
+          original: `Missing ${kw}`,
+          replacement: `Added ${kw}`,
+        };
+      }
+      return null;
+    },
+    [patchBySection]
+  );
+
+  const scoreDelta = useCallback(
+    (fix: PriorityFix) => scoreDeltaByType[fix.gap_type ?? "structural"],
+    []
+  );
+
+  const onApply = useCallback(
+    async (fix: PriorityFix, fixKey: string) => {
+      setApplyState((s) => ({ ...s, [fixKey]: "loading" }));
+      const sectionKey = getSectionKey(fix);
+      const style: RewriteStyle = "balanced";
+      const sectionText = getAfterText(fix);
+
+      if (IS_MOCK) {
+        applySectionFix(sectionKey, style, sectionText);
+        setApplyState((s) => ({ ...s, [fixKey]: "applied" }));
+        return;
+      }
+
+      if (jobId) {
+        const patch = patchBySection[sectionKey];
+        if (patch?.patch_id) {
+          try {
+            const result = await applyPatches(
+              jobId,
+              [patch.patch_id],
+              patch.risk === "needs_confirmation"
+            );
+            const outcome = result.results?.find((r) => r.patch_id === patch.patch_id);
+            if (!outcome?.applied || !outcome.found_in_doc) {
+              setApplyState((s) => ({ ...s, [fixKey]: "failed" }));
+              return;
+            }
+            applySectionFix(sectionKey, style, sectionText);
+            if (result.score) {
+              mergePartialResult({ ats: result.score });
+            }
+            setApplyState((s) => ({ ...s, [fixKey]: "applied" }));
+            const rescored = await rescore();
+            const nextPatchCount = patchCountRef.current + 1;
+            patchCountRef.current = nextPatchCount;
+            addSnapshot?.({
+              timestamp: new Date().toISOString(),
+              ats_score:
+                rescored?.ats_score ??
+                result.score?.score ??
+                analysisResult?.ats.score ??
+                0,
+              jd_match: null,
+              percentile: null,
+              label: `After Fix #${nextPatchCount}`,
+              patches_applied: nextPatchCount,
+              coaching_answers: coachingCountRef.current,
+              session_id: jobId ?? analysisResult?.job_id ?? "",
+            });
+            return;
+          } catch (error) {
+            console.error("Failed to apply patch:", error);
+            setApplyState((s) => ({ ...s, [fixKey]: "failed" }));
+            return;
+          }
+        }
+      }
+
+      if ((fix.gap_type ?? "structural") === "structural") {
+        setApplyState((s) => ({ ...s, [fixKey]: "failed" }));
+        return;
+      }
+
+      applySectionFix(sectionKey, style, sectionText);
+      setApplyState((s) => ({ ...s, [fixKey]: "applied" }));
+    },
+    [
+      addSnapshot,
+      analysisResult?.ats.score,
+      analysisResult?.job_id,
+      applySectionFix,
+      getAfterText,
+      jobId,
+      mergePartialResult,
+      patchBySection,
+      rescore,
+    ]
+  );
+
+  const onUndo = useCallback(
+    async (fix: PriorityFix, fixKey: string) => {
+      const sectionKey = getSectionKey(fix);
+      if (jobId) {
+        const patch = patchBySection[sectionKey];
+        if (patch?.patch_id) {
+          try {
+            const rollbackResult = await rollbackPatch(jobId, patch.patch_id);
+            mergePartialResult({ ats: rollbackResult.score });
+          } catch (error) {
+            console.error("Rollback failed:", error);
+          }
+        }
+      }
+      setApplyState((s) => ({ ...s, [fixKey]: "idle" }));
+      autoAppliedRef.current.delete(fixKey);
+    },
+    [jobId, mergePartialResult, patchBySection]
+  );
+
+  const onCoachingSubmit = useCallback(
+    async (fix: PriorityFix, rawAnswer: string, fixKey: string): Promise<string | null> => {
+      if (IS_MOCK) {
+        return `• ${rawAnswer.trim().replace(/\.$/, "")} — delivering measurable team and delivery outcomes.`;
+      }
+      if (!jobId) return null;
+      try {
+        const res = await generateCoachingBullet({
+          session_id: jobId,
+          gap_id: fixKey,
+          section: fix.section,
+          sub_label: fix.sub_label ?? null,
+          raw_answer: rawAnswer,
+          coaching_question: fix.coaching_question ?? fix.gap_reason,
+          skill_category: fix.section,
+        });
+        return res.generated_bullet;
+      } catch (error) {
+        console.error("Coaching bullet generation failed:", error);
+        return null;
+      }
+    },
+    [jobId]
+  );
+
+  const handlers: CardHandlers = {
+    applyState,
+    getBeforeText,
+    getAfterText,
+    getPatchDiff,
+    scoreDelta,
+    onApply,
+    onUndo,
+    onCoachingSubmit,
+  };
+
+  const handleCoachingDone = useCallback(async (entry: CareerMemoryEntry) => {
+    addCareerEntry?.(entry);
+    setCareerMemoryVersion((v) => v + 1);
+    const rescored = await rescore();
+    if (analysisResult?.ats) {
+      mergePartialResult({
+        ats: {
+          ...analysisResult.ats,
+          score: rescored?.ats_score ?? analysisResult.ats.score,
+          breakdown: rescored
+            ? {
+                keyword_match:
+                  rescored.breakdown.keyword_match ??
+                  analysisResult.ats.breakdown.keyword_match,
+                formatting:
+                  rescored.breakdown.formatting ??
+                  analysisResult.ats.breakdown.formatting,
+                readability:
+                  rescored.breakdown.readability ??
+                  analysisResult.ats.breakdown.readability,
+                impact_metrics:
+                  rescored.breakdown.impact_metrics ??
+                  analysisResult.ats.breakdown.impact_metrics,
+              }
+            : analysisResult.ats.breakdown,
+          ats_issues: rescored?.ats_issues ?? analysisResult.ats.ats_issues,
+        },
+      });
+    }
+    const nextCoachingCount = coachingCountRef.current + 1;
+    coachingCountRef.current = nextCoachingCount;
+    addSnapshot?.({
+      timestamp: new Date().toISOString(),
+      ats_score: rescored?.ats_score ?? analysisResult?.ats.score ?? 0,
+      jd_match: null,
+      percentile: null,
+      label: "After Coaching",
+      patches_applied: patchCountRef.current,
+      coaching_answers: nextCoachingCount,
+      session_id: jobId ?? analysisResult?.job_id ?? "",
+    });
+  }, [
+    addCareerEntry,
+    addSnapshot,
+    analysisResult?.ats,
+    analysisResult?.ats.score,
+    analysisResult?.job_id,
+    jobId,
+    mergePartialResult,
+    rescore,
+  ]);
+
+  useEffect(() => {
+    fixes.forEach((fix, index) => {
+      if (!fix.auto_apply) return;
+      const fixKey = getFixKey(fix, index);
+      if (autoAppliedRef.current.has(fixKey)) return;
+      autoAppliedRef.current.add(fixKey);
+      void onApply(fix, fixKey);
+    });
+  }, [fixes, getFixKey, onApply]);
 
   if (!analysisResult) {
     return null;
   }
 
-  const normalizedGapFixes = normalizePriorityFixes(analysisResult.gap);
-
-  const hiddenEvidenceCount = normalizedGapFixes.filter(
-    (f) => f.needs_change && isEvidenceGap(f)
-  ).length;
-
-  const gapFixes: FixItem[] = normalizedGapFixes
-    .filter((f) => f.needs_change)
-    .filter((f) => !(suppressedEvidenceGaps && isEvidenceGap(f)))
-    .map((f, i) => {
-      const sectionKey = inferSectionKey(f.section);
-      return ({
-        id: `gap-${sectionKey}-${i}`,
-        sectionKey,
-        sectionName: sectionKey,
-      gapReason: f.gap_reason,
-      rewriteInstruction: f.rewrite_instruction,
-      missingKeywords: f.missing_keywords,
-      priority: derivePriority(f.section, analysisResult.ats, analysisResult.gap, i),
-      source: "gap",
-      needsChange: f.needs_change,
-      originalContent:
-        (f as PriorityFix & { original_content?: string }).original_content ?? undefined,
-      });
-    });
-
-  const gapSections = new Set(gapFixes.map((f) => f.sectionName));
-
-  const atsFixes: FixItem[] = (analysisResult.ats.ats_issues ?? [])
-    .filter((issue) => !gapSections.has(issue))
-    .slice(0, 3)
-    .map((issue, i) => {
-      const sectionKey = inferSectionKey(issue);
-      const info = atsSectionMap[issue] ?? { reason: issue, instruction: issue };
-      return {
-        id: `ats-${sectionKey}-${i}`,
-        sectionKey,
-        sectionName: sectionKey,
-        gapReason: info.reason,
-        rewriteInstruction: info.instruction,
-        missingKeywords: [],
-        priority: derivePriority(
-          issue,
-          analysisResult.ats,
-          null,
-          i + gapFixes.length
-        ),
-        source: "ats",
-        needsChange: false,
-      };
-    });
-
-  const allFixes = [...gapFixes, ...atsFixes];
-  const counts = {
-    all: allFixes.length,
-    critical: allFixes.filter((f) => f.priority === "critical").length,
-    high: allFixes.filter((f) => f.priority === "high").length,
-    medium: allFixes.filter((f) => f.priority === "medium").length,
-  };
-
-  const filtered = allFixes.filter((f) =>
-    activeFilter === "all" ? true : f.priority === activeFilter
-  );
-
-  const sorted = [...filtered].sort((a, b) => {
-    if (sortBy === "impact") {
-      return priorityOrder[a.priority] - priorityOrder[b.priority];
-    }
-    if (sortBy === "section") {
-      return a.sectionName.localeCompare(b.sectionName);
-    }
-    if (sortBy === "score_gain") {
-      return scoreGainByPriority[b.priority] - scoreGainByPriority[a.priority];
-    }
-    return 0;
-  });
-
-  const getBeforeText = (fix: FixItem): string => {
-    if (fix.needsChange) {
-      return (
-        fix.originalContent?.trim() ||
-        analysisResult.resume.resume_sections?.[fix.sectionKey]?.full_text ||
-        "[Original text from your resume]"
-      );
-    }
-
-    return (
-      analysisResult.resume.resume_sections?.[fix.sectionKey]?.full_text ??
-      "[Original text from your resume]"
-    );
-  };
-
-  const rewriteMap =
-    analysisResult.rewrites &&
-    typeof analysisResult.rewrites === "object" &&
-    "rewrites" in (analysisResult.rewrites as Record<string, unknown>)
-      ? ((analysisResult.rewrites as { rewrites?: Record<string, Record<RewriteStyle, string>> }).rewrites ?? {})
-      : ((analysisResult.rewrites as Record<string, Record<RewriteStyle, string>> | null) ?? {});
-
-  const patchBySection = (analysisResult.patches ?? []).reduce<
-    Record<string, ResumePatch>
-  >((acc, patch) => {
-    if (!acc[patch.section]) {
-      acc[patch.section] = patch;
-    }
-    return acc;
-  }, {});
-
-  const getOriginalSectionText = (sectionKey: string): string =>
-    analysisResult.resume.resume_sections?.[sectionKey]?.full_text?.trim() ?? "";
-
-  const splicePatchIntoText = (
-    base: string,
-    originalText: string,
-    replacementText: string
-  ): string => {
-    if (!base) {
-      return replacementText;
-    }
-
-    let idx = base.indexOf(originalText);
-    if (idx !== -1) {
-      return (
-        base.slice(0, idx) +
-        replacementText +
-        base.slice(idx + originalText.length)
-      );
-    }
-
-    const norm = (s: string) => s.replace(/\s+/g, " ").trim();
-    const normBase = norm(base);
-    const normOrig = norm(originalText);
-    idx = normBase.indexOf(normOrig);
-    if (idx !== -1) {
-      return (
-        normBase.slice(0, idx) +
-        replacementText +
-        normBase.slice(idx + normOrig.length)
-      );
-    }
-
-    return base;
-  };
-
-  const getAfterText = (sectionKey: string): string => {
-    const sectionRewrite = rewriteMap[sectionKey];
-    const patch = patchBySection[sectionKey];
-
-    if (selectedMode === "safe" && patch?.replacement_text && patch.original_text) {
-      const originalBase = getOriginalSectionText(sectionKey);
-      return splicePatchIntoText(
-        originalBase,
-        patch.original_text,
-        patch.replacement_text
-      );
-    }
-
-    if (!sectionRewrite) {
-      return "[Rewrite not available for this section]";
-    }
-
-    return sectionRewrite.balanced ?? "[Balanced rewrite unavailable]";
-  };
+  const surfaceFixes = fixes.filter((f) => (f.gap_type ?? "structural") === "surface");
+  const quickWinPts = surfaceFixes.reduce((sum, f) => sum + scoreDelta(f), 0);
+  const appliedSurfaceCount = surfaceFixes.filter((f) => {
+    const idx = fixes.indexOf(f);
+    const fixKey = getFixKey(f, idx);
+    return applyState[fixKey] === "applied";
+  }).length;
 
   const modeBaseline = getFixModeBaseline(analysisResult);
   const originalAts = baselineAts ?? modeBaseline.baselineAts;
-
+  const liveAts = analysisResult.ats.score ?? 0;
   const hasJd = hasJobDescription(analysisResult.gap);
   const originalJd = hasJd ? analysisResult.gap?.jd_match_score_before ?? null : null;
   const afterJd = hasJd ? analysisResult.gap?.jd_match_score_after ?? null : null;
-
-  const appliedCount = appliedFixes.size;
-
-  const modeHint =
-    selectedMode === "safe"
-      ? "Safe fix: changes only the exact phrases flagged as weak — everything else untouched"
-      : "Full rewrite: entire weak sections are regenerated — review all diffs carefully";
-
-  const afterVersionLabel =
-    selectedMode === "safe" ? "Safe fix version" : "Full rewrite version";
-  const afterAccentColor = selectedMode === "safe" ? "#6366f1" : "#7c3aed";
-  const afterContextHint =
-    selectedMode === "safe"
-      ? "Surgical edits applied only where gaps were flagged."
-      : "Full section rewrite — review carefully before downloading.";
-
-  const toggleCard = (key: string) => {
-    setExpandedCards((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
-  };
-
-  const applyFix = async (fix: FixItem) => {
-    const style: RewriteStyle = selectedMode === "safe" ? "balanced" : "aggressive";
-    const sectionText = getAfterText(fix.sectionKey);
-
-    if (selectedMode === "safe" && jobId) {
-      const patch = patchBySection[fix.sectionKey];
-      if (patch?.patch_id) {
-        try {
-          const result = await applyPatches(
-            jobId,
-            [patch.patch_id],
-            patch.risk === "needs_confirmation"
-          );
-          const outcome = result.results?.find((r) => r.patch_id === patch.patch_id);
-          if (!outcome?.applied || !outcome.found_in_doc) {
-            alert(
-              outcome?.rejection_reason?.trim() ||
-                "Could not apply — text may have changed in the document."
-            );
-            return;
-          }
-          applySectionFix(fix.sectionKey, style, sectionText);
-          setAppliedFixes((prev) => new Set([...prev, fix.id]));
-          if (result.score) {
-            mergePartialResult({ ats: result.score });
-          }
-          return;
-        } catch (error) {
-          console.error("Failed to apply patch on server:", error);
-          alert(`Error applying patch: ${error}`);
-          return;
-        }
-      }
-    }
-
-    applySectionFix(fix.sectionKey, style, sectionText);
-    setAppliedFixes((prev) => new Set([...prev, fix.id]));
-  };
+  const appliedCount = Object.values(applyState).filter((s) => s === "applied").length;
 
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
       <div style={pageContainerStyle(isMobile, isMobile ? 88 : 72)}>
-        {suppressedEvidenceGaps && hiddenEvidenceCount > 0 ? (
-          <div
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              gap: "10px",
-              background: "#fefce8",
-              borderRadius: "12px",
-              padding: "13px 15px",
-              marginBottom: "20px",
-            }}
-          >
-            <div
-              style={{
-                width: "18px",
-                height: "18px",
-                borderRadius: "50%",
-                background: "#fde68a",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: "10px",
-                fontWeight: 800,
-                color: "#d97706",
-                flexShrink: 0,
-              }}
-            >
-              !
-            </div>
-            <p
-              style={{
-                fontSize: "12.5px",
-                fontWeight: 400,
-                color: "#4b5563",
-                margin: 0,
-                lineHeight: 1.55,
-              }}
-            >
-              {hiddenEvidenceCount} coaching question{hiddenEvidenceCount !== 1 ? "s" : ""} hidden —
-              they require experience this role needs but your profile doesn&apos;t yet show.
-              Surface and structural fixes are shown below.
-            </p>
-          </div>
-        ) : null}
-
         <div style={{ marginBottom: "32px", textAlign: "center" }}>
           <div
             style={{
@@ -583,7 +521,7 @@ export default function ActionableFixes() {
               fontWeight: 600,
             }}
           >
-            ✦ AI-Powered Transformations
+            ✦ Intelligent Patches
           </div>
           <div
             style={{
@@ -594,129 +532,67 @@ export default function ActionableFixes() {
               marginTop: "14px",
             }}
           >
-            Before → After Fixes
+            Actionable Fixes
           </div>
           <div style={{ fontSize: "15px", color: "#6b7280", marginTop: "8px" }}>
-            See exactly how your resume transforms. {allFixes.length} improvements
-            ready.
+            Surface patches, surgical rewrites, and coaching for evidence gaps.
           </div>
+        </div>
+
+        {surfaceFixes.length > 0 ? (
           <div
             style={{
-              display: "inline-flex",
-              alignItems: "center",
-              borderRadius: "999px",
-              background: "#dcfce7",
-              border: "1px solid #bbf7d0",
-              color: "#16a34a",
-              padding: "5px 14px",
-              fontSize: "12px",
-              fontWeight: 700,
-              marginTop: "10px",
+              background: "#f0fdf4",
+              border: "1.5px solid #bbf7d0",
+              borderRadius: "12px",
+              padding: "14px 18px",
+              marginBottom: "20px",
             }}
           >
-            {modeBaseline.hasJd && modeBaseline.jdGain > 0
-              ? `↗ JD match can improve +${modeBaseline.jdGain}%`
-              : `${allFixes.length} content improvements ready`}
-          </div>
-        </div>
-
-        <ModeSelector
-          baseline={modeBaseline}
-          selected={selectedMode}
-          onChange={setSelectedMode}
-        />
-        <div
-          style={{
-            background: "#faf5ff",
-            border: "1px solid #ede9fe",
-            borderRadius: "10px",
-            padding: "11px 15px",
-            marginBottom: "24px",
-            display: "flex",
-            alignItems: "flex-start",
-            gap: "8px",
-          }}
-        >
-          <span style={{ fontSize: "14px", color: "#7c3aed", flexShrink: 0 }}>✦</span>
-          <span
-            style={{
-              fontSize: "13px",
-              fontWeight: 600,
-              fontStyle: "italic",
-              color: "#7c3aed",
-              lineHeight: 1.5,
-            }}
-          >
-            {modeHint}
-          </span>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            marginBottom: "20px",
-            flexWrap: "wrap",
-            rowGap: "10px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            {([
-              ["all", `All (${counts.all})`],
-              ["critical", `Critical (${counts.critical})`],
-              ["high", `High (${counts.high})`],
-              ["medium", `Medium (${counts.medium})`],
-            ] as const).map(([key, label]) => {
-              const isActive = activeFilter === key;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  role="tab"
-                  aria-selected={isActive}
-                  onClick={() => setActiveFilter(key)}
-                  style={{
-                    border: "none",
-                    borderRadius: "999px",
-                    padding: "6px 16px",
-                    fontSize: "12px",
-                    fontWeight: 700,
-                    cursor: "pointer",
-                    background: isActive ? "#6366f1" : "#f3f4f6",
-                    color: isActive ? "#ffffff" : "#6b7280",
-                    transition: "background 0.15s, color 0.15s",
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div style={{ fontSize: "12px", color: "#6b7280" }}>Sort by:</div>
-            <select
-              value={sortBy}
-              onChange={(event) => setSortBy(event.target.value as SortValue)}
+            <button
+              type="button"
+              onClick={() => setQuickWinsExpanded((v) => !v)}
               style={{
-                border: "1px solid #e5e7eb",
-                borderRadius: "8px",
-                padding: "6px 12px",
-                fontSize: "12px",
-                color: "#374151",
-                background: "#ffffff",
+                width: "100%",
+                border: "none",
+                background: "transparent",
                 cursor: "pointer",
+                textAlign: "left",
+                padding: 0,
+                fontSize: "14px",
+                fontWeight: 700,
+                color: "#166534",
               }}
             >
-              <option value="impact">Impact</option>
-              <option value="section">Section</option>
-              <option value="score_gain">Score Gain</option>
-            </select>
+              ✓ {appliedSurfaceCount || surfaceFixes.length} quick fixes auto-applied · +
+              {quickWinPts} ATS points {quickWinsExpanded ? "▼" : "▶"}
+            </button>
+            {quickWinsExpanded ? (
+              <div style={{ marginTop: "12px" }}>
+                {surfaceFixes.map((fix) => {
+                  const diff = getPatchDiff(fix);
+                  return (
+                    <div
+                      key={`${fix.section}-${fix.sub_label ?? "main"}`}
+                      style={{
+                        fontSize: "12px",
+                        color: "#166534",
+                        marginBottom: "6px",
+                        lineHeight: 1.5,
+                      }}
+                    >
+                      {diff
+                        ? `${diff.original} → ${diff.replacement}`
+                        : fix.gap_reason}
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
-        </div>
+        ) : null}
 
-        {sorted.length === 0 ? (
+        {fixes.length === 0 ? (
           <div
             style={{
               border: "1.5px solid #e5e7eb",
@@ -725,367 +601,37 @@ export default function ActionableFixes() {
               textAlign: "center",
             }}
           >
-            <div style={{ fontSize: "32px", color: "#d1d5db" }}>✦</div>
-            <div
-              style={{
-                fontSize: "17px",
-                fontWeight: 700,
-                color: "#111827",
-                marginTop: "12px",
-              }}
-            >
-              No fixes in this category
+            <div style={{ fontSize: "17px", fontWeight: 700, color: "#111827" }}>
+              No fixes needed
             </div>
             <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
-              Try &apos;All&apos; to see every improvement
+              No fixes needed — your resume is well-optimised for this role.
             </div>
           </div>
         ) : (
-          sorted.map((fix) => {
-            const key = fix.id;
-            const isExpanded = expandedCards.has(key);
-            const isApplied = appliedFixes.has(key);
-            const improvements = extractImprovementBullets(fix.rewriteInstruction);
-            const relevantDimension = mapSectionToDimension(fix.sectionName);
-            const detail = relevantDimension
-              ? getDimensionDetail(analysisResult.ats, relevantDimension)
-              : null;
-            const priorityColors: Record<
-              PriorityLevel,
-              { bg: string; text: string; border: string }
-            > = {
-              critical: { bg: "#fef2f2", text: "#dc2626", border: "#fecaca" },
-              high: { bg: "#fff7ed", text: "#d97706", border: "#fed7aa" },
-              medium: { bg: "#fefce8", text: "#ca8a04", border: "#fde68a" },
-              low: { bg: "#f0fdf4", text: "#16a34a", border: "#bbf7d0" },
+          fixes.map((fix, index) => {
+            const displayFix: PriorityFix = {
+              ...fix,
+              section: getDisplaySection(fix),
             };
-
-            return (
-              <div
-                key={key}
-                style={{
-                  border: "1.5px solid #e5e7eb",
-                  borderRadius: "16px",
-                  overflow: "hidden",
-                  marginBottom: "16px",
-                  background: "#ffffff",
-                  boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
-                }}
-              >
-                <div
-                  role="button"
-                  aria-expanded={isExpanded}
-                  onClick={() => toggleCard(key)}
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    padding: "18px 20px",
-                    cursor: "pointer",
-                    background: isExpanded ? "#f9fafb" : "#ffffff",
-                    borderBottom: isExpanded ? "1.5px solid #e5e7eb" : "none",
-                  }}
-                >
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: "10px", flex: 1 }}
-                  >
-                    <div style={{ display: "flex", flexDirection: "column", gap: "8px", flex: 1 }}>
-                      {detail && (
-                        <div
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: "6px",
-                            background: "#f5f0ff",
-                            border: "1px solid #e9d5ff",
-                            borderRadius: "6px",
-                            padding: "4px 10px",
-                            fontSize: "11px",
-                            color: "#7c3aed",
-                            marginBottom: "2px",
-                            width: "fit-content",
-                          }}
-                        >
-                          {detail.icon} {detail.label}: {detail.score}/25
-                          {detail.gap > 0 && (
-                            <span style={{ color: "#d97706", fontWeight: 600 }}>
-                              · {detail.gap} below benchmark
-                            </span>
-                          )}
-                        </div>
-                      )}
-                      <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                        <div
-                          style={{
-                            borderRadius: "999px",
-                            padding: "3px 10px",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            background: priorityColors[fix.priority].bg,
-                            color: priorityColors[fix.priority].text,
-                            border: `1px solid ${priorityColors[fix.priority].border}`,
-                            textTransform: "capitalize",
-                          }}
-                        >
-                          {fix.priority}
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "15px",
-                            fontWeight: 700,
-                            color: "#111827",
-                          }}
-                        >
-                          {toTitleCase(fix.sectionName)}
-                          {fix.gapReason ? ` — ${fix.gapReason}` : ""}
-                        </div>
-                        <div
-                          style={{
-                            background: "#dcfce7",
-                            color: "#16a34a",
-                            borderRadius: "999px",
-                            padding: "3px 10px",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {hasJd && fix.missingKeywords.length > 0 ? "JD keywords" : fix.priority}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        color: "#9ca3af",
-                        transition: "transform 0.2s",
-                        transform: isExpanded ? "rotate(0deg)" : "rotate(0deg)",
-                      }}
-                    >
-                      {isExpanded ? "▼" : "▶"}
-                    </div>
-                    {isExpanded && (
-                      <button
-                        type="button"
-                        aria-label={`Apply fix for ${fix.sectionName}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          applyFix(fix);
-                        }}
-                        onMouseDown={() => setPressedFixButton(key)}
-                        onMouseUp={() => setPressedFixButton(null)}
-                        onMouseLeave={() => setPressedFixButton(null)}
-                        style={{
-                          border: "none",
-                          borderRadius: "10px",
-                          padding: "8px 18px",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          color: "#ffffff",
-                          cursor: "pointer",
-                          background: isApplied ? "#16a34a" : "#6366f1",
-                          boxShadow: isApplied
-                            ? "0 2px 0 #15803d"
-                            : "0 2px 0 #4338ca, 0 4px 10px rgba(99,102,241,0.25)",
-                          transform:
-                            pressedFixButton === key ? "translateY(2px)" : "translateY(0)",
-                        }}
-                      >
-                        {isApplied ? "✓ Applied" : "Apply This Fix"}
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                <div
-                  style={{
-                    maxHeight: isExpanded ? "2000px" : "0px",
-                    opacity: isExpanded ? 1 : 0,
-                    overflow: "hidden",
-                    transition: "max-height 0.25s ease, opacity 0.2s",
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: isMobile ? "column" : "row",
-                    }}
-                  >
-                    <div
-                      style={{
-                        background: "#f9fafb",
-                        padding: "10px 20px",
-                        display: "flex",
-                        flexDirection: isMobile ? "column" : "row",
-                        gap: isMobile ? "8px" : "0",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          color: "#9ca3af",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Before
-                      </div>
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          color: "#16a34a",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        ● {afterVersionLabel}
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        background: "#fafafa",
-                        padding: "20px",
-                        borderRight: isMobile ? "none" : "1.5px solid #e5e7eb",
-                        borderBottom: isMobile ? "1.5px solid #e5e7eb" : "none",
-                        fontSize: "13px",
-                        color: "#6b7280",
-                        lineHeight: 1.65,
-                        whiteSpace: "pre-wrap",
-                      }}
-                    >
-                      {getBeforeText(fix)}
-                    </div>
-                    <div
-                      style={{
-                        background: "#f0fdf4",
-                        padding: "20px",
-                        fontSize: "13px",
-                        color: "#374151",
-                        lineHeight: 1.65,
-                        whiteSpace: "pre-wrap",
-                        borderLeft: `3px solid ${afterAccentColor}`,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          color: afterAccentColor,
-                          marginBottom: "8px",
-                          textTransform: "uppercase",
-                          letterSpacing: "0.04em",
-                        }}
-                      >
-                        {afterContextHint}
-                      </div>
-                      {getAfterText(fix.sectionKey)}
-                    </div>
-                  </div>
-
-                  <div
-                    style={{
-                      background: "#f9fafb",
-                      border: "1px solid #e5e7eb",
-                      borderTop: "none",
-                      padding: "16px 20px",
-                    }}
-                  >
-                    <div style={{ fontSize: "13px", fontWeight: 700, color: "#111827" }}>
-                      💡 Why this matters
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "13px",
-                        color: "#4b5563",
-                        lineHeight: 1.65,
-                        marginTop: "6px",
-                      }}
-                    >
-                      {fix.rewriteInstruction}
-                    </div>
-
-                    {(fix.missingKeywords.length > 0 ||
-                      fix.priority === "critical" ||
-                      fix.priority === "high") && (
-                      <>
-                        <div
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: 700,
-                            color: "#374151",
-                            letterSpacing: "0.06em",
-                            textTransform: "uppercase",
-                            marginTop: "12px",
-                          }}
-                        >
-                          Key Improvements
-                        </div>
-                        <div
-                          style={{
-                            fontSize: "12px",
-                            color: "#374151",
-                            lineHeight: 1.7,
-                            marginTop: "4px",
-                          }}
-                        >
-                          {improvements.map((item) => (
-                            <div key={`${key}-${item}`}>✓ {item}</div>
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-
-                  {fix.missingKeywords.length > 0 && (
-                    <div
-                      style={{
-                        background: "#ffffff",
-                        borderTop: "1px solid #e5e7eb",
-                        padding: "12px 20px",
-                        display: "flex",
-                        alignItems: "center",
-                        flexWrap: "wrap",
-                        gap: "8px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          color: "#6b7280",
-                          marginRight: "4px",
-                        }}
-                      >
-                        Keywords added:
-                      </div>
-                      {fix.missingKeywords.map((keyword) => (
-                        <div
-                          key={`${key}-${keyword}`}
-                          style={{
-                            background: "#eef2ff",
-                            border: "1px solid #c7d2fe",
-                            color: "#4f46e5",
-                            borderRadius: "999px",
-                            padding: "3px 10px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          {keyword}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
+            const fixKey = getFixKey(fix, index);
+            return renderCard(
+              displayFix,
+              fixKey,
+              handlers,
+              jobId ?? analysisResult.job_id,
+              handleCoachingDone
             );
           })
         )}
 
+        <CareerRecordPanel
+          sessionId={jobId ?? analysisResult.job_id}
+          version={careerMemoryVersion}
+        />
+
         <FixValidation
-          selectedMode={selectedMode}
+          selectedMode={"safe"}
           originalAts={originalAts}
           liveAts={liveAts}
           appliedCount={appliedCount}
@@ -1093,7 +639,7 @@ export default function ActionableFixes() {
           afterJd={afterJd}
           hasJd={hasJd}
           jobId={jobId ?? analysisResult.job_id}
-          onSwitchMode={setSelectedMode}
+          onSwitchMode={() => {}}
         />
 
         <DataSourceNotice tab="fixes" />

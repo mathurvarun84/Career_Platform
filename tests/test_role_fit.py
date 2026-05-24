@@ -43,3 +43,12 @@ def test_unknown_jd_seniority_uses_experience_only():
     result = compute_role_fit(resume, jd, {})
     assert result["seniority_gap"] == 0
     assert result["fitness"] == "underqualified"
+
+
+def test_zero_min_years_no_experience_gap():
+    """min_years=0 → exp gap 0; seniority_gap still applies for VP-level JD."""
+    resume = {"experience_years": 3, "seniority": "junior"}
+    jd = {"min_years_required": 0, "jd_seniority_level": "vp"}
+    result = compute_role_fit(resume, jd, {})
+    assert result["experience_gap"] == 0
+    assert result["seniority_gap"] >= 3

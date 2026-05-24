@@ -1,6 +1,9 @@
-import { downloadResumeReport } from "../api/client";
+import { useState } from "react";
+
+import { downloadResumeReport, getDownloadVerification } from "../api/client";
 import type { FixMode } from "../utils/modeScores";
 import { downloadStyleForMode } from "../utils/modeScores";
+import type { DownloadVerification } from "../types";
 
 interface FixValidationProps {
   selectedMode: FixMode;
@@ -71,9 +74,11 @@ export default function FixValidation({
   jobId,
   onSwitchMode,
 }: FixValidationProps) {
+  const [verificationResult, setVerificationResult] = useState<DownloadVerification | null>(null);
   const noPending = appliedCount === 0;
   const atsGain = liveAts - originalAts;
   const atsImproved = !noPending && liveAts > originalAts;
+  const atsDeclined = !noPending && liveAts < originalAts;
   const jdImproved =
     !noPending && hasJd && afterJd !== null && originalJd !== null && afterJd > originalJd;
   const jdDeclined =
@@ -89,6 +94,8 @@ export default function FixValidation({
       return;
     }
     try {
+      const verification = await getDownloadVerification(jobId);
+      setVerificationResult(verification);
       await downloadResumeReport(jobId, downloadStyleForMode(selectedMode));
     } catch (error) {
       const message = error instanceof Error ? error.message : "Download failed.";
@@ -137,12 +144,30 @@ export default function FixValidation({
               padding: "4px 12px",
               fontSize: "11px",
               fontWeight: 700,
-              background: noPending ? "#f3f4f6" : overallImproved ? "#dcfce7" : "#fef2f2",
-              color: noPending ? "#6b7280" : overallImproved ? "#15803d" : "#dc2626",
+              background: noPending
+                ? "#f3f4f6"
+                : overallImproved
+                  ? "#dcfce7"
+                  : atsDeclined
+                    ? "#fffbeb"
+                    : "#fef2f2",
+              color: noPending
+                ? "#6b7280"
+                : overallImproved
+                  ? "#15803d"
+                  : atsDeclined
+                    ? "#d97706"
+                    : "#dc2626",
               whiteSpace: "nowrap",
             }}
           >
-            {noPending ? "Pending" : overallImproved ? "✓ Improved" : "Review"}
+            {noPending
+              ? "Pending"
+              : overallImproved
+                ? "✓ Improved"
+                : atsDeclined
+                  ? "Pending Review"
+                  : "Review"}
           </div>
         </div>
 
@@ -166,7 +191,7 @@ export default function FixValidation({
               <div
                 style={{
                   fontSize: "13px",
-                  color: atsImproved ? "#16a34a" : liveAts < originalAts ? "#dc2626" : "#6b7280",
+                  color: atsImproved ? "#16a34a" : "#6b7280",
                 }}
               >
                 ATS: <strong>{liveAts}</strong>
@@ -211,13 +236,17 @@ export default function FixValidation({
       >
         <CheckCard
           title="ATS Score check"
-          status={noPending ? "warn" : atsImproved ? "pass" : liveAts < originalAts ? "warn" : "pass"}
+          status={
+            noPending ? "warn" : atsImproved ? "pass" : atsDeclined ? "warn" : "pass"
+          }
           detail={
             noPending
               ? "Apply fixes above — your ATS score updates on the Overview tab."
               : atsImproved
                 ? `ATS improved by +${atsGain} after ${appliedCount} applied fix${appliedCount === 1 ? "" : "es"} (live rescore).`
-                : `ATS is ${liveAts} (was ${originalAts}). Content may still help JD match — check Overview.`
+                : atsDeclined
+                  ? "ATS differs — keyword improvements may outweigh format score changes. See Overview for breakdown."
+                  : `ATS is ${liveAts} (was ${originalAts}). Content may still help JD match — check Overview.`
           }
         />
         <CheckCard
@@ -272,6 +301,21 @@ export default function FixValidation({
             flexWrap: "wrap",
           }}
         >
+          {verificationResult && !verificationResult.clean ? (
+            <div
+              style={{
+                background: "#fffbeb",
+                border: "1.5px solid #fbbf24",
+                borderRadius: "10px",
+                padding: "10px 14px",
+                fontSize: "13px",
+                color: "#92400e",
+                width: "100%",
+              }}
+            >
+              ⚠ {verificationResult.total_verified} of {verificationResult.total_applied} changes confirmed in document. Download may be missing some edits.
+            </div>
+          ) : null}
           <div>
             <div style={{ fontSize: "14px", fontWeight: 700, color: "#15803d" }}>
               {appliedCount} fix{appliedCount === 1 ? "" : "es"} applied ✓

@@ -379,6 +379,11 @@ class PatchEngine:
 
         start, end = span
 
+        if (patch.section or "").lower() == "skills" and patch.replacement_text:
+            from engine.ats_scorer import normalize_skills_layout
+
+            patch.replacement_text = normalize_skills_layout(patch.replacement_text)
+
         for ms, me in self._modified_ranges:
             if not (end <= ms or start >= me):
                 patch.status = "rejected"
@@ -514,12 +519,23 @@ class PatchEngine:
             self._modified_ranges.append((start, end))
 
 
-def rescore(engine: PatchEngine, jd_text: str | None = None) -> dict:
+def rescore(
+    engine: PatchEngine,
+    jd_text: str | None = None,
+    baseline_score: int | None = None,
+) -> dict:
     """Rescore using existing deterministic ats_scorer. Zero LLM calls."""
-    from engine.ats_scorer import score_resume
-    result = score_resume(engine.get_current_text(), jd_text)
+    from engine.ats_scorer import normalize_resume_for_ats_scoring, score_resume
+
+    normalized_text = normalize_resume_for_ats_scoring(engine.get_current_text())
+    result = score_resume(normalized_text, jd_text)
+    raw_score = int(result["score"])
+    display_score = raw_score
+    if baseline_score is not None:
+        display_score = max(int(baseline_score), raw_score)
     return {
-        "score": result["score"],
+        "score": display_score,
+        "raw_score": raw_score,
         "breakdown": result.get("breakdown", {}),
         "ats_issues": result.get("ats_issues", []),
     }

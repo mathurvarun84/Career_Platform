@@ -42,13 +42,29 @@ class GapSeverity(str, Enum):
     MINOR = "minor"        # nice to fix
 
 
-class GapType(str, Enum):
-    """Types of gaps identified by Agent 3."""
+class GapCategory(str, Enum):
+    """Legacy gap categories (content-focused) — prefer CoachGapType for UX routing."""
     MISSING_SKILL = "missing_skill"
     WEAK_EXPERIENCE = "weak_experience"
     POOR_WORDING = "poor_wording"
     MISSING_METRICS = "missing_metrics"
     MISSING_SECTION = "missing_section"  # JD requires this section, not in resume
+
+
+class GapType(str, Enum):
+    """Coach UX gap classification — drives surface / structural / evidence cards."""
+    SURFACE = "surface"
+    STRUCTURAL = "structural"
+    EVIDENCE = "evidence"
+
+
+class GapClassification(BaseModel):
+    """Classification metadata attached to each detected gap."""
+    gap_type: GapType
+    requires_user_input: bool
+    coaching_question: str | None = None
+    coaching_hint: list[str] = Field(default_factory=list)
+    auto_apply: bool = False
 
 
 class ResumeSection(str, Enum):

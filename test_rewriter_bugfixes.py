@@ -18,6 +18,20 @@ from parser import _parse_docx
 from validator.rewriter_validator import _PLACEHOLDER_RE, _check_placeholder_bleed
 
 
+def test_parse_docx_handles_missing_paragraph_style() -> None:
+    with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+        path = Path(tmp.name)
+    doc = Document()
+    p = doc.add_paragraph("Bullet without named style")
+    p.style = None
+    doc.save(str(path))
+    try:
+        text = _parse_docx(str(path))
+        assert "Bullet without named style" in text
+    finally:
+        path.unlink(missing_ok=True)
+
+
 def test_parse_docx_skips_duplicate_bullet_normal() -> None:
     with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
         path = Path(tmp.name)
