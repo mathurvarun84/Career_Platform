@@ -1,6 +1,7 @@
 import { useResumeStore } from "../../store/useResumeStore";
 import type { PriorityFix, TabId } from "../../types/index";
 import { useWindowSize } from "../../hooks/useWindowSize";
+import { isActionableFix } from "../../utils/actionableFixes";
 import { hasJobDescription } from "../../utils/hasJobDescription";
 
 const tabs: Array<{ id: TabId; icon: string; label: string }> = [
@@ -26,8 +27,8 @@ const countFixesNeedingChange = (
     (item): item is PriorityFix =>
       typeof item === "object" &&
       item !== null &&
-      "needs_change" in item &&
-      Boolean(item.needs_change)
+      "gap_reason" in item &&
+      isActionableFix(item as PriorityFix)
   ).length;
 };
 

@@ -28,6 +28,7 @@ export default function StructuralPatchCard({
   const state = handlers.applyState[fixKey] ?? "idle";
   const before = handlers.getBeforeText(fix);
   const after = handlers.getAfterText(fix);
+  const hasPatch = after.trim().length > 0 && after !== before;
   const changedSentence = diffSentences(before, after);
   const pts = handlers.scoreDelta(fix);
   const loading = state === "loading";
@@ -78,28 +79,45 @@ export default function StructuralPatchCard({
         </div>
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", rowGap: "6px" }}>
+      {hasPatch ? (
+        <div style={{ display: "flex", flexDirection: "column", rowGap: "6px" }}>
+          <div
+            style={{
+              fontSize: "13px",
+              color: "#dc2626",
+              textDecoration: "line-through",
+              lineHeight: 1.55,
+            }}
+          >
+            {changedSentence.before}
+          </div>
+          <div
+            style={{
+              fontSize: "13px",
+              color: "#16a34a",
+              fontWeight: 600,
+              lineHeight: 1.55,
+            }}
+          >
+            {changedSentence.after}
+          </div>
+        </div>
+      ) : (
         <div
           style={{
             fontSize: "13px",
-            color: "#dc2626",
-            textDecoration: "line-through",
+            color: "#6b7280",
             lineHeight: 1.55,
+            background: "#f9fafb",
+            borderRadius: "8px",
+            padding: "10px 12px",
+            border: "1px dashed #d1d5db",
           }}
         >
-          {changedSentence.before}
+          This fix requires a manual rewrite. Apply to update this section with the
+          improved version.
         </div>
-        <div
-          style={{
-            fontSize: "13px",
-            color: "#16a34a",
-            fontWeight: 600,
-            lineHeight: 1.55,
-          }}
-        >
-          {changedSentence.after}
-        </div>
-      </div>
+      )}
 
       <div style={{ marginTop: "14px", display: "flex", alignItems: "center", gap: "10px" }}>
         {isConfirmed ? (
@@ -149,7 +167,12 @@ export default function StructuralPatchCard({
         ) : (
           <button
             type="button"
-            disabled={loading}
+            disabled={loading || !hasPatch}
+            title={
+              !hasPatch
+                ? "No automated patch is available for this fix yet"
+                : undefined
+            }
             onClick={() => handlers.onApply(fix, fixKey)}
             style={{
               border: "none",
@@ -157,10 +180,13 @@ export default function StructuralPatchCard({
               padding: "8px 18px",
               fontSize: "12px",
               fontWeight: 700,
-              color: loading ? "#d1d5db" : "#ffffff",
-              cursor: loading ? "wait" : "pointer",
-              background: loading ? "#f3f4f6" : "#6366f1",
-              boxShadow: loading ? "0 2px 0 #d1d5db" : "0 2px 0 #4338ca, 0 4px 10px rgba(99,102,241,0.25)",
+              color: !hasPatch || loading ? "#d1d5db" : "#ffffff",
+              cursor: !hasPatch || loading ? "not-allowed" : "pointer",
+              background: !hasPatch || loading ? "#f3f4f6" : "#6366f1",
+              boxShadow:
+                !hasPatch || loading
+                  ? "0 2px 0 #d1d5db"
+                  : "0 2px 0 #4338ca, 0 4px 10px rgba(99,102,241,0.25)",
             }}
           >
             {loading ? "Applying..." : "Apply Fix"}

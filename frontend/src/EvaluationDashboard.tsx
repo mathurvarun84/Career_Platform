@@ -182,18 +182,19 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
       )
     : 0;
 
+  // CONTRACT: Overview reads from resume.weaknesses (A1 resume health assessment).
+  // Fixes tab owns gap.priority_fixes. Mixing these sources causes duplicate content.
   const gapActions = (hasJD
-    ? ((analysisResult.gap?.priority_fixes as PriorityFix[] | undefined) ?? [])
-        .filter((p) => p.needs_change)
+    ? (analysisResult.resume?.weaknesses ?? [])
         .slice(0, 2)
-        .map((fix) => ({
-          priority: "high" as const,
-          title: fix.gap_reason,
-          description: fix.rewrite_instruction,
+        .map((weakness, i) => ({
+          priority: i === 0 ? ("high" as const) : ("medium" as const),
+          title: weakness.split("→")[0].trim(),
+          description: weakness,
           gainLabel: `+${jdGainPerFix} JD match`,
           gainType: "jd" as const,
           linksToGap: true,
-          targetTab: "gap",
+          targetTab: "gap" as const,
         }))
     : []) as ActionItem[];
 

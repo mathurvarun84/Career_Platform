@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from "react";
 
-import { applyPatches, generateCoachingBullet, rollbackPatch } from "../api/client";
+import {
+  applyPatches,
+  generateCoachingBullet,
+  getCareerMemory,
+  rollbackPatch,
+} from "../api/client";
 import { IS_MOCK } from "../hooks/useMockData";
 import { useWindowSize } from "../hooks/useWindowSize";
 import { useRescore } from "../hooks/useRescore";
 import { pageContainerStyle } from "../utils/pageLayout";
 import { hasJobDescription } from "../utils/hasJobDescription";
+import { getCoachingSessionId } from "../utils/coachingSession";
 import { getFixModeBaseline } from "../utils/modeScores";
 import { useResumeStore } from "../store/useResumeStore";
+import { isActionableFix } from "../utils/actionableFixes";
 import { isEvidenceGap } from "../utils/roleFitEvidence";
 import type {
   CareerMemoryEntry,
@@ -23,7 +30,55 @@ import StructuralPatchCard from "./cards/StructuralPatchCard";
 import SurfacePatchCard from "./cards/SurfacePatchCard";
 import type { ApplyState, CardHandlers } from "./cards/cardTypes";
 import FixValidation from "./FixValidation";
-import CareerRecordPanel from "./CareerRecordPanel";
+
+const labelsMatch = (fixLabel: string, patchLabel: string): boolean => {
+  const a = fixLabel.toLowerCase().trim();
+  const b = patchLabel.toLowerCase().trim();
+  if (!a || !b) {
+    return !a && !b;
+  }
+  const aCompany = a.split("—")[0]?.trim() ?? a;
+  const bCompany = b.split("—")[0]?.trim() ?? b;
+  const bHead = b.split("|")[0]?.trim() ?? b;
+  return (
+    a === b ||
+    a.includes(bCompany) ||
+    b.includes(aCompany) ||
+    a.includes(bHead)
+  );
+};
+
+const resolvePatchForFix = (
+  fix: PriorityFix,
+  patches: ResumePatch[] | undefined,
+  sectionKey: string
+): ResumePatch | undefined => {
+  if (!patches?.length) {
+    return undefined;
+  }
+  const inSection = patches.filter(
+    (patch) => inferSectionKey(patch.section) === sectionKey
+  );
+  if (!inSection.length) {
+    return undefined;
+  }
+  if (fix.sub_label) {
+    const subMatches = inSection.filter((patch) =>
+      labelsMatch(fix.sub_label ?? "", patch.sub_entry_label ?? "")
+    );
+    if (subMatches.length) {
+      return (
+        subMatches.find((patch) => patch.original_text?.trim()) ?? subMatches[0]
+      );
+    }
+    // sub_label scoped but no matching patch — return undefined rather than
+    // falling through to an unrelated entry's patch (cross-contamination bug)
+    return undefined;
+  }
+  const sectionWide = inSection.filter((patch) => !patch.sub_entry_label?.trim());
+  const pool = sectionWide.length ? sectionWide : inSection;
+  return pool.find((patch) => patch.original_text?.trim()) ?? pool[0];
+};
 
 interface ActionableFixesProps {
   addSnapshot?: (snapshot: ProgressSnapshot) => void;
@@ -53,6 +108,107 @@ const canonicalSections = [
   "awards",
   "projects",
 ] as const;
+
+const inferSectionFromIssue = (issue: string): string => {
+  const lower = issue.toLowerCase();
+  if (lower.includes("experience") || lower.includes("bullet") || lower.includes("role")) return "experience";
+  if (lower.includes("skill") || lower.includes("keyword")) return "skills";
+  if (lower.includes("summary") || lower.includes("objective")) return "summary";
+  if (lower.includes("education")) return "education";
+  if (lower.includes("certification")) return "certifications";
+  return "experience";
+};
+
+const inferGapTypeFromText = (text: string): GapType => {
+  const lower = text.toLowerCase();
+  if (
+    /readability|shorter|clearer|concise|scannab|dense|sentence|word.?spacing|runon|filler/.test(
+      lower
+    )
+  ) {
+    return "surface";
+  }
+  if (/missing keyword|typo|spelling|add keyword|include term/.test(lower)) {
+    return "surface";
+  }
+  if (
+    /mentor|evidence|collaborat|architectur|roadmap|ownership|quantif|cross-team|stakeholder/.test(
+      lower
+    ) &&
+    /no mention|lacks|missing|share a specific|user input/.test(lower)
+  ) {
+    return "evidence";
+  }
+  return "structural";
+};
+
+const fixDedupeKey = (fix: PriorityFix): string =>
+  `${inferSectionKey(fix.section)}|${(fix.sub_label ?? "").toLowerCase()}|${fix.gap_reason.toLowerCase().slice(0, 72)}`;
+
+const mergeFixLists = (...lists: PriorityFix[][]): PriorityFix[] => {
+  const seen = new Set<string>();
+  const merged: PriorityFix[] = [];
+  for (const list of lists) {
+    for (const fix of list) {
+      const key = fixDedupeKey(fix);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      merged.push(fix);
+    }
+  }
+  return merged;
+};
+
+const atsIssuesToFixes = (atsIssues: string[], existingFixes: PriorityFix[]): PriorityFix[] => {
+  const existingReasons = new Set(
+    existingFixes.map((f) => f.gap_reason.toLowerCase().slice(0, 50))
+  );
+  return atsIssues
+    .filter((issue) => !existingReasons.has(issue.toLowerCase().slice(0, 50)))
+    .map((issue) => {
+      const gapType = inferGapTypeFromText(issue);
+      return {
+        section: inferSectionFromIssue(issue),
+        gap_reason: issue,
+        rewrite_instruction: issue,
+        missing_keywords: [],
+        needs_change: true,
+        gap_type: gapType,
+        auto_apply: gapType === "surface",
+        requires_user_input: false,
+      };
+    });
+};
+
+const fixesFromPatches = (patches: ResumePatch[] | undefined): PriorityFix[] => {
+  if (!patches?.length) return [];
+
+  return patches
+    .filter(
+      (patch) =>
+        patch.op === "replace_text" &&
+        Boolean(patch.original_text?.trim()) &&
+        Boolean(patch.replacement_text?.trim())
+    )
+    .map((patch) => {
+      const context = `${patch.issue_detected} ${patch.fix_rationale} ${patch.original_text}`;
+      const gapType = inferGapTypeFromText(context);
+      return {
+        section: patch.section,
+        gap_reason:
+          patch.issue_detected?.trim() ||
+          patch.fix_rationale?.trim() ||
+          "Intelligent patch suggested for this section",
+        rewrite_instruction: patch.replacement_text,
+        missing_keywords: patch.keyword ? [patch.keyword] : [],
+        needs_change: true,
+        gap_type: gapType,
+        auto_apply: gapType === "surface",
+        requires_user_input: false,
+        sub_label: patch.sub_entry_label?.trim() || null,
+      };
+    });
+};
 
 const toTitleCase = (s: string): string =>
   s.replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
@@ -116,7 +272,6 @@ const fixesFromSectionGaps = (
   }>
 ): PriorityFix[] =>
   sectionGaps
-    .filter((g) => g.needs_change)
     .map((g) => ({
       section: g.section,
       gap_reason: g.gap_reason,
@@ -129,20 +284,42 @@ const fixesFromSectionGaps = (
       coaching_hint: g.coaching_hint,
       auto_apply: g.auto_apply,
       sub_label: g.sub_label,
-    }));
+    }))
+    .filter(isActionableFix);
 
 function renderCard(
   fix: PriorityFix,
   fixKey: string,
   handlers: CardHandlers,
   sessionId: string,
-  onCoachingDone: (entry: CareerMemoryEntry) => void | Promise<void>
+  onCoachingDone: (entry: CareerMemoryEntry) => void | Promise<void>,
+  onMemoryCreated: () => void
 ): ReactElement | null {
   const gapType = fix.gap_type ?? "structural";
   if (gapType === "surface") {
     return <SurfacePatchCard key={fixKey} fix={fix} fixKey={fixKey} handlers={handlers} />;
   }
   if (gapType === "structural") {
+    const patchDiff = handlers.getPatchDiff(fix);
+    const afterText = handlers.getAfterText(fix).trim();
+    if (!patchDiff && !afterText) {
+      const coachingFix: PriorityFix = {
+        ...fix,
+        gap_type: "evidence",
+        requires_user_input: true,
+        coaching_question: fix.coaching_question ?? fix.gap_reason,
+      };
+      return (
+        <EvidenceCoachingCard
+          key={fixKey}
+          fix={coachingFix}
+          fixKey={fixKey}
+          sessionId={sessionId}
+          onDone={onCoachingDone}
+          onMemoryCreated={onMemoryCreated}
+        />
+      );
+    }
     return (
       <StructuralPatchCard key={fixKey} fix={fix} fixKey={fixKey} handlers={handlers} />
     );
@@ -155,6 +332,7 @@ function renderCard(
         fixKey={fixKey}
         sessionId={sessionId}
         onDone={onCoachingDone}
+        onMemoryCreated={onMemoryCreated}
       />
     );
   }
@@ -175,13 +353,17 @@ export default function ActionableFixes({
   const applyAnywayAccepted = useResumeStore((s) => s.applyAnywayAccepted);
 
   const [applyState, setApplyState] = useState<Record<string, ApplyState>>({});
+  const [coachingAppliedCount, setCoachingAppliedCount] = useState(
+    totalCoachingAnswers
+  );
   const [quickWinsExpanded, setQuickWinsExpanded] = useState(false);
   const [careerMemoryVersion, setCareerMemoryVersion] = useState(0);
   const autoAppliedRef = useRef<Set<string>>(new Set());
   const patchCountRef = useRef(totalPatchesApplied);
   const coachingCountRef = useRef(totalCoachingAnswers);
   const { isMobile } = useWindowSize();
-  const { rescore } = useRescore(jobId ?? analysisResult?.job_id ?? "");
+  const coachingSessionId = getCoachingSessionId(jobId, analysisResult);
+  const { rescore } = useRescore(coachingSessionId);
 
   useEffect(() => {
     patchCountRef.current = totalPatchesApplied;
@@ -189,7 +371,23 @@ export default function ActionableFixes({
 
   useEffect(() => {
     coachingCountRef.current = totalCoachingAnswers;
+    setCoachingAppliedCount(totalCoachingAnswers);
   }, [totalCoachingAnswers]);
+
+  useEffect(() => {
+    if (!coachingSessionId) return;
+    getCareerMemory(coachingSessionId)
+      .then((res) => {
+        const approved = res.entries.filter((e) => e.user_approved).length;
+        if (approved > 0) {
+          setCoachingAppliedCount((prev) => Math.max(prev, approved));
+          coachingCountRef.current = Math.max(coachingCountRef.current, approved);
+        }
+      })
+      .catch(() => {
+        /* career memory optional */
+      });
+  }, [coachingSessionId, careerMemoryVersion]);
 
   const suppressedEvidenceGaps =
     applyAnywayAccepted && analysisResult?.role_fit?.fitness === "underqualified";
@@ -199,14 +397,22 @@ export default function ActionableFixes({
 
     const fromPriority = normalizePriorityFixes(
       analysisResult.gap.priority_fixes as Array<string | PriorityFix>
-    );
+    ).filter(isActionableFix);
+    const fromSections = fixesFromSectionGaps(analysisResult.gap.section_gaps ?? []);
+    const fromPatches = fixesFromPatches(analysisResult.patches).filter(isActionableFix);
     const hasStructured =
       fromPriority.length > 0 &&
       typeof analysisResult.gap.priority_fixes?.[0] === "object";
 
-    let list = hasStructured
-      ? fromPriority.filter((f) => f.needs_change)
-      : fixesFromSectionGaps(analysisResult.gap.section_gaps ?? []);
+    const gapAnalyzerFixes = hasStructured ? fromPriority : fromSections;
+
+    let list = mergeFixLists(gapAnalyzerFixes, fromPatches);
+
+    const atsDriven = atsIssuesToFixes(
+      analysisResult.ats.ats_issues ?? [],
+      list
+    ).filter(isActionableFix);
+    list = mergeFixLists(list, atsDriven);
 
     if (suppressedEvidenceGaps) {
       list = list.filter((f) => !isEvidenceGap(f));
@@ -219,17 +425,13 @@ export default function ActionableFixes({
     });
   }, [analysisResult, suppressedEvidenceGaps]);
 
-  const patchBySection = useMemo(() => {
-    const acc: Record<string, ResumePatch> = {};
-    for (const patch of analysisResult?.patches ?? []) {
-      if (!acc[patch.section]) {
-        acc[patch.section] = patch;
-      }
-    }
-    return acc;
-  }, [analysisResult?.patches]);
+  const patches = analysisResult?.patches;
 
   const getSectionKey = (fix: PriorityFix) => inferSectionKey(fix.section);
+  const getPatchForFix = useCallback(
+    (fix: PriorityFix) => resolvePatchForFix(fix, patches, getSectionKey(fix)),
+    [patches]
+  );
   const getDisplaySection = (fix: PriorityFix) => toTitleCase(inferSectionKey(fix.section));
   const getFixKey = (fix: PriorityFix, index: number) =>
     `${getDisplaySection(fix)}-${fix.sub_label ?? "main"}-${index}`;
@@ -237,10 +439,40 @@ export default function ActionableFixes({
   const getBeforeText = useCallback(
     (fix: PriorityFix): string => {
       const key = getSectionKey(fix);
-      return (
-        analysisResult?.resume.resume_sections?.[key]?.full_text?.trim() ??
-        "[Original text from your resume]"
-      );
+      const fullText =
+        analysisResult?.resume.resume_sections?.[key]?.full_text?.trim() ?? "";
+
+      if (fix.sub_label && fullText) {
+        const subEntries =
+          analysisResult?.resume.resume_sections?.[key]?.sub_entries ?? [];
+        const subLabel = fix.sub_label;
+        const match = subEntries.find((entry) => {
+          if (!entry.label || !subLabel) {
+            return false;
+          }
+          const labelLower = entry.label.toLowerCase();
+          const subLower = subLabel.toLowerCase();
+          const subCompany = subLower.split("—")[0]?.trim() ?? subLower;
+          const labelHead = labelLower.split("|")[0]?.trim() ?? labelLower;
+          return (
+            entry.label === subLabel ||
+            labelLower.includes(subCompany) ||
+            subLower.includes(labelHead)
+          );
+        });
+        if (match?.verbatim_text) {
+          return match.verbatim_text.trim();
+        }
+        if (process.env.NODE_ENV !== "production") {
+          console.warn(
+            "[getBeforeText] No sub_entry match for sub_label:", fix.sub_label,
+            "in section:", key,
+            "— available:", subEntries.map((e) => e.label)
+          );
+        }
+      }
+
+      return fullText || "[Original text from your resume]";
     },
     [analysisResult]
   );
@@ -248,25 +480,50 @@ export default function ActionableFixes({
   const getAfterText = useCallback(
     (fix: PriorityFix): string => {
       const key = getSectionKey(fix);
-      const patch = patchBySection[key];
+      const patch = getPatchForFix(fix);
 
       if (patch?.replacement_text && patch.original_text) {
-        const base = analysisResult?.resume.resume_sections?.[key]?.full_text?.trim() ?? "";
+        const base =
+          analysisResult?.resume.resume_sections?.[key]?.full_text?.trim() ?? "";
         const idx = base.indexOf(patch.original_text);
         if (idx !== -1) {
-          return base.slice(0, idx) + patch.replacement_text + base.slice(idx + patch.original_text.length);
+          return (
+            base.slice(0, idx) +
+            patch.replacement_text +
+            base.slice(idx + patch.original_text.length)
+          );
         }
         return patch.replacement_text;
       }
 
-      return fix.rewrite_instruction || "[Rewrite not available for this section]";
+      if (
+        patch?.replacement_text &&
+        fix.sub_label &&
+        labelsMatch(fix.sub_label, patch.sub_entry_label ?? "")
+      ) {
+        return patch.replacement_text;
+      }
+
+      const rewriteBlock =
+        analysisResult?.rewrites?.rewrites?.[key]?.balanced;
+      if (typeof rewriteBlock === "string" && rewriteBlock.trim()) {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn(
+            "[getAfterText] Fell back to section-level rewrite for fix:",
+            fix.section, fix.sub_label ?? "(no sub_label)"
+          );
+        }
+        return rewriteBlock.trim();
+      }
+
+      return "";
     },
-    [analysisResult, patchBySection]
+    [analysisResult, getPatchForFix]
   );
 
   const getPatchDiff = useCallback(
     (fix: PriorityFix): { original: string; replacement: string } | null => {
-      const patch = patchBySection[getSectionKey(fix)];
+      const patch = getPatchForFix(fix);
       if (patch?.original_text && patch.replacement_text) {
         return { original: patch.original_text, replacement: patch.replacement_text };
       }
@@ -279,12 +536,53 @@ export default function ActionableFixes({
       }
       return null;
     },
-    [patchBySection]
+    [getPatchForFix]
   );
 
   const scoreDelta = useCallback(
     (fix: PriorityFix) => scoreDeltaByType[fix.gap_type ?? "structural"],
     []
+  );
+
+  const recordPatchApplied = useCallback(
+    async (atsScore?: number) => {
+      const rescored = await rescore();
+      const nextPatchCount = patchCountRef.current + 1;
+      patchCountRef.current = nextPatchCount;
+      addSnapshot?.({
+        timestamp: new Date().toISOString(),
+        ats_score:
+          rescored?.ats_score ??
+          atsScore ??
+          analysisResult?.ats.score ??
+          0,
+        jd_match: null,
+        percentile: null,
+        label: `After Fix #${nextPatchCount}`,
+        patches_applied: nextPatchCount,
+        coaching_answers: coachingCountRef.current,
+        session_id: coachingSessionId,
+      });
+    },
+    [addSnapshot, analysisResult?.ats.score, coachingSessionId, rescore]
+  );
+
+  const applyLocally = useCallback(
+    (
+      fix: PriorityFix,
+      fixKey: string,
+      sectionKey: string,
+      style: RewriteStyle
+    ): boolean => {
+      const sectionText = getAfterText(fix);
+      if (!sectionText.trim()) {
+        return false;
+      }
+      applySectionFix(sectionKey, style, sectionText);
+      setApplyState((s) => ({ ...s, [fixKey]: "applied" }));
+      return true;
+    },
+    [applySectionFix, getAfterText]
   );
 
   const onApply = useCallback(
@@ -293,6 +591,11 @@ export default function ActionableFixes({
       const sectionKey = getSectionKey(fix);
       const style: RewriteStyle = "balanced";
       const sectionText = getAfterText(fix);
+      const patch = getPatchForFix(fix);
+      const canUseApi =
+        Boolean(jobId) &&
+        Boolean(patch?.patch_id) &&
+        Boolean(patch?.original_text?.trim());
 
       if (IS_MOCK) {
         applySectionFix(sectionKey, style, sectionText);
@@ -300,69 +603,55 @@ export default function ActionableFixes({
         return;
       }
 
-      if (jobId) {
-        const patch = patchBySection[sectionKey];
-        if (patch?.patch_id) {
-          try {
-            const result = await applyPatches(
-              jobId,
-              [patch.patch_id],
-              patch.risk === "needs_confirmation"
-            );
-            const outcome = result.results?.find((r) => r.patch_id === patch.patch_id);
-            if (!outcome?.applied || !outcome.found_in_doc) {
-              setApplyState((s) => ({ ...s, [fixKey]: "failed" }));
-              return;
-            }
+      if (canUseApi && jobId && patch?.patch_id) {
+        try {
+          const result = await applyPatches(
+            jobId,
+            [patch.patch_id],
+            patch.risk === "needs_confirmation"
+          );
+          const outcome = result.results?.find((r) => r.patch_id === patch.patch_id);
+          if (outcome?.applied && outcome.found_in_doc) {
             applySectionFix(sectionKey, style, sectionText);
             if (result.score) {
               mergePartialResult({ ats: result.score });
             }
             setApplyState((s) => ({ ...s, [fixKey]: "applied" }));
-            const rescored = await rescore();
-            const nextPatchCount = patchCountRef.current + 1;
-            patchCountRef.current = nextPatchCount;
-            addSnapshot?.({
-              timestamp: new Date().toISOString(),
-              ats_score:
-                rescored?.ats_score ??
-                result.score?.score ??
-                analysisResult?.ats.score ??
-                0,
-              jd_match: null,
-              percentile: null,
-              label: `After Fix #${nextPatchCount}`,
-              patches_applied: nextPatchCount,
-              coaching_answers: coachingCountRef.current,
-              session_id: jobId ?? analysisResult?.job_id ?? "",
-            });
-            return;
-          } catch (error) {
-            console.error("Failed to apply patch:", error);
-            setApplyState((s) => ({ ...s, [fixKey]: "failed" }));
+            await recordPatchApplied(result.score?.score);
             return;
           }
+          if (applyLocally(fix, fixKey, sectionKey, style)) {
+            await recordPatchApplied(result.score?.score);
+            return;
+          }
+          setApplyState((s) => ({ ...s, [fixKey]: "failed" }));
+          return;
+        } catch (error) {
+          console.error("Failed to apply patch:", error);
+          if (applyLocally(fix, fixKey, sectionKey, style)) {
+            await recordPatchApplied();
+            return;
+          }
+          setApplyState((s) => ({ ...s, [fixKey]: "failed" }));
+          return;
         }
       }
 
-      if ((fix.gap_type ?? "structural") === "structural") {
-        setApplyState((s) => ({ ...s, [fixKey]: "failed" }));
+      if (applyLocally(fix, fixKey, sectionKey, style)) {
+        await recordPatchApplied();
         return;
       }
 
-      applySectionFix(sectionKey, style, sectionText);
-      setApplyState((s) => ({ ...s, [fixKey]: "applied" }));
+      setApplyState((s) => ({ ...s, [fixKey]: "failed" }));
     },
     [
-      addSnapshot,
-      analysisResult?.ats.score,
-      analysisResult?.job_id,
+      applyLocally,
       applySectionFix,
       getAfterText,
+      getPatchForFix,
       jobId,
       mergePartialResult,
-      patchBySection,
-      rescore,
+      recordPatchApplied,
     ]
   );
 
@@ -370,7 +659,7 @@ export default function ActionableFixes({
     async (fix: PriorityFix, fixKey: string) => {
       const sectionKey = getSectionKey(fix);
       if (jobId) {
-        const patch = patchBySection[sectionKey];
+        const patch = getPatchForFix(fix);
         if (patch?.patch_id) {
           try {
             const rollbackResult = await rollbackPatch(jobId, patch.patch_id);
@@ -383,7 +672,7 @@ export default function ActionableFixes({
       setApplyState((s) => ({ ...s, [fixKey]: "idle" }));
       autoAppliedRef.current.delete(fixKey);
     },
-    [jobId, mergePartialResult, patchBySection]
+    [getPatchForFix, jobId, mergePartialResult]
   );
 
   const onCoachingSubmit = useCallback(
@@ -422,6 +711,10 @@ export default function ActionableFixes({
     onCoachingSubmit,
   };
 
+  const handleMemoryCreated = useCallback(() => {
+    setCareerMemoryVersion((v) => v + 1);
+  }, []);
+
   const handleCoachingDone = useCallback(async (entry: CareerMemoryEntry) => {
     addCareerEntry?.(entry);
     setCareerMemoryVersion((v) => v + 1);
@@ -453,6 +746,7 @@ export default function ActionableFixes({
     }
     const nextCoachingCount = coachingCountRef.current + 1;
     coachingCountRef.current = nextCoachingCount;
+    setCoachingAppliedCount(nextCoachingCount);
     addSnapshot?.({
       timestamp: new Date().toISOString(),
       ats_score: rescored?.ats_score ?? analysisResult?.ats.score ?? 0,
@@ -461,15 +755,14 @@ export default function ActionableFixes({
       label: "After Coaching",
       patches_applied: patchCountRef.current,
       coaching_answers: nextCoachingCount,
-      session_id: jobId ?? analysisResult?.job_id ?? "",
+      session_id: coachingSessionId,
     });
   }, [
     addCareerEntry,
     addSnapshot,
     analysisResult?.ats,
     analysisResult?.ats.score,
-    analysisResult?.job_id,
-    jobId,
+    coachingSessionId,
     mergePartialResult,
     rescore,
   ]);
@@ -502,7 +795,10 @@ export default function ActionableFixes({
   const hasJd = hasJobDescription(analysisResult.gap);
   const originalJd = hasJd ? analysisResult.gap?.jd_match_score_before ?? null : null;
   const afterJd = hasJd ? analysisResult.gap?.jd_match_score_after ?? null : null;
-  const appliedCount = Object.values(applyState).filter((s) => s === "applied").length;
+  const patchAppliedCount = Object.values(applyState).filter(
+    (s) => s === "applied"
+  ).length;
+  const appliedCount = patchAppliedCount + coachingAppliedCount;
 
   return (
     <div style={{ minHeight: "100vh", background: "#ffffff" }}>
@@ -619,26 +915,72 @@ export default function ActionableFixes({
               displayFix,
               fixKey,
               handlers,
-              jobId ?? analysisResult.job_id,
-              handleCoachingDone
+              coachingSessionId,
+              handleCoachingDone,
+              handleMemoryCreated
             );
           })
         )}
 
-        <CareerRecordPanel
-          sessionId={jobId ?? analysisResult.job_id}
-          version={careerMemoryVersion}
-        />
+        {(() => {
+          const atsIssues = analysisResult.ats.ats_issues ?? [];
+          const existingReasons = new Set(fixes.map((f) => f.gap_reason.toLowerCase().slice(0, 50)));
+          const unaddressed = atsIssues.filter(
+            (issue) => !existingReasons.has(issue.toLowerCase().slice(0, 50))
+          );
+          if (!unaddressed.length) return null;
+          return (
+            <div
+              style={{
+                border: "1.5px solid #e0e7ff",
+                borderRadius: "12px",
+                padding: "16px 20px",
+                marginBottom: "20px",
+                background: "#f5f3ff",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "13px",
+                  fontWeight: 700,
+                  color: "#4f46e5",
+                  marginBottom: "10px",
+                  letterSpacing: "0.02em",
+                  textTransform: "uppercase",
+                }}
+              >
+                ATS Insights
+              </div>
+              {unaddressed.map((issue) => (
+                <div
+                  key={issue}
+                  style={{
+                    fontSize: "13px",
+                    color: "#374151",
+                    lineHeight: 1.55,
+                    paddingLeft: "12px",
+                    borderLeft: "3px solid #a5b4fc",
+                    marginBottom: "8px",
+                  }}
+                >
+                  {issue}
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         <FixValidation
           selectedMode={"safe"}
           originalAts={originalAts}
           liveAts={liveAts}
           appliedCount={appliedCount}
+          patchAppliedCount={patchAppliedCount}
+          coachingAppliedCount={coachingAppliedCount}
           originalJd={originalJd}
           afterJd={afterJd}
           hasJd={hasJd}
-          jobId={jobId ?? analysisResult.job_id}
+          jobId={coachingSessionId}
           onSwitchMode={() => {}}
         />
 

@@ -175,8 +175,6 @@ export const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
     item !== null &&
     "section" in item &&
     "gap_reason" in item &&
-    "rewrite_instruction" in item &&
-    "missing_keywords" in item &&
     "needs_change" in item;
 
   const fixesFromSectionGaps: PriorityFix[] = (
@@ -193,6 +191,15 @@ export const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
         ? (g.missing_keywords as string[])
         : [],
       needs_change: true,
+      gap_type: g.gap_type as PriorityFix["gap_type"],
+      requires_user_input: Boolean(g.requires_user_input),
+      coaching_question:
+        typeof g.coaching_question === "string" ? g.coaching_question : null,
+      coaching_hint: Array.isArray(g.coaching_hint)
+        ? (g.coaching_hint as string[])
+        : [],
+      auto_apply: Boolean(g.auto_apply),
+      sub_label: typeof g.sub_label === "string" ? g.sub_label : null,
     }));
 
   const fixesFromDetailedEval: PriorityFix[] = (
@@ -234,10 +241,10 @@ export const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
   });
 
   let synthesizedFixes: PriorityFix[] = [];
-  if (fixesFromSectionGaps.length > 0) {
-    synthesizedFixes = fixesFromSectionGaps;
-  } else if (priorityFixObjects.length > 0) {
+  if (priorityFixObjects.length > 0) {
     synthesizedFixes = priorityFixObjects;
+  } else if (fixesFromSectionGaps.length > 0) {
+    synthesizedFixes = fixesFromSectionGaps;
   } else if (fixesFromDetailedEval.length > 0) {
     synthesizedFixes = fixesFromDetailedEval;
   } else if (fixesFromLegacyGaps.length > 0) {
@@ -260,8 +267,20 @@ export const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
     }
   }
 
+  const jobId =
+    typeof raw.job_id === "string"
+      ? raw.job_id
+      : typeof raw.session_id === "string"
+        ? raw.session_id
+        : "";
+
   const normalized = {
     ...(raw as unknown as AnalysisResult),
+    job_id: jobId,
+    session_id:
+      typeof raw.session_id === "string"
+        ? raw.session_id
+        : jobId || undefined,
     gap: rawGap
       ? {
           ...rawGap,

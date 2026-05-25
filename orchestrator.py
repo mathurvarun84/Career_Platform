@@ -247,9 +247,14 @@ class Orchestrator:
         resume_text: str,
         *,
         structured_priority_fixes: bool = True,
+        overview_strings: list[str] | None = None,
     ) -> dict:
         """
-        Classify every section gap and optionally rebuild priority_fixes for the UI.
+        Classify every section gap and rebuild priority_fixes for the UI.
+
+        overview_strings: strings already surfaced in the Overview tab (A1 weaknesses +
+        improvement_areas). Any fix whose gap_reason overlaps these is filtered out so
+        both tabs show distinct content.
         """
         section_gaps = gap_result.get("section_gaps") or gap_result.get("gaps") or []
         classified = classify_section_gaps(section_gaps, resume_text)
@@ -258,6 +263,15 @@ class Orchestrator:
         if structured_priority_fixes:
             fixes = priority_fixes_from_gaps(classified)
             if fixes:
+                if overview_strings:
+                    overview_lower = [s.lower() for s in overview_strings]
+                    fixes = [
+                        f for f in fixes
+                        if not any(
+                            f.get("gap_reason", "").lower()[:60] in ov
+                            for ov in overview_lower
+                        )
+                    ]
                 gap_result["priority_fixes"] = fixes
         return gap_result
 
@@ -484,14 +498,11 @@ class Orchestrator:
                 "sub_changes": sub_changes,
             })
 
-        # Top-level result — matches GapAnalyzerOutput shape
-        priority_fixes = improvement_areas[:3]
-
         return {
             "section_gaps": section_gaps,
             "gaps": section_gaps,           # rewriter reads either key
             "missing_keywords": [],
-            "priority_fixes": priority_fixes,
+            "priority_fixes": [],           # populated by priority_fixes_from_gaps() post-classification
             "sections_changed": [
                 g["section"] for g in section_gaps if g.get("needs_change")
             ],
@@ -752,10 +763,15 @@ class Orchestrator:
             if sse_step_cb:
                 sse_step_cb(1, "Resume analysed")
         if isinstance(gap_result, dict):
+            overview_strings = (
+                list(resume_und.get("improvement_areas") or [])
+                + list(resume_und.get("weaknesses") or [])
+            )
             gap_result = self._apply_gap_classification(
                 gap_result,
                 resume_text,
-                structured_priority_fixes=has_jd,
+                structured_priority_fixes=True,
+                overview_strings=overview_strings,
             )
         # Build actionable changes from section gaps
         try:
@@ -816,17 +832,33 @@ class Orchestrator:
                         "mode": "evaluate",
                     },
                 )
+            cached_sim = None
+            if cached_stage_data and isinstance(cached_stage_data, dict):
+                raw_sim = cached_stage_data.get("recruiter_sim")
+                if (
+                    isinstance(raw_sim, dict)
+                    and isinstance(raw_sim.get("personas"), list)
+                    and len(raw_sim["personas"]) > 0
+                ):
+                    cached_sim = raw_sim
+
             if run_sim:
-                fut_sim = executor.submit(
-                    self.recruiter_sim.run,
-                    {
-                        "resume_text": resume_text,
-                        "resume_sections": resume_sections,
-                        "jd_intelligence": jd_intel or {},
-                        "ats_result": ats_result,
-                        "role_family": resume_und.get("role_family", "ENGINEERING"),
-                    },
-                )
+                if cached_sim:
+                    sim_result = cached_sim
+                    logging.info(
+                        "Recruiter sim cache hit — skipping Agent 5 LLM call"
+                    )
+                else:
+                    fut_sim = executor.submit(
+                        self.recruiter_sim.run,
+                        {
+                            "resume_text": resume_text,
+                            "resume_sections": resume_sections,
+                            "jd_intelligence": jd_intel or {},
+                            "ats_result": ats_result,
+                            "role_family": resume_und.get("role_family", "ENGINEERING"),
+                        },
+                    )
 
             if fut_rewrite:
                 try:
@@ -927,6 +959,14 @@ class Orchestrator:
                         save_agent_output(uid, run_id, "recruiter_sim", sim_result)
                     except Exception as e:
                         logging.warning("Failed to save recruiter_sim to session store: %s", e)
+                    if stage_cache_cb and sim_result:
+                        try:
+                            stage_cache_cb({"recruiter_sim": sim_result})
+                        except Exception as exc:
+                            logging.warning(
+                                "Failed to persist recruiter_sim to stage cache: %s",
+                                exc,
+                            )
                 except Exception as exc:
                     logging.warning("Recruiter Sim (Agent 5) failed: %s. Continuing without simulation.", exc)
         if partial_result_cb:
@@ -983,6 +1023,12 @@ class Orchestrator:
                 for p in patches_raw:
                     try:
                         patch = ResumePatch(**p)
+                        if not (patch.original_text or "").strip():
+                            logging.warning(
+                                "Invalid patch skipped (empty original_text): %s",
+                                patch.patch_id,
+                            )
+                            continue
                         classify_patch(patch)
                         classified_patches.append(patch)
                     except Exception as e:
@@ -994,6 +1040,7 @@ class Orchestrator:
                 classified_patches = []
 
         final_result = {
+            "session_id": run_id,
             "ats": ats_result,
             "resume": resume_und,
             "gap": gap_result,

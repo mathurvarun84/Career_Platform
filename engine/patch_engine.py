@@ -229,6 +229,8 @@ class PatchEngine:
             }
         repl = patch.replacement_text or ""
         found_in_doc = (repl in self.current_text) if repl else True
+        if not found_in_doc and repl:
+            found_in_doc = _find_normalised_span(repl, self.current_text) is not None
         if not found_in_doc:
             self.rollback(patch.patch_id)
             patch.status = "rejected"

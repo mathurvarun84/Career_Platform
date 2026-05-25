@@ -1,8 +1,11 @@
 import axios, { AxiosError } from "axios";
 
+import { IS_MOCK } from "../hooks/useMockData";
+import { mockCareerRecord } from "../mocks/mockData";
 import type {
   AnalysisResult,
   ATSResult,
+  CareerMemoryEntry,
   CareerMemoryResponse,
   DownloadVerification,
   GapCloseRequest,
@@ -203,6 +206,7 @@ export interface GenerateBulletRequest {
   raw_answer: string;
   coaching_question: string;
   skill_category: string;
+  gap_reason?: string;
 }
 
 export interface GenerateBulletResponse {
@@ -212,9 +216,46 @@ export interface GenerateBulletResponse {
   error?: string | null;
 }
 
+const mockCareerMemoryBySession = new Map<string, CareerMemoryEntry[]>();
+
+const normalizeMockSkill = (section: string): CareerMemoryEntry["skill_category"] => {
+  const lower = section.toLowerCase();
+  if (lower.includes("leader")) return "leadership";
+  if (lower.includes("deliver")) return "delivery";
+  if (lower.includes("commun")) return "communication";
+  return "technical";
+};
+
 export const generateCoachingBullet = async (
   req: GenerateBulletRequest
 ): Promise<GenerateBulletResponse> => {
+  if (IS_MOCK) {
+    let bullet = `• ${req.raw_answer.trim().replace(/\.$/, "")} — delivering measurable team and delivery outcomes.`;
+    if (bullet.length > 200) {
+      bullet = `${bullet.slice(0, 197).trimEnd()}…`;
+    }
+    const entry: CareerMemoryEntry = {
+      id: crypto.randomUUID(),
+      session_id: req.session_id,
+      gap_id: req.gap_id,
+      section: req.section,
+      sub_label: req.sub_label,
+      raw_answer: req.raw_answer,
+      generated_bullet: bullet,
+      skill_category: normalizeMockSkill(req.skill_category || req.section),
+      company: null,
+      timestamp: new Date().toISOString(),
+      user_approved: false,
+    };
+    const existing = mockCareerMemoryBySession.get(req.session_id) ?? [];
+    mockCareerMemoryBySession.set(req.session_id, [entry, ...existing]);
+    return {
+      generated_bullet: bullet,
+      career_memory_id: entry.id,
+      grounding_check: true,
+    };
+  }
+
   const response = await axiosInstance.post<GenerateBulletResponse>(
     "/api/coaching/generate-bullet",
     req
@@ -254,6 +295,15 @@ export interface AddBulletResponse {
 export const addBulletToResume = async (
   req: AddBulletRequest
 ): Promise<AddBulletResponse> => {
+  if (IS_MOCK) {
+    const entries = mockCareerMemoryBySession.get(req.session_id) ?? [];
+    const updated = entries.map((entry) =>
+      entry.id === req.career_memory_id ? { ...entry, user_approved: true } : entry
+    );
+    mockCareerMemoryBySession.set(req.session_id, updated);
+    return { inserted: true, found_in_doc: true };
+  }
+
   const response = await axiosInstance.post<AddBulletResponse>(
     "/api/coaching/add-bullet",
     req
@@ -264,6 +314,15 @@ export const addBulletToResume = async (
 export const getCareerMemory = async (
   sessionId: string
 ): Promise<CareerMemoryResponse> => {
+  if (IS_MOCK) {
+    const sessionEntries = mockCareerMemoryBySession.get(sessionId) ?? [];
+    const seeded =
+      sessionEntries.length > 0
+        ? sessionEntries
+        : mockCareerRecord.filter((entry) => entry.session_id === sessionId);
+    return { entries: seeded, total: seeded.length };
+  }
+
   const response = await axiosInstance.get<CareerMemoryResponse>(
     "/api/coaching/career-memory",
     { params: { session_id: sessionId } }

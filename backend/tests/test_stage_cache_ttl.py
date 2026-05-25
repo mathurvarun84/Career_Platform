@@ -49,6 +49,21 @@ def test_legacy_unwrapped_entry_is_miss(sample_stage_data) -> None:
         assert main_module._get_stage_cache_entry(cache, "k") is None
 
 
+def test_merge_stage_cache_preserves_existing_keys(sample_stage_data) -> None:
+    cache: dict = {}
+    with patch.object(main_module, "_stage_cache_ttl_seconds", return_value=3600):
+        main_module._set_stage_cache_entry(cache, "k", sample_stage_data)
+        main_module._merge_stage_cache_entry(
+            cache,
+            "k",
+            {"recruiter_sim": {"personas": [{"persona": "Test"}]}},
+        )
+        got = main_module._get_stage_cache_entry(cache, "k")
+    assert got is not None
+    assert got["resume_und"] == sample_stage_data["resume_und"]
+    assert got["recruiter_sim"]["personas"][0]["persona"] == "Test"
+
+
 def test_prune_drops_expired_and_legacy(sample_stage_data) -> None:
     now = time.time()
     cache = {

@@ -12,6 +12,8 @@ interface FixValidationProps {
   /** Live ATS after applied fixes (deterministic in-browser rescore). */
   liveAts: number;
   appliedCount: number;
+  patchAppliedCount?: number;
+  coachingAppliedCount?: number;
   originalJd: number | null;
   afterJd: number | null;
   hasJd: boolean;
@@ -68,6 +70,8 @@ export default function FixValidation({
   originalAts,
   liveAts,
   appliedCount,
+  patchAppliedCount = 0,
+  coachingAppliedCount = 0,
   originalJd,
   afterJd,
   hasJd,
@@ -76,6 +80,14 @@ export default function FixValidation({
 }: FixValidationProps) {
   const [verificationResult, setVerificationResult] = useState<DownloadVerification | null>(null);
   const noPending = appliedCount === 0;
+  const coachingOnly =
+    coachingAppliedCount > 0 && patchAppliedCount === 0;
+  const appliedSummary =
+    coachingOnly
+      ? `${coachingAppliedCount} coaching bullet${coachingAppliedCount === 1 ? "" : "s"} added`
+      : coachingAppliedCount > 0 && patchAppliedCount > 0
+        ? `${appliedCount} fixes (${patchAppliedCount} patch${patchAppliedCount === 1 ? "" : "es"}, ${coachingAppliedCount} coaching)`
+        : `${appliedCount} fix${appliedCount === 1 ? "" : "es"}`;
   const atsGain = liveAts - originalAts;
   const atsImproved = !noPending && liveAts > originalAts;
   const atsDeclined = !noPending && liveAts < originalAts;
@@ -180,7 +192,7 @@ export default function FixValidation({
           }}
         >
           <div style={{ fontSize: "12px", fontWeight: 700, color: "#6b7280", marginBottom: "8px" }}>
-            {noPending ? "After (apply fixes)" : `After ${appliedCount} fix${appliedCount === 1 ? "" : "es"}`}
+            {noPending ? "After (apply fixes)" : `After ${appliedSummary}`}
           </div>
           {noPending ? (
             <div style={{ fontSize: "12px", color: "#9ca3af", fontStyle: "italic" }}>
@@ -241,9 +253,9 @@ export default function FixValidation({
           }
           detail={
             noPending
-              ? "Apply fixes above — your ATS score updates on the Overview tab."
+              ? "Apply fixes above or add coaching bullets — your ATS score updates on the Overview tab."
               : atsImproved
-                ? `ATS improved by +${atsGain} after ${appliedCount} applied fix${appliedCount === 1 ? "" : "es"} (live rescore).`
+                ? `ATS improved by +${atsGain} after ${appliedSummary} (live rescore).`
                 : atsDeclined
                   ? "ATS differs — keyword improvements may outweigh format score changes. See Overview for breakdown."
                   : `ATS is ${liveAts} (was ${originalAts}). Content may still help JD match — check Overview.`
@@ -283,8 +295,8 @@ export default function FixValidation({
             No fixes applied yet
           </div>
           <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "6px" }}>
-            Click <strong>Apply This Fix</strong> on each improvement. ATS rescoring runs instantly and
-            updates the Overview tab.
+            Click <strong>Apply This Fix</strong> on patches, or <strong>Add to Resume ✓</strong> on
+            coaching cards. ATS rescoring runs instantly and updates the Overview tab.
           </div>
         </div>
       ) : (
@@ -318,9 +330,13 @@ export default function FixValidation({
           ) : null}
           <div>
             <div style={{ fontSize: "14px", fontWeight: 700, color: "#15803d" }}>
-              {appliedCount} fix{appliedCount === 1 ? "" : "es"} applied ✓
+              {appliedSummary} ✓
             </div>
             <div style={{ fontSize: "13px", color: "#166534", marginTop: "4px" }}>
+              {coachingOnly
+                ? "Your coaching bullet is in the patched resume text — download to review in Word."
+                : null}
+              {coachingOnly ? <br /> : null}
               Live ATS: {originalAts} → {liveAts}
               {atsGain > 0 ? ` (+${atsGain})` : ""} — see Overview for full breakdown
             </div>

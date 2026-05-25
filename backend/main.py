@@ -29,6 +29,7 @@ from validator.rewriter_validator import assert_structural_completeness
 from orchestrator import Orchestrator
 from parser import parse_resume
 from backend.schemas.jd_fetch_schema import FetchJDRequest, FetchJDResponse
+from backend.api.routes.coaching import configure_coaching_routes, router as coaching_router
 
 
 logger = logging.getLogger(__name__)
@@ -80,6 +81,10 @@ def _require_job(job_id: str) -> Dict[str, Any]:
     if not _try_restore_job(job_id):
         raise HTTPException(status_code=404, detail="Job not found")
     return job_store[job_id]
+
+
+configure_coaching_routes(_require_job, _persist_job)
+app.include_router(coaching_router)
 
 
 def _is_stage_payload(entry: Dict[str, Any]) -> bool:
@@ -157,6 +162,17 @@ def _set_stage_cache_entry(
         "cached_at": time.time(),
         "data": stage_data,
     }
+
+
+def _merge_stage_cache_entry(
+    stage_cache: Dict[str, Dict[str, Any]],
+    cache_key: str,
+    updates: Dict[str, Any],
+) -> None:
+    """Merge keys into an existing stage cache entry (e.g. add recruiter_sim after A5)."""
+    existing = _get_stage_cache_entry(stage_cache, cache_key) or {}
+    merged = {**existing, **updates}
+    _set_stage_cache_entry(stage_cache, cache_key, merged)
 
 
 def _load_stage_cache() -> Dict[str, Dict[str, Any]]:
@@ -238,17 +254,6 @@ class RollbackRequest(BaseModel):
     """Rollback patches request."""
     job_id: str
     patch_id: str = "all"
-
-
-class GenerateBulletRequest(BaseModel):
-    """Coaching bullet generation for evidence gaps (no LLM — template only)."""
-    session_id: str
-    gap_id: str
-    section: str
-    sub_label: str | None = None
-    raw_answer: str
-    coaching_question: str = ""
-    skill_category: str = ""
 
 
 def _json_event(payload: dict) -> str:
@@ -347,7 +352,7 @@ def _analyze_event_stream(
                 logger.info("Stage cache miss: %s", cache_key[:32])
 
             def stage_cache_cb(stage_data: dict) -> None:
-                _set_stage_cache_entry(stage_cache, cache_key, stage_data)
+                _merge_stage_cache_entry(stage_cache, cache_key, stage_data)
                 _persist_stage_cache(stage_cache)
 
             def sse_step_cb(step: int, label: str) -> None:
@@ -383,6 +388,8 @@ def _analyze_event_stream(
             )
             merged = dict(result)
             merged["job_id"] = job_id
+            # Coaching APIs key off job_store; expose same id as session_id for the UI.
+            merged["session_id"] = job_id
             job_store[job_id]["result"] = merged
             job_store[job_id]["status"] = "complete"
 
@@ -706,118 +713,6 @@ def rescore_session(session_id: str) -> dict:
         "delta_from_original": score.get("score", original_score) - original_score,
         "breakdown": score.get("breakdown", original.get("breakdown", {})),
         "ats_issues": score.get("ats_issues", original.get("ats_issues", [])),
-    }
-
-
-@app.post("/api/coaching/generate-bullet")
-def generate_coaching_bullet(req: GenerateBulletRequest) -> dict:
-    """
-    Turn a coaching answer into a resume bullet using Claude.
-    """
-    from backend.agents.coaching_agent import CoachingAgent
-    import uuid as uuid_module
-
-    if len((req.raw_answer or "").strip()) < 15:
-        raise HTTPException(status_code=400, detail="raw_answer too short (min 15 chars)")
-
-    agent = CoachingAgent()
-    result = agent.generate_bullet(
-        section=req.section,
-        gap_reason=req.coaching_question or "strengthen this skill",
-        raw_answer=req.raw_answer,
-        coaching_question=req.coaching_question or "strengthen this skill",
-        skill_category=req.skill_category or req.section,
-    )
-
-    # Generate unique memory ID for this coaching answer
-    career_memory_id = str(uuid_module.uuid4())
-
-    # Store in session for later retrieval (Day 6: move to persistent storage)
-    job = _require_job(req.session_id)
-    if "coaching_answers" not in job:
-        job["coaching_answers"] = {}
-    job["coaching_answers"][career_memory_id] = {
-        "gap_id": req.gap_id,
-        "section": req.section,
-        "sub_label": req.sub_label,
-        "raw_answer": req.raw_answer,
-        "generated_bullet": result["generated_bullet"],
-        "skill_category": req.skill_category or req.section,
-        "user_approved": False,
-        "timestamp": time.time(),
-    }
-    _persist_job(req.session_id)
-
-    return {
-        "generated_bullet": result["generated_bullet"],
-        "career_memory_id": career_memory_id,
-        "grounding_check": result.get("grounding_check", True),
-        "error": result.get("error"),
-    }
-
-
-@app.post("/api/coaching/add-bullet")
-def add_bullet_to_resume(req: dict) -> dict:
-    """Add coaching-generated bullet to resume document."""
-    session_id = req.get("session_id")
-    bullet_text = req.get("bullet_text")
-    section = req.get("section")
-    placement = req.get("placement", "start")
-    memory_id = req.get("career_memory_id")
-
-    if not all([session_id, bullet_text, section]):
-        raise HTTPException(status_code=400, detail="Missing required fields")
-
-    job = _require_job(session_id)
-    current_text = job.get("resume_text_patched") or job.get("resume_text", "")
-
-    from backend.engine.patch_engine import PatchEngine as CoachingPatchEngine
-
-    engine = CoachingPatchEngine(current_text)
-    inserted = engine.add_bullet(section, bullet_text, placement)
-    updated_text = engine.current_text if inserted else current_text
-    found_in_doc = bullet_text in updated_text or bullet_text.strip("• ").strip() in updated_text
-
-    if inserted:
-        job["resume_text_patched"] = updated_text
-        if memory_id and memory_id in job.get("coaching_answers", {}):
-            job["coaching_answers"][memory_id]["user_approved"] = True
-        _persist_job(session_id)
-
-    return {
-        "inserted": inserted,
-        "found_in_doc": inserted and found_in_doc,
-    }
-
-
-@app.get("/api/coaching/career-memory")
-def get_career_memory(session_id: str) -> dict:
-    """Retrieve user's coaching-generated career memory entries."""
-    job = _require_job(session_id)
-
-    answers = job.get("coaching_answers", {})
-    entries = []
-
-    for memory_id, data in answers.items():
-        entries.append({
-            "id": memory_id,
-            "session_id": session_id,
-            "gap_id": data.get("gap_id", ""),
-            "section": data.get("section", ""),
-            "sub_label": data.get("sub_label"),
-            "raw_answer": data.get("raw_answer", ""),
-            "generated_bullet": data.get("generated_bullet", ""),
-            "skill_category": data.get("skill_category", "technical"),
-            "company": data.get("company"),
-            "user_approved": data.get("user_approved", False),
-            "timestamp": time.strftime(
-                "%Y-%m-%dT%H:%M:%SZ", time.gmtime(data.get("timestamp", 0))
-            ),
-        })
-
-    return {
-        "entries": sorted(entries, key=lambda e: e["timestamp"], reverse=True),
-        "total": len(entries),
     }
 
 

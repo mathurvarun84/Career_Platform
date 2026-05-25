@@ -172,12 +172,66 @@ _EVIDENCE_SIGNALS = {
     "people management", "engineering management", "direct report",
     "architecture evaluation", "technical leadership", "technical direction",
     "cross-functional", "operational risk", "performance review",
+    # Collaboration, impact, and ownership gaps that need user-provided context
+    "collaboration", "cross-team", "collaborated", "architectural decision",
+    "system design decision", "quantified", "impact metric", "on-call", "oncall",
+    "incident response", "ownership", "led the", "drove", "spearheaded",
 }
 
 _SURFACE_SIGNALS = {
     "missing keyword", "typo", "spelling", "abbreviation", "acronym",
     "add keyword", "include term", "mention", "lacks the word", "not present",
+    "readability", "shorter", "clearer", "concise", "scannab", "sentence",
+    "word-spacing", "runon", "dense", "filler",
 }
+
+_NO_CHANGE_PHRASES = (
+    "no change needed",
+    "no changes needed",
+    "no change required",
+    "unchanged",
+    "looks good",
+    "well-optimised",
+    "well optimized",
+)
+
+
+def _is_no_change_gap(gap: dict) -> bool:
+    """True when the analyzer marked this section as OK — must not appear on Fixes tab."""
+    reason = (gap.get("gap_reason") or "").lower().strip()
+    if any(phrase in reason for phrase in _NO_CHANGE_PHRASES):
+        return True
+    instruction = (gap.get("rewrite_instruction") or "").strip()
+    return not gap.get("needs_change", True) and not instruction
+
+
+def _has_surface_signal(gap: dict) -> bool:
+    reason = (gap.get("gap_reason") or "").lower()
+    instruction = (gap.get("rewrite_instruction") or "").lower()
+    keywords = [k.lower() for k in (gap.get("missing_keywords") or [])]
+    combined = reason + " " + instruction + " " + " ".join(keywords)
+    return any(signal in combined for signal in _SURFACE_SIGNALS)
+
+
+def _is_actionable_gap(gap: dict) -> bool:
+    """
+    Gaps that should surface as fix cards on the Fixes tab.
+
+    Excludes 'no change needed' placeholders. Surface quick-wins require an
+    explicit surface signal plus a non-empty rewrite instruction.
+    """
+    if _is_no_change_gap(gap):
+        return False
+    if gap.get("needs_change"):
+        return True
+    if (
+        gap.get("gap_type") == GapType.SURFACE.value
+        and gap.get("auto_apply")
+        and _has_surface_signal(gap)
+        and (gap.get("rewrite_instruction") or "").strip()
+    ):
+        return True
+    return False
 
 
 def _build_coaching_question(gap: dict) -> tuple[str, list[str]]:
@@ -299,11 +353,17 @@ def classify_gap(gap: dict, resume_text: str = "") -> dict:
             "auto_apply": False,
         }
 
-    missing_kw = gap.get("missing_keywords") or []
-    if (
-        any(signal in combined for signal in _SURFACE_SIGNALS)
-        or (len(missing_kw) <= 2 and not gap.get("needs_change", True))
-    ):
+    if _is_no_change_gap(gap):
+        return {
+            **gap,
+            "gap_type": GapType.SURFACE.value,
+            "requires_user_input": False,
+            "coaching_question": None,
+            "coaching_hint": [],
+            "auto_apply": False,
+        }
+
+    if _has_surface_signal(gap) and (gap.get("needs_change") or instruction.strip()):
         return {
             **gap,
             "gap_type": GapType.SURFACE.value,
@@ -324,37 +384,83 @@ def classify_gap(gap: dict, resume_text: str = "") -> dict:
 
 
 def classify_section_gaps(gaps: list[dict], resume_text: str = "") -> list[dict]:
-    """Run classify_gap over every section gap."""
-    return [classify_gap(g, resume_text) for g in gaps]
+    """Run classify_gap over every section gap and its sub_changes."""
+    classified = []
+    for gap in gaps:
+        classified_gap = classify_gap(gap, resume_text)
+        sub_changes = gap.get("sub_changes") or []
+        if sub_changes:
+            classified_gap["sub_changes"] = [
+                classify_gap(sub, resume_text) for sub in sub_changes
+            ]
+        classified.append(classified_gap)
+    return classified
+
+
+_GAP_TYPE_ORDER: dict[str, int] = {
+    GapType.EVIDENCE.value: 0,
+    GapType.STRUCTURAL.value: 1,
+    GapType.SURFACE.value: 2,
+}
+
+
+def _include_in_priority_fixes(gap_entry: dict) -> bool:
+    """Include only gaps that need a real user-visible fix."""
+    return _is_actionable_gap(gap_entry)
 
 
 def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
     """
     Build structured priority_fixes for the Fixes tab from classified section gaps.
+
+    Expands sub_changes into individual fix cards so each company/role block in
+    experience gets its own card. Sorts by gap_type: evidence → structural → surface.
     """
     fixes: list[dict] = []
     for gap in section_gaps:
-        if not gap.get("needs_change"):
+        if not _include_in_priority_fixes(gap):
             continue
-        sub_label = gap.get("sub_label")
-        if not sub_label:
-            for sub in gap.get("sub_changes") or []:
-                if sub.get("needs_change"):
-                    sub_label = sub.get("sub_label")
-                    break
-        fixes.append({
-            "section": gap.get("section", ""),
-            "gap_reason": gap.get("gap_reason", ""),
-            "rewrite_instruction": gap.get("rewrite_instruction", ""),
-            "missing_keywords": gap.get("missing_keywords") or [],
-            "needs_change": True,
-            "gap_type": gap.get("gap_type", GapType.STRUCTURAL.value),
-            "requires_user_input": gap.get("requires_user_input", False),
-            "coaching_question": gap.get("coaching_question"),
-            "coaching_hint": gap.get("coaching_hint") or [],
-            "auto_apply": gap.get("auto_apply", False),
-            "sub_label": sub_label,
-        })
+        sub_changes = gap.get("sub_changes") or []
+        if sub_changes:
+            for sub in sub_changes:
+                if not _include_in_priority_fixes(sub):
+                    continue
+                fixes.append({
+                    "section": gap.get("section", ""),
+                    "gap_reason": sub.get("gap_reason") or gap.get("gap_reason", ""),
+                    "rewrite_instruction": (
+                        sub.get("rewrite_instruction") or gap.get("rewrite_instruction", "")
+                    ),
+                    "missing_keywords": (
+                        sub.get("missing_keywords") or gap.get("missing_keywords") or []
+                    ),
+                    "needs_change": True,
+                    "gap_type": sub.get("gap_type") or gap.get("gap_type", GapType.STRUCTURAL.value),
+                    "requires_user_input": sub.get("requires_user_input", False),
+                    "coaching_question": sub.get("coaching_question"),
+                    "coaching_hint": sub.get("coaching_hint") or [],
+                    "auto_apply": sub.get("auto_apply", False),
+                    "sub_label": sub.get("sub_label", ""),
+                    "original_text": sub.get("original_text", ""),
+                    "patch_text": sub.get("rewrite_instruction") or sub.get("patch_text", ""),
+                })
+        else:
+            fixes.append({
+                "section": gap.get("section", ""),
+                "gap_reason": gap.get("gap_reason", ""),
+                "rewrite_instruction": gap.get("rewrite_instruction", ""),
+                "missing_keywords": gap.get("missing_keywords") or [],
+                "needs_change": True,
+                "gap_type": gap.get("gap_type", GapType.STRUCTURAL.value),
+                "requires_user_input": gap.get("requires_user_input", False),
+                "coaching_question": gap.get("coaching_question"),
+                "coaching_hint": gap.get("coaching_hint") or [],
+                "auto_apply": gap.get("auto_apply", False),
+                "sub_label": None,
+                "original_text": gap.get("original_content", ""),
+                "patch_text": gap.get("rewrite_instruction", ""),
+            })
+    fixes.sort(key=lambda f: _GAP_TYPE_ORDER.get(f.get("gap_type", GapType.STRUCTURAL.value), 1))
     return fixes[:12]
 
 

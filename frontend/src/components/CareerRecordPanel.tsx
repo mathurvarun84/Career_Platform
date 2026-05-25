@@ -29,6 +29,14 @@ export default function CareerRecordPanel({
   );
 
   useEffect(() => {
+    if (!sessionId.trim()) {
+      setEntries([]);
+      setTotal(0);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
     setLoading(true);
     setError(null);
 

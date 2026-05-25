@@ -9,6 +9,7 @@ interface EvidenceCoachingCardProps {
   fix: PriorityFix;
   fixKey: string;
   onDone?: (entry: CareerMemoryEntry) => void | Promise<void>;
+  onMemoryCreated?: () => void;
   sessionId?: string;
 }
 
@@ -25,6 +26,11 @@ const pulseKeyframes = `
   }
 `;
 
+const isMeaningfulBullet = (text: string): boolean => {
+  const body = text.replace(/^•\s*/, "").trim().replace(/^[:-\s]+/, "");
+  return body.length >= 10;
+};
+
 const normalizeSkillCategory = (
   section: string
 ): CareerMemoryEntry["skill_category"] => {
@@ -39,6 +45,7 @@ export default function EvidenceCoachingCard({
   fix,
   fixKey,
   onDone,
+  onMemoryCreated,
   sessionId,
 }: EvidenceCoachingCardProps) {
   const [cardState, setCardState] = useState<CardState>("question");
@@ -61,7 +68,11 @@ export default function EvidenceCoachingCard({
   };
 
   const handleGenerate = async () => {
-    if (!canGenerate || !sessionId) return;
+    if (!canGenerate) return;
+    if (!sessionId) {
+      setAddError("Session not ready — please re-run the analysis.");
+      return;
+    }
     setCardState("generating");
     setAddError(null);
 
@@ -74,6 +85,7 @@ export default function EvidenceCoachingCard({
         raw_answer: rawAnswer,
         coaching_question: fix.coaching_question ?? fix.gap_reason,
         skill_category: fix.section,
+        gap_reason: fix.gap_reason,
       });
 
       if (response.error === "generation_timeout") {
@@ -82,9 +94,19 @@ export default function EvidenceCoachingCard({
         return;
       }
 
-      setGeneratedBullet(response.generated_bullet);
+      const bullet = (response.generated_bullet ?? "").trim();
+      if (!isMeaningfulBullet(bullet)) {
+        setAddError(
+          "Could not craft a bullet from your answer — add a bit more detail and try again."
+        );
+        setCardState("question");
+        return;
+      }
+
+      setGeneratedBullet(bullet);
       setGroundingCheck(response.grounding_check ?? true);
       setCareerMemoryId(response.career_memory_id ?? "");
+      onMemoryCreated?.();
       setCardState("review");
     } catch (error) {
       console.error("Coaching generation failed:", error);
@@ -94,7 +116,10 @@ export default function EvidenceCoachingCard({
   };
 
   const handleRegenerate = async () => {
-    if (!sessionId) return;
+    if (!sessionId) {
+      setAddError("Session not ready — please re-run the analysis.");
+      return;
+    }
     setCardState("generating");
     setAddError(null);
 
@@ -107,6 +132,7 @@ export default function EvidenceCoachingCard({
         raw_answer: rawAnswer,
         coaching_question: fix.coaching_question ?? fix.gap_reason,
         skill_category: fix.section,
+        gap_reason: fix.gap_reason,
       });
 
       if (response.error === "generation_timeout") {
@@ -115,9 +141,19 @@ export default function EvidenceCoachingCard({
         return;
       }
 
-      setGeneratedBullet(response.generated_bullet);
+      const bullet = (response.generated_bullet ?? "").trim();
+      if (!isMeaningfulBullet(bullet)) {
+        setAddError(
+          "Could not craft a bullet — add more detail in your answer, then regenerate."
+        );
+        setCardState("review");
+        return;
+      }
+
+      setGeneratedBullet(bullet);
       setGroundingCheck(response.grounding_check ?? true);
       setCareerMemoryId(response.career_memory_id ?? "");
+      onMemoryCreated?.();
       setCardState("review");
     } catch (error) {
       console.error("Coaching regeneration failed:", error);
@@ -132,7 +168,11 @@ export default function EvidenceCoachingCard({
   };
 
   const handleAddToResume = async () => {
-    if (!sessionId || !generatedBullet.trim()) return;
+    if (!generatedBullet.trim()) return;
+    if (!sessionId) {
+      setAddError("Session not ready — please re-run the analysis.");
+      return;
+    }
     setAddError(null);
     setIsAdding(true);
 
@@ -304,6 +344,7 @@ export default function EvidenceCoachingCard({
           ref={textareaRef}
           className="coaching-textarea"
           value={rawAnswer}
+          maxLength={300}
           onChange={(e) => setRawAnswer(e.target.value)}
           placeholder="Describe your experience in a few sentences..."
           style={{
@@ -350,10 +391,10 @@ export default function EvidenceCoachingCard({
             style={{
               fontSize: "12px",
               color:
-                charCount < 150 ? "#9ca3af" : charCount < 200 ? "#d97706" : "#dc2626",
+                charCount < 200 ? "#9ca3af" : charCount < 270 ? "#d97706" : "#dc2626",
             }}
           >
-            {charCount}/200
+            {charCount}/300
           </div>
           <button
             type="button"
@@ -472,6 +513,39 @@ export default function EvidenceCoachingCard({
           }}
         >
           {generatedBullet}
+        </div>
+
+        <div
+          style={{
+            background: "#f7f5ff",
+            border: "1px dashed #c4b5fd",
+            borderRadius: "8px",
+            padding: "10px 12px",
+            marginBottom: "12px",
+            fontSize: "12px",
+            color: "#4b5563",
+            lineHeight: 1.5,
+          }}
+        >
+          <div style={{ fontWeight: 600, color: "#6c47ff", marginBottom: "6px" }}>
+            Resume preview — will insert at top of:
+          </div>
+          <div style={{ fontWeight: 600, color: "#111827" }}>
+            {fix.sub_label ?? fix.section}
+          </div>
+          <div
+            style={{
+              marginTop: "8px",
+              paddingLeft: "12px",
+              borderLeft: "2px solid #6c47ff",
+              color: "#166534",
+            }}
+          >
+            {generatedBullet}
+          </div>
+          <div style={{ marginTop: "6px", color: "#9ca3af" }}>
+            Existing bullets stay below. Download the updated DOCX after adding to confirm layout.
+          </div>
         </div>
 
         <div

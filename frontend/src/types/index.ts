@@ -111,7 +111,15 @@ export interface ResumeUnderstanding {
   has_metrics: boolean;
   has_summary: boolean;
   sections_present: string[];
-  resume_sections: Record<string, { full_text: string }>;
+  resume_sections: Record<
+    string,
+    {
+      full_text: string;
+      sub_entries?: Array<{ label: string; verbatim_text: string }>;
+    }
+  >;
+  weaknesses?: string[];
+  improvement_areas?: string[];
 }
 
 export interface PriorityFix {
@@ -265,6 +273,8 @@ export interface JDIntelligence {
 
 export interface AnalysisResult {
   job_id: string;
+  /** FastAPI job id — same value used for coaching session_id after analyze completes. */
+  session_id?: string;
   ats: ATSResult;
   resume: ResumeUnderstanding;
   gap: GapResult | null;

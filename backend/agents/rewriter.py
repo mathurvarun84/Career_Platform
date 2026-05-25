@@ -57,6 +57,48 @@ def _resolve_patch_target_in_resume(
     return original
 
 
+def _finalize_sub_entry_patch(
+    patch_raw: dict | None,
+    anchor_text: str,
+    *,
+    resume_text: str = "",
+) -> dict | None:
+    """
+    Ensure sub-entry patches anchor on verbatim resume text.
+
+    LLMs sometimes return patch.original_text as empty; without an anchor the
+    patch engine cannot apply the change.
+    """
+    if not patch_raw:
+        return None
+    replacement = (patch_raw.get("replacement_text") or "").strip()
+    if not replacement:
+        return None
+    anchor = anchor_text.strip()
+    if not anchor:
+        return None
+
+    original = (patch_raw.get("original_text") or "").strip()
+    if not original:
+        patch_raw["original_text"] = anchor
+    elif resume_text and original not in resume_text:
+        if anchor in resume_text:
+            patch_raw["original_text"] = anchor
+        elif original in anchor:
+            pass
+        else:
+            logging.warning(
+                "RewriterAgent: dropping patch — original_text not in resume"
+            )
+            return None
+    elif original not in anchor and anchor not in original:
+        logging.warning(
+            "RewriterAgent: dropping patch — original_text not in entry anchor"
+        )
+        return None
+    return patch_raw
+
+
 def _build_monolithic_section_patch(
     section: str,
     original_content: str,
@@ -732,7 +774,7 @@ class RewriterAgent(BaseAgent):
                 len(sub_changes),
             )
             return self._rewrite_with_sub_changes(
-                section, sub_changes, gap, section_text or None
+                section, sub_changes, gap, section_text or None, resume_text
             )
 
         # Never monolithic-rewrite experience when sub_entries exist — LLM drops entries.
@@ -747,7 +789,7 @@ class RewriterAgent(BaseAgent):
                 len(section_text.sub_entries),
             )
             return self._rewrite_with_sub_changes(
-                section, [], gap, section_text
+                section, [], gap, section_text, resume_text
             )
 
         # Pre-marked experience block with no sub_entries — preserve verbatim (no monolithic).
@@ -897,6 +939,7 @@ class RewriterAgent(BaseAgent):
         sub_changes: list,
         gap: dict,
         section_text: SectionText | None,
+        resume_text: str = "",
     ) -> tuple[dict, list[dict]]:
         """
         Rewrites a section entry-by-entry.
@@ -935,7 +978,11 @@ class RewriterAgent(BaseAgent):
                     stitched_t.append(text)
                 else:
                     entry_rw, patch_raw = self._rewrite_sub_entry(
-                        section, sub, gap.get("rewrite_instruction", ""), original_text
+                        section,
+                        sub,
+                        gap.get("rewrite_instruction", ""),
+                        original_text,
+                        resume_text=resume_text,
                     )
                     if patch_raw:
                         patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
@@ -1007,7 +1054,13 @@ class RewriterAgent(BaseAgent):
                 continue
 
             # needs_change=True → LLM rewrite
-            entry_rw, patch_raw = self._rewrite_sub_entry(section, sub, gap.get("rewrite_instruction", ""), verbatim)
+            entry_rw, patch_raw = self._rewrite_sub_entry(
+                section,
+                sub,
+                gap.get("rewrite_instruction", ""),
+                verbatim,
+                resume_text=resume_text,
+            )
             if patch_raw:
                 patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
                 patch_raw.setdefault("section", section)
@@ -1157,6 +1210,8 @@ class RewriterAgent(BaseAgent):
         sub: dict,
         section_context: str,
         original_verbatim: str = "",
+        *,
+        resume_text: str = "",
     ) -> tuple[SectionRewrite, dict | None]:
         """
         Rewrites a SINGLE resume sub-entry with a focused LLM call.
@@ -1227,12 +1282,11 @@ class RewriterAgent(BaseAgent):
                 raw = self._call_llm(SYSTEM_PROMPT, prompt)
                 parsed = self._parse_json(raw)
                 result = SectionRewrite(**parsed)
-                patch_raw = parsed.get("patch")
-
-                # Validate: original_text must exist verbatim in the original entry
-                if patch_raw and patch_raw.get("original_text"):
-                    if patch_raw["original_text"] not in (original_text or ""):
-                        patch_raw = None  # reject invalid patch
+                patch_raw = _finalize_sub_entry_patch(
+                    parsed.get("patch"),
+                    original_text,
+                    resume_text=resume_text,
+                )
 
                 if (
                     is_shorten_instruction
