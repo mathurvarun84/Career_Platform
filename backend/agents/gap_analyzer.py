@@ -24,6 +24,7 @@ from backend.schemas.agent3_schema import (
     SubLocationChange,
 )
 from backend.few_shot_prompts import build_role_gap_addendum
+from backend.role_fit import compute_role_fit
 from backend.schemas.common import GapType, SectionText
 
 # Canonical sections every analysis must cover
@@ -50,6 +51,7 @@ Your job is to produce ONE JSON object that matches this shape exactly:
     {
       "section": "experience",
       "needs_change": true,
+      "gap_type": "Surface",
       "gap_reason": "JD requires Kafka experience not shown in current wording",
       "missing_keywords": ["Kafka"],
       "rewrite_instruction": "Reframe event-driven work to mention streaming platforms",
@@ -59,6 +61,7 @@ Your job is to produce ONE JSON object that matches this shape exactly:
           "sub_id": "flipkart_em",
           "sub_label": "Flipkart — EM (2021–present)",
           "needs_change": true,
+          "gap_type": "Surface",
           "gap_reason": "No Kafka/real-time streaming mentioned",
           "rewrite_instruction": "Mention stream processing explicitly",
           "missing_keywords": ["Kafka", "streaming"]
@@ -72,6 +75,41 @@ Your job is to produce ONE JSON object that matches this shape exactly:
 
 Rules:
 - Include ALL canonical sections: summary, skills, experience, education, certifications, awards.
+- MISMATCH DETECTION: If the candidate's role family and the JD's role family are
+  completely different domains (e.g. HR applying to SWE, Finance applying to DevOps,
+  intern applying to Senior role), you MUST flag ALL sections as needs_change=true and
+  produce a minimum of 6 section gaps. A domain mismatch is never a 3-gap situation.
+- GAP COUNT CALIBRATION:
+  Strong match (resume clearly fits JD): 0–3 gaps expected.
+  Partial match (overlapping skills, wrong seniority or missing some requirements): 4–7 gaps.
+  Mismatch (wrong domain, critically underqualified, or missing 50%+ of requirements): 8+ gaps.
+  Never produce fewer than 6 gaps when the resume's domain does not match the JD's domain.
+- GAP TYPE RULES (follow these precisely):
+  Surface gap: The required skill IS present in the resume but uses different keywords.
+    Example: Resume says "event-driven systems", JD says "Kafka". Keyword swap only.
+    DO NOT use Surface for skills that are completely absent.
+  Structural gap: The required experience EXISTS in the resume but is framed/positioned
+    incorrectly. The content is there; only the narrative framing needs to change.
+    Example: Candidate led cross-functional projects but never used "stakeholder management"
+    language.
+    DO NOT use Structural when the content is genuinely absent.
+  Evidence gap: The required skill, technology, or experience is COMPLETELY ABSENT from
+    the resume. No amount of reframing can fix it — new content is needed.
+    Example: JD requires Kubernetes experience; resume never mentions containers at all.
+    USE Evidence whenever the skill is not demonstrated anywhere in the resume.
+  RULE: When in doubt between Structural and Evidence, choose Evidence. It is better
+  to flag a gap as needing new content than to incorrectly suggest reframing absent content.
+- SEMANTIC EQUIVALENCE (critical — prevents phantom gaps on strong matches):
+  Before flagging a skill as missing, ask: "Is there any term in the resume that is
+  functionally equivalent to this missing keyword?" Examples:
+  MLflow / experiment tracking ≈ MLOps; CI/CD pipeline ≈ deployment automation;
+  K8s / Kubernetes ≈ container orchestration; Spark ≈ big data / distributed processing;
+  event-driven / message queue ≈ streaming; Power BI ≈ Tableau (BI tools).
+  If equivalent coverage exists anywhere in the resume, set needs_change=false for that gap.
+  Use the JD semantic_skill_map equivalents when provided in the input.
+- PHANTOM GAP RULE: On strong matches (candidate clearly qualified for the role),
+  require HIGH confidence before setting needs_change=true. Do not flag gaps for skills
+  already demonstrated under different wording. Prefer 0–3 total gaps on strong matches.
 - If a section does not need changes, set needs_change=false, gap_reason="No change needed",
   missing_keywords=[], rewrite_instruction="", sub_changes=[].
 - For multi-entry sections, decompose into SubLocationChange entries:
@@ -81,6 +119,23 @@ Rules:
   For summary, skills, awards: sub_changes should be empty list [].
 - missing_keywords must be section-specific for section_gaps.
 - priority_fixes should contain the top 3 highest-impact actions.
+- ACTIONABILITY RULES for rewrite_instruction (critical — follow exactly):
+  Every rewrite_instruction MUST contain all three of these elements:
+  (1) WHERE: the exact section and sub-location to modify
+      (e.g. "In the Experience section, Capgemini bullet 3")
+  (2) WHAT: the specific technology, metric type, or skill to add or reframe
+      (e.g. "add Kafka as the message broker for the event pipeline")
+  (3) HOW: the concrete change to make
+      (e.g. "rewrite as: 'Built Kafka-based event pipeline processing 500K msgs/day'")
+  BAD instruction: "Add relevant skills to the skills section"
+  GOOD instruction: "Add Kafka, Redis, and Docker to the Skills section under Backend
+    Technologies, after the existing Python and Django entries"
+  BAD instruction: "Improve experience section to highlight technical depth"
+  GOOD instruction: "In Experience > Capgemini bullet 2, add the scale metric for the
+    Python application: specify daily transaction volume (e.g. '10K+ transactions/day')
+    and the async processing pattern used"
+  Never use vague verbs like 'improve', 'enhance', 'add relevant', 'highlight'.
+  Always name the specific item to add and its target location.
 - Output pure JSON only. No markdown, no extra keys.
 
 ANTI-HALLUCINATION: Do NOT include original_content or original_text in your output —
@@ -324,53 +379,44 @@ def _build_coaching_question(gap: dict) -> tuple[str, list[str]]:
     )
 
 
-def classify_gap(gap: dict, resume_text: str = "") -> dict:
-    """
-    Classify a gap as surface / structural / evidence.
-    Pure heuristic — zero LLM calls.
+def _normalize_gap_type(raw: Any) -> str | None:
+    """Map LLM gap_type strings to canonical GapType values."""
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return None
+    val = str(raw).lower().strip().replace("-", "_").replace(" ", "_")
+    for gap_type in GapType:
+        if val == gap_type.value or val == gap_type.name.lower():
+            return gap_type.value
+    return None
 
-    Args:
-        gap: Section gap dict from Agent 3 enrichment.
-        resume_text: Full resume text (reserved for future heuristics).
 
-    Returns:
-        Gap dict with gap_type, coaching fields, and auto_apply set.
-    """
-    del resume_text  # reserved; classification is text-in-gap only today
-    reason = (gap.get("gap_reason") or "").lower()
-    instruction = (gap.get("rewrite_instruction") or "").lower()
-    keywords = [k.lower() for k in (gap.get("missing_keywords") or [])]
-    combined = reason + " " + instruction + " " + " ".join(keywords)
-
-    if any(signal in combined for signal in _EVIDENCE_SIGNALS):
+def _apply_gap_type_metadata(gap: dict, gap_type: str) -> dict:
+    """Attach coaching/auto_apply fields for a known gap_type without re-classifying."""
+    if gap_type == GapType.EVIDENCE.value:
         question, hints = _build_coaching_question(gap)
         return {
             **gap,
-            "gap_type": GapType.EVIDENCE.value,
+            "gap_type": gap_type,
             "requires_user_input": True,
             "coaching_question": question,
             "coaching_hint": hints,
             "auto_apply": False,
         }
 
-    if _is_no_change_gap(gap):
+    if gap_type == GapType.SURFACE.value:
+        instruction = (gap.get("rewrite_instruction") or "").strip()
+        auto_apply = (
+            not _is_no_change_gap(gap)
+            and (_has_surface_signal(gap) or gap.get("needs_change"))
+            and bool(instruction)
+        )
         return {
             **gap,
-            "gap_type": GapType.SURFACE.value,
+            "gap_type": gap_type,
             "requires_user_input": False,
             "coaching_question": None,
             "coaching_hint": [],
-            "auto_apply": False,
-        }
-
-    if _has_surface_signal(gap) and (gap.get("needs_change") or instruction.strip()):
-        return {
-            **gap,
-            "gap_type": GapType.SURFACE.value,
-            "requires_user_input": False,
-            "coaching_question": None,
-            "coaching_hint": [],
-            "auto_apply": True,
+            "auto_apply": auto_apply,
         }
 
     return {
@@ -381,6 +427,46 @@ def classify_gap(gap: dict, resume_text: str = "") -> dict:
         "coaching_hint": [],
         "auto_apply": False,
     }
+
+
+def classify_gap(gap: dict, resume_text: str = "") -> dict:
+    """
+    Classify a gap as surface / structural / evidence.
+    Pure heuristic — zero LLM calls.
+
+    When the LLM already set gap_type, trust it and only attach UX metadata.
+    Heuristics run only when gap_type is absent or null.
+
+    Args:
+        gap: Section gap dict from Agent 3 enrichment.
+        resume_text: Full resume text (reserved for future heuristics).
+
+    Returns:
+        Gap dict with gap_type, coaching fields, and auto_apply set.
+    """
+    del resume_text  # reserved; classification is text-in-gap only today
+
+    llm_type = _normalize_gap_type(gap.get("gap_type"))
+    if llm_type:
+        return _apply_gap_type_metadata(gap, llm_type)
+
+    reason = (gap.get("gap_reason") or "").lower()
+    instruction = (gap.get("rewrite_instruction") or "").lower()
+    keywords = [k.lower() for k in (gap.get("missing_keywords") or [])]
+    combined = reason + " " + instruction + " " + " ".join(keywords)
+
+    if any(signal in combined for signal in _EVIDENCE_SIGNALS):
+        return _apply_gap_type_metadata(gap, GapType.EVIDENCE.value)
+
+    if _is_no_change_gap(gap):
+        return _apply_gap_type_metadata(gap, GapType.SURFACE.value)
+
+    if _has_surface_signal(gap) and (gap.get("needs_change") or instruction.strip()):
+        gap_with_surface = _apply_gap_type_metadata(gap, GapType.SURFACE.value)
+        gap_with_surface["auto_apply"] = True
+        return gap_with_surface
+
+    return _apply_gap_type_metadata(gap, GapType.STRUCTURAL.value)
 
 
 def classify_section_gaps(gaps: list[dict], resume_text: str = "") -> list[dict]:
@@ -407,6 +493,61 @@ _GAP_TYPE_ORDER: dict[str, int] = {
 def _include_in_priority_fixes(gap_entry: dict) -> bool:
     """Include only gaps that need a real user-visible fix."""
     return _is_actionable_gap(gap_entry)
+
+
+def _priority_fix_location_key(fix: dict) -> str:
+    """One fix card per section + sub_entry (not per missing keyword)."""
+    section = str(fix.get("section") or "").lower().strip()
+    sub = str(fix.get("sub_label") or "").lower().strip()
+    return f"{section}|{sub or '__section__'}"
+
+
+def _merge_priority_fix(existing: dict, incoming: dict) -> dict:
+    """Merge duplicate location fixes — combine keywords, keep strongest gap_type."""
+    merged = dict(existing)
+    merged_keywords = list(dict.fromkeys(
+        (existing.get("missing_keywords") or [])
+        + (incoming.get("missing_keywords") or [])
+    ))
+    merged["missing_keywords"] = merged_keywords
+
+    existing_type = existing.get("gap_type", GapType.STRUCTURAL.value)
+    incoming_type = incoming.get("gap_type", GapType.STRUCTURAL.value)
+    if _GAP_TYPE_ORDER.get(incoming_type, 1) < _GAP_TYPE_ORDER.get(existing_type, 1):
+        merged["gap_type"] = incoming_type
+        merged["requires_user_input"] = incoming.get("requires_user_input", False)
+        merged["coaching_question"] = incoming.get("coaching_question")
+        merged["coaching_hint"] = incoming.get("coaching_hint") or []
+        merged["auto_apply"] = incoming.get("auto_apply", False)
+
+    if incoming.get("rewrite_instruction") and len(str(incoming["rewrite_instruction"])) > len(
+        str(existing.get("rewrite_instruction") or "")
+    ):
+        merged["rewrite_instruction"] = incoming["rewrite_instruction"]
+
+    if not str(existing.get("original_text") or "").strip():
+        merged["original_text"] = incoming.get("original_text", "")
+
+    return merged
+
+
+def _dedupe_priority_fixes(fixes: list[dict]) -> list[dict]:
+    """
+    Collapse multiple sub_changes for the same experience entry into one fix card.
+
+    A3 often emits one sub_change per missing keyword on the same role block;
+    without dedupe the Fixes tab shows identical patches 3–4 times.
+    """
+    merged_map: dict[str, dict] = {}
+    order: list[str] = []
+    for fix in fixes:
+        key = _priority_fix_location_key(fix)
+        if key not in merged_map:
+            merged_map[key] = dict(fix)
+            order.append(key)
+        else:
+            merged_map[key] = _merge_priority_fix(merged_map[key], fix)
+    return [merged_map[k] for k in order]
 
 
 def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
@@ -460,6 +601,7 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
                 "original_text": gap.get("original_content", ""),
                 "patch_text": gap.get("rewrite_instruction", ""),
             })
+    fixes = _dedupe_priority_fixes(fixes)
     fixes.sort(key=lambda f: _GAP_TYPE_ORDER.get(f.get("gap_type", GapType.STRUCTURAL.value), 1))
     return fixes[:12]
 
@@ -492,6 +634,178 @@ def _fuzzy_match_label(sub_label: str, valid_labels: set[str]) -> str | None:
     if best_score >= 2 and best_label:
         return best_label
     return None
+
+
+# Built-in semantic equivalents for phantom-gap suppression (qualified matches).
+_BUILTIN_EQUIVALENTS: dict[str, list[str]] = {
+    "mlops": ["mlflow", "kubeflow", "sagemaker", "vertex", "model monitoring", "ci/cd", "experiment tracking"],
+    "kubernetes": ["k8s", "container orchestration", "eks", "gke", "docker swarm"],
+    "kafka": ["event-driven", "streaming", "message queue", "pulsar", "kinesis", "pub/sub"],
+    "tableau": ["power bi", "looker", "metabase", "bi tool", "dashboard"],
+    "power bi": ["tableau", "looker", "metabase", "bi tool", "dashboard"],
+    "microservices": ["distributed services", "service-oriented", "soa"],
+    "terraform": ["infrastructure as code", "iac", "cloudformation", "pulumi"],
+    "redis": ["caching", "cache layer", "memcached"],
+    "architecture": ["system design", "architectural", "technical design"],
+}
+
+
+def _resume_text_blob(resume_analysis: dict, resume_text: str) -> str:
+    """Combined lowercase resume text for keyword presence checks."""
+    parts = [resume_text or ""]
+    for sec in (resume_analysis or {}).get("resume_sections") or {}:
+        if isinstance(sec, dict):
+            parts.append(sec.get("full_text") or "")
+            for sub in sec.get("sub_entries") or []:
+                if isinstance(sub, dict):
+                    parts.append(sub.get("verbatim_text") or "")
+    parts.append(" ".join(str(t) for t in (resume_analysis or {}).get("tech_stack") or []))
+    return " ".join(parts).lower()
+
+
+def _equivalent_terms(keyword: str, semantic_map: dict) -> set[str]:
+    """Expand a missing keyword with JD semantic map + built-in equivalents."""
+    kw = keyword.lower().strip()
+    terms = {kw}
+    for jd_term, equivalents in (semantic_map or {}).items():
+        jd_lower = str(jd_term).lower()
+        equiv_lower = [str(e).lower() for e in (equivalents or [])]
+        if kw == jd_lower or kw in equiv_lower:
+            terms.add(jd_lower)
+            terms.update(equiv_lower)
+    for canonical, aliases in _BUILTIN_EQUIVALENTS.items():
+        pool = {canonical, *aliases}
+        if kw in pool:
+            terms.update(pool)
+    return terms
+
+
+def _keyword_covered_in_resume(keyword: str, resume_blob: str, semantic_map: dict) -> bool:
+    """True when keyword or a semantic equivalent appears in resume text."""
+    if not keyword.strip():
+        return True
+    for term in _equivalent_terms(keyword, semantic_map):
+        if term and term in resume_blob:
+            return True
+    return False
+
+
+def _apply_phantom_gap_filter(
+    section_gaps: list[dict],
+    resume_analysis: dict,
+    jd_analysis: dict,
+    resume_text: str,
+) -> list[dict]:
+    """
+    On qualified matches, suppress experience gaps whose missing keywords
+    are already covered by semantic equivalents in the resume.
+    """
+    role_fit = compute_role_fit(resume_analysis or {}, jd_analysis or {}, {"section_gaps": section_gaps})
+    if role_fit.get("fitness") != "qualified":
+        return section_gaps
+
+    resume_blob = _resume_text_blob(resume_analysis or {}, resume_text)
+    semantic_map = (jd_analysis or {}).get("semantic_skill_map") or {}
+    filtered: list[dict] = []
+
+    for gap in section_gaps:
+        gap = dict(gap)
+        if not gap.get("needs_change"):
+            filtered.append(gap)
+            continue
+
+        section = (gap.get("section") or "").lower()
+        if section != "experience":
+            filtered.append(gap)
+            continue
+
+        missing = [str(k) for k in (gap.get("missing_keywords") or []) if str(k).strip()]
+        if missing and all(_keyword_covered_in_resume(kw, resume_blob, semantic_map) for kw in missing):
+            logging.info(
+                "GapAnalyzer: phantom experience gap suppressed (qualified match): %s",
+                gap.get("gap_reason", "")[:80],
+            )
+            gap["needs_change"] = False
+            gap["gap_reason"] = "No change needed — skill covered under equivalent wording"
+            gap["rewrite_instruction"] = ""
+            gap["missing_keywords"] = []
+            gap["sub_changes"] = []
+
+        filtered.append(gap)
+
+    return filtered
+
+
+_MIN_MISMATCH_GAPS = 5
+
+
+def _count_actionable_gaps(section_gaps: list[dict]) -> int:
+    """Count section gaps that need a real user-visible fix."""
+    count = 0
+    for gap in section_gaps:
+        if gap.get("needs_change"):
+            count += 1
+            continue
+        for sub in gap.get("sub_changes") or []:
+            if isinstance(sub, dict) and sub.get("needs_change"):
+                count += 1
+    return count
+
+
+def _ensure_minimum_gap_floor(
+    section_gaps: list[dict],
+    resume_analysis: dict,
+    jd_analysis: dict,
+) -> list[dict]:
+    """
+    Enforce minimum gap count for underqualified/stretch role fits.
+
+    If the LLM returns too few gaps on a bad-fit pair, inject a catch-all
+    seniority/domain gap so users are not misled by an overly optimistic report.
+    """
+    role_fit = compute_role_fit(resume_analysis or {}, jd_analysis or {}, {"section_gaps": section_gaps})
+    fitness = role_fit.get("fitness")
+    if fitness not in ("underqualified", "stretch"):
+        return section_gaps
+
+    if _count_actionable_gaps(section_gaps) >= _MIN_MISMATCH_GAPS:
+        return section_gaps
+
+    role_title = str((jd_analysis or {}).get("role_title") or "target role").strip()
+    candidate_years = int(
+        (resume_analysis or {}).get("experience_years")
+        or (resume_analysis or {}).get("total_years")
+        or 0
+    )
+    jd_min = int((jd_analysis or {}).get("min_years_required") or 0)
+    exp_gap = role_fit.get("experience_gap", max(0, jd_min - candidate_years))
+
+    catch_all = {
+        "section": "experience",
+        "needs_change": True,
+        "gap_type": GapType.EVIDENCE.value,
+        "gap_reason": (
+            f"Overall seniority and domain fit gap: resume profile does not meet "
+            f"{role_title} requirements ({candidate_years}y experience vs {jd_min}+y required, "
+            f"fitness={fitness})"
+        ),
+        "missing_keywords": (jd_analysis or {}).get("must_have_skills", [])[:5],
+        "rewrite_instruction": (
+            f"Address the overall qualification gap for {role_title}: "
+            f"candidate has {candidate_years} years vs {jd_min}+ required "
+            f"({exp_gap} year shortfall). Highlight transferable skills or consider "
+            "a more appropriate target role."
+        ),
+        "present_in_resume": True,
+        "sub_changes": [],
+    }
+
+    logging.warning(
+        "GapAnalyzer: %d actionable gaps on %s match — injecting catch-all seniority gap",
+        _count_actionable_gaps(section_gaps),
+        fitness,
+    )
+    return section_gaps + [catch_all]
 
 
 class GapAnalyzerAgent(BaseAgent):
@@ -814,6 +1128,17 @@ class GapAnalyzerAgent(BaseAgent):
         enriched_gaps = self._ensure_missing_summary_gap(
             enriched_gaps,
             resume_sections,
+            resume_analysis or {},
+            jd_analysis or {},
+        )
+        enriched_gaps = _apply_phantom_gap_filter(
+            enriched_gaps,
+            resume_analysis or {},
+            jd_analysis or {},
+            resume_text,
+        )
+        enriched_gaps = _ensure_minimum_gap_floor(
+            enriched_gaps,
             resume_analysis or {},
             jd_analysis or {},
         )

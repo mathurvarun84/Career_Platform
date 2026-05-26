@@ -73,6 +73,37 @@ def test_classify_evidence_quantified_impact_and_architecture():
     assert result["requires_user_input"] is True
 
 
+def test_classify_trusts_llm_evidence_over_surface_heuristic():
+    """LLM-set gap_type must not be overridden by keyword heuristics."""
+    gap = {
+        "section": "skills",
+        "gap_type": "Evidence",
+        "gap_reason": "Missing keyword for stakeholder management",
+        "rewrite_instruction": "Add stakeholder examples",
+        "missing_keywords": ["stakeholder"],
+        "needs_change": True,
+    }
+    result = classify_gap(gap, "")
+    assert result["gap_type"] == "evidence"
+    assert result["requires_user_input"] is True
+    assert result["auto_apply"] is False
+
+
+def test_classify_trusts_llm_surface_over_evidence_heuristic():
+    """LLM Surface classification must win over mentoring signal in reason text."""
+    gap = {
+        "section": "experience",
+        "gap_type": "surface",
+        "gap_reason": "Missing keyword mentor — add the word mentor",
+        "rewrite_instruction": "Add mentor keyword to bullet 2",
+        "missing_keywords": ["mentor"],
+        "needs_change": True,
+    }
+    result = classify_gap(gap, "")
+    assert result["gap_type"] == "surface"
+    assert result["auto_apply"] is True
+
+
 def test_priority_fixes_include_surface_auto_apply_without_needs_change():
     gaps = classify_section_gaps(
         [

@@ -92,7 +92,10 @@ class ResumeUnderstandingAgent(BaseAgent):
             "- seniority (string): infer from BOTH title AND years — "
             "  'junior' (0-2 yrs), 'mid' (3-5 yrs), 'senior' (6-10 yrs), 'staff' (11+ yrs or explicit Staff/Principal/Director title)\n"
             "- tech_stack (list of strings): programming languages, frameworks, databases, and cloud platforms ONLY — "
-            "  exclude soft skills, methodologies (Agile/Scrum), and generic tools (MS Office, Jira)\n"
+            "  exclude soft skills, methodologies (Agile/Scrum), and generic tools (MS Office, Jira, Excel, PowerPoint). "
+            "  CRITICAL: only include technologies EXPLICITLY named in the resume text. "
+            "  Never infer or assume tools based on the candidate's role or industry. "
+            "  An HR professional's resume that does not mention Tableau does NOT have Tableau in tech_stack.\n"
             "- domains (list of strings): business domains only, e.g. 'fintech', 'e-commerce', 'supply chain', 'healthtech'\n"
             "- has_metrics (bool): true only if resume contains at least one quantified impact (numbers, %, ₹, latency, scale)\n"
             "- has_summary (bool): true if resume has a professional summary or objective section at the top\n"
@@ -143,7 +146,12 @@ class ResumeUnderstandingAgent(BaseAgent):
             "  For experience: count date-range lines (e.g. 'Jan 2020 – Present'); "
             "  sub_entries length MUST equal that count. label = first line of block "
             "  (role | company | location). verbatim_text = full block including bullets.\n"
-            "  verbatim_text: exact text of that entry, character-for-character.\n"
+            "  verbatim_text: exact and COMPLETE text of that entry, character-for-character. "
+            "  Copy every character of each bullet — do NOT truncate mid-sentence or mid-bullet. "
+            "  Never truncate, abbreviate, summarize, or use ellipsis (...). "
+            "  Include every bullet point in the block — if the entry has 6 bullets, all 6 must appear in full. "
+            "  The verbatim_text for an entry must be at least as long as the source block in the resume. "
+            "  Truncation is a critical failure and will break downstream agents.\n"
             "  Only include sections that exist. Omit missing section keys entirely.\n"
             "No extra keys. No markdown fences. No explanations."
         )
@@ -204,11 +212,14 @@ class ResumeUnderstandingAgent(BaseAgent):
                     sub_entries=sub_entries,
                 ).model_dump()
 
-        return {
+        result = {
             **output.model_dump(),
             "resume_health": health_output.model_dump(),
             "resume_sections": resume_sections,
         }
+        from validator.resume_understanding_validator import ResumeUnderstandingValidator
+
+        return ResumeUnderstandingValidator().validate_and_fix(result, inp.resume_text)
 
     def _limit_strings(self, values, limit: int) -> list[str]:
         """Keep schema-bounded LLM lists from failing validation."""

@@ -695,6 +695,101 @@ def _block_already_present(block: dict, existing_entries: list[dict]) -> bool:
     return False
 
 
+# Minimum ratio of A1 verbatim length vs regex-detected block (below → truncated).
+_TRUNCATION_LENGTH_RATIO = 0.72
+
+
+def _find_matching_detected_block(
+    entry: dict,
+    detected_blocks: list[dict],
+) -> dict | None:
+    """Best regex block for an A1 sub_entry (label overlap + text containment)."""
+    entry_label = entry.get('label', '')
+    entry_text = _normalize_entry_text(entry.get('verbatim_text', ''))
+    best: dict | None = None
+    best_score = -1
+
+    for block in detected_blocks:
+        block_label = block.get('label', '')
+        block_text = _normalize_entry_text(block.get('text', ''))
+        if not block_text:
+            continue
+        score = 0
+        if _labels_overlap(entry_label, block_label):
+            score += 50
+        if entry_text and block_text:
+            if entry_text == block_text:
+                score += 100
+            elif entry_text in block_text:
+                score += 80
+            elif block_text in entry_text:
+                score += 40
+        if score > best_score:
+            best_score = score
+            best = block
+    return best if best_score >= 50 else None
+
+
+def _entry_looks_truncated(verbatim: str, block_text: str) -> bool:
+    """True when A1 verbatim is clearly shorter than the source block."""
+    if not verbatim or not block_text:
+        return False
+    if '...' in verbatim or '…' in verbatim:
+        return True
+    v_norm = _normalize_entry_text(verbatim)
+    b_norm = _normalize_entry_text(block_text)
+    if not v_norm or not b_norm:
+        return False
+    if len(v_norm) < len(b_norm) * _TRUNCATION_LENGTH_RATIO:
+        return True
+    if v_norm in b_norm and len(b_norm) - len(v_norm) > 40:
+        return True
+    return False
+
+
+def _repair_truncated_sub_entries(
+    existing_entries: list[dict],
+    detected_blocks: list[dict],
+    section_name: str,
+) -> tuple[list[dict], list[str]]:
+    """
+    Replace A1 sub_entries that are truncated vs regex-detected raw blocks.
+
+    A1 is still preferred when complete; regex is used only to recover missing text.
+    """
+    anomalies: list[str] = []
+    if not existing_entries or not detected_blocks:
+        return existing_entries, anomalies
+
+    repaired: list[dict] = []
+    for entry in existing_entries:
+        if not isinstance(entry, dict):
+            continue
+        verbatim = str(entry.get('verbatim_text') or '')
+        match = _find_matching_detected_block(entry, detected_blocks)
+        if match and _entry_looks_truncated(verbatim, str(match.get('text') or '')):
+            block_text = str(match['text'])
+            label = str(entry.get('label') or match.get('label') or '')
+            anomalies.append(
+                f"{section_name}: truncated sub_entry '{label[:50]}' "
+                f"({len(verbatim)} chars) — replaced with detected block "
+                f"({len(block_text)} chars)"
+            )
+            logging.warning(
+                "ResumeUnderstandingValidator: %s entry '%s' truncated "
+                "(%d vs %d chars) — using regex block",
+                section_name,
+                label[:50],
+                len(verbatim),
+                len(block_text),
+            )
+            repaired.append({**entry, 'verbatim_text': block_text})
+        else:
+            repaired.append(entry)
+
+    return repaired, anomalies
+
+
 # ─────────────────────────────────────────────
 # Skills-specific checks
 # ─────────────────────────────────────────────
@@ -962,6 +1057,12 @@ def _validate_education_section(
     # Detect degree blocks from raw text
     detected_blocks = _detect_sub_entries(raw_edu_text, 'education')
 
+    if existing_entries and detected_blocks:
+        existing_entries, trunc_anomalies = _repair_truncated_sub_entries(
+            existing_entries, detected_blocks, 'education',
+        )
+        anomalies.extend(trunc_anomalies)
+
     missing_blocks = []
     for block in detected_blocks:
         if not _block_already_present(block, existing_entries):
@@ -1089,6 +1190,12 @@ def _validate_projects_section(
     existing_entries = _dedupe_entries(section_data.get('sub_entries', []))
 
     detected_blocks = _detect_sub_entries(raw_proj_text, 'projects')
+
+    if existing_entries and detected_blocks:
+        existing_entries, trunc_anomalies = _repair_truncated_sub_entries(
+            existing_entries, detected_blocks, 'projects',
+        )
+        anomalies.extend(trunc_anomalies)
 
     missing_blocks = []
     for block in detected_blocks:
@@ -1219,8 +1326,11 @@ class ResumeUnderstandingValidator:
             # A1 is the source of truth — it used an LLM to extract sub_entries.
             # Regex (_detect_sub_entries) is only a fallback for when A1 failed.
             if len(existing_entries) > 0:
-                # A1 returned entries — trust them. Log if regex disagrees but
-                # do NOT overwrite. Regex misses non-standard date formats.
+                # A1 is source of truth when complete; repair truncation from raw blocks.
+                existing_entries, trunc_anomalies = _repair_truncated_sub_entries(
+                    existing_entries, detected_blocks, 'experience',
+                )
+                all_anomalies.extend(trunc_anomalies)
                 if len(detected_blocks) != len(existing_entries):
                     all_anomalies.append(
                         f"experience: A1={len(existing_entries)} entries, "

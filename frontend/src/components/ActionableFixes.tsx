@@ -142,21 +142,42 @@ const inferGapTypeFromText = (text: string): GapType => {
   return "structural";
 };
 
-const fixDedupeKey = (fix: PriorityFix): string =>
-  `${inferSectionKey(fix.section)}|${(fix.sub_label ?? "").toLowerCase()}|${fix.gap_reason.toLowerCase().slice(0, 72)}`;
+/** One card per section + sub_entry — not per gap_reason or missing keyword. */
+const fixLocationKey = (fix: PriorityFix): string =>
+  `${inferSectionKey(fix.section)}|${(fix.sub_label ?? "").toLowerCase().trim() || "__section__"}`;
+
+const mergePriorityFix = (existing: PriorityFix, incoming: PriorityFix): PriorityFix => {
+  const mergedKeywords = Array.from(
+    new Set([...(existing.missing_keywords ?? []), ...(incoming.missing_keywords ?? [])])
+  );
+  const typeOrder: Record<GapType, number> = { evidence: 0, structural: 1, surface: 2 };
+  const existingType = existing.gap_type ?? "structural";
+  const incomingType = incoming.gap_type ?? "structural";
+  const preferIncoming = typeOrder[incomingType] < typeOrder[existingType];
+  return {
+    ...existing,
+    ...(preferIncoming ? incoming : {}),
+    gap_reason: existing.gap_reason,
+    missing_keywords: mergedKeywords,
+    auto_apply: preferIncoming ? incoming.auto_apply : existing.auto_apply,
+  };
+};
 
 const mergeFixLists = (...lists: PriorityFix[][]): PriorityFix[] => {
-  const seen = new Set<string>();
-  const merged: PriorityFix[] = [];
+  const mergedMap = new Map<string, PriorityFix>();
+  const order: string[] = [];
   for (const list of lists) {
     for (const fix of list) {
-      const key = fixDedupeKey(fix);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      merged.push(fix);
+      const key = fixLocationKey(fix);
+      if (!mergedMap.has(key)) {
+        mergedMap.set(key, fix);
+        order.push(key);
+        continue;
+      }
+      mergedMap.set(key, mergePriorityFix(mergedMap.get(key)!, fix));
     }
   }
-  return merged;
+  return order.map((key) => mergedMap.get(key)!);
 };
 
 const atsIssuesToFixes = (atsIssues: string[], existingFixes: PriorityFix[]): PriorityFix[] => {
@@ -525,7 +546,22 @@ export default function ActionableFixes({
     (fix: PriorityFix): { original: string; replacement: string } | null => {
       const patch = getPatchForFix(fix);
       if (patch?.original_text && patch.replacement_text) {
-        return { original: patch.original_text, replacement: patch.replacement_text };
+        const original = patch.original_text.trim();
+        const replacement = patch.replacement_text.trim();
+        // Patches anchor on a bullet substring but replacement is often the full entry.
+        if (replacement.startsWith(original)) {
+          const delta = replacement.slice(original.length).trim();
+          if (delta) {
+            return { original, replacement: delta };
+          }
+        }
+        if (original.length > 20 && replacement.includes(original)) {
+          const delta = replacement.replace(original, "").trim();
+          if (delta) {
+            return { original, replacement: delta };
+          }
+        }
+        return { original, replacement };
       }
       const kw = fix.missing_keywords[0];
       if (kw) {
@@ -770,10 +806,10 @@ export default function ActionableFixes({
   useEffect(() => {
     fixes.forEach((fix, index) => {
       if (!fix.auto_apply) return;
-      const fixKey = getFixKey(fix, index);
-      if (autoAppliedRef.current.has(fixKey)) return;
-      autoAppliedRef.current.add(fixKey);
-      void onApply(fix, fixKey);
+      const locationKey = fixLocationKey(fix);
+      if (autoAppliedRef.current.has(locationKey)) return;
+      autoAppliedRef.current.add(locationKey);
+      void onApply(fix, getFixKey(fix, index));
     });
   }, [fixes, getFixKey, onApply]);
 
@@ -865,11 +901,11 @@ export default function ActionableFixes({
             </button>
             {quickWinsExpanded ? (
               <div style={{ marginTop: "12px" }}>
-                {surfaceFixes.map((fix) => {
+                {surfaceFixes.map((fix, idx) => {
                   const diff = getPatchDiff(fix);
                   return (
                     <div
-                      key={`${fix.section}-${fix.sub_label ?? "main"}`}
+                      key={fixLocationKey(fix) || `surface-${idx}`}
                       style={{
                         fontSize: "12px",
                         color: "#166534",

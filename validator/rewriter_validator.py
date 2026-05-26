@@ -43,6 +43,16 @@ from backend.agents.rewriter import (
 
 
 _METRIC_PATTERN    = re.compile(r'\b\d+\.?\d*\s*(%|x|X|\bk\b|\bK\b|Cr\b|L\b|ms\b|\bs\b)')
+# High-risk technology/pattern phrases A4 often invents (eval F021/F022 failures).
+_UNGROUNDED_TECH_RE = re.compile(
+    r'\b(?:'
+    r'kafka|pulsar|kinesis|kubernetes|k8s|terraform|redis|docker|'
+    r'microservices?|event[- ]driven|async(?:/await)?|queue[- ]based|'
+    r'non[- ]blocking|message[- ]broker|stream(?:ing)?\s+platform|'
+    r'amplitude|mixpanel|predictive\s+trend'
+    r')\b',
+    re.IGNORECASE,
+)
 _PLACEHOLDER_RE = re.compile(
     r"""
     \[
@@ -532,6 +542,81 @@ def _check_placeholder_bleed(
     return repaired, anomalies
 
 
+def _grounding_source_text(section_text: SectionText | None, resume_text: str) -> str:
+    """Allowlist text for technology grounding checks."""
+    parts: list[str] = []
+    if section_text:
+        parts.append(section_text.full_text or '')
+        for entry in section_text.sub_entries or []:
+            parts.append(entry.verbatim_text or '')
+            parts.append(entry.label or '')
+    if resume_text:
+        parts.append(resume_text)
+    return '\n'.join(parts)
+
+
+def _strip_ungrounded_tech_lines(text: str, source: str) -> tuple[str, list[str]]:
+    """
+    Remove bullet/paragraph lines that introduce tech terms absent from source.
+
+    Returns (cleaned_text, list of stripped phrase descriptions).
+    """
+    if not text or not source.strip():
+        return text, []
+
+    source_lower = source.lower()
+    stripped: list[str] = []
+    out_lines: list[str] = []
+
+    for line in text.splitlines():
+        line_stripped = line.strip()
+        if not line_stripped:
+            out_lines.append(line)
+            continue
+        ungrounded = [
+            m.group(0)
+            for m in _UNGROUNDED_TECH_RE.finditer(line_stripped)
+            if m.group(0).lower() not in source_lower
+        ]
+        if ungrounded:
+            stripped.append(
+                f"{', '.join(dict.fromkeys(ungrounded))} in: {line_stripped[:60]}..."
+            )
+            continue
+        out_lines.append(line)
+
+    cleaned = '\n'.join(out_lines).strip()
+    while '\n\n\n' in cleaned:
+        cleaned = cleaned.replace('\n\n\n', '\n\n')
+    return cleaned, stripped
+
+
+def _check_invented_technology(
+    section_name: str,
+    variants: dict[str, str],
+    section_text: SectionText | None,
+    resume_text: str,
+) -> tuple[dict[str, str], list[str]]:
+    """
+    Strip rewrite lines that introduce technologies/patterns not in source text.
+    """
+    source = _grounding_source_text(section_text, resume_text)
+    if not source.strip():
+        return variants, []
+
+    anomalies: list[str] = []
+    repaired = dict(variants)
+    for style, text in repaired.items():
+        cleaned, stripped = _strip_ungrounded_tech_lines(text, source)
+        if stripped:
+            anomalies.append(
+                f"{section_name}/{style}: removed ungrounded tech "
+                f"({len(stripped)} line(s)): {stripped[0]}"
+            )
+            repaired[style] = cleaned
+    return repaired, anomalies
+
+
 def _check_invented_metrics(
     section_name: str,
     variants: dict[str, str],
@@ -656,6 +741,12 @@ class RewriterValidator:
             # ── Placeholder bleed ─────────────────────────────────────
             variants, anomalies = _check_placeholder_bleed(section_name, variants)
             all_anomalies.extend(anomalies)
+
+            # ── Ungrounded technology / pattern claims ────────────────
+            variants, tech_anomalies = _check_invented_technology(
+                section_name, variants, section_text, resume_text,
+            )
+            all_anomalies.extend(tech_anomalies)
 
             # ── Invented metric warning ───────────────────────────────
             orig_text = section_text.full_text if section_text else ''

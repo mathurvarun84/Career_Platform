@@ -550,8 +550,11 @@ RULES:
 2. Return ONLY valid JSON. No markdown, no backticks, no explanation before or after.
 3. Max 150 words per style variant. Be specific and impact-focused.
 4. Never invent companies, roles, degrees, metrics, or dates not present in the original.
-5. Use placeholders [X%], [N users], [Xms] ONLY for metrics the original left blank.
-6. Output JSON must be parseable by Python json.loads() with zero post-processing.
+5. Do NOT invent architectural patterns, technology choices, frameworks, tools, or capability
+   claims not present in the original text (e.g. do not add Kafka, event-driven, async/await,
+   microservices, queue-based processing, or cloud platforms unless they appear in the entry).
+6. Use placeholders [X%], [N users], [Xms] ONLY for metrics the original left blank.
+7. Output JSON must be parseable by Python json.loads() with zero post-processing.
 
 Output format — exactly these 4 keys, nothing else:
 {"balanced": "...", "aggressive": "...", "top_1_percent": "...", "patch": {...}}
@@ -1257,14 +1260,18 @@ class RewriterAgent(BaseAgent):
             "Lines 3+: Bullet points, each starting with • \n"
             "Last line (optional): Tech Stack: lang1, lang2 — include ONLY if present in original\n"
             "CRITICAL: Line 1 must be the company name alone. Never put dates on Line 1.\n"
-            "CRITICAL: Never add information not present in the original entry.\n\n"
+            "CRITICAL: Never add information not present in the original entry.\n"
+            "CRITICAL: Do NOT invent architectural patterns, technologies, tools, or capabilities "
+            "(Kafka, event-driven, async/await, microservices, queue-based, Redis, Kubernetes, etc.) "
+            "unless they already appear in ENTRY TO REWRITE.\n\n"
 
             "RULES:\n"
             "- Do NOT output any other company, role, or entry — only the one above\n"
             "- Do NOT add a company or role that is not in the original entry\n"
             "- Do NOT bold, italicise, or add markdown formatting\n"
             "- Max 150 words per style\n"
-            "- Use [X%], [N users], [Xms] for missing metrics only — never fabricate numbers\n\n"
+            "- Use [X%], [N users], [Xms] for missing metrics only — never fabricate numbers\n"
+            "- Reframe existing content only — never introduce new tech stacks or patterns\n\n"
 
             "Return ONLY JSON with exactly these keys:\n"
             '{"balanced":"...","aggressive":"...","top_1_percent":"...","patch":{...}}\n\n'
@@ -1372,6 +1379,8 @@ class RewriterAgent(BaseAgent):
                 f"Instruction: {gap.get('rewrite_instruction', gap.get('suggestion', 'Improve this section.'))}\n"
                 f"Missing keywords to add: {', '.join((gap.get('missing_keywords') or [])[:10])}\n\n"
                 "Anti-hallucination: Never invent companies, degrees, metrics, or projects.\n"
+                "Never invent architectural patterns, technologies, tools, or capability claims "
+                "not in the original (Kafka, event-driven, async, microservices, etc.).\n"
                 "Use placeholders [X%], [N users], [Xms], [INR X Cr] for missing metrics only."
             )
 

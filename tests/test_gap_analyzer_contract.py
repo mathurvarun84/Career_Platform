@@ -11,7 +11,11 @@ missing on an experience fix) are invisible until they produce wrong UI content.
 """
 
 import pytest
-from backend.agents.gap_analyzer import classify_section_gaps, priority_fixes_from_gaps
+from backend.agents.gap_analyzer import (
+    classify_section_gaps,
+    priority_fixes_from_gaps,
+    _dedupe_priority_fixes,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -206,3 +210,42 @@ def test_experience_sub_labels_are_distinct(priority_fixes):
     assert len(sub_labels) == len(set(sub_labels)), (
         f"Duplicate sub_labels in experience fixes: {sub_labels}"
     )
+
+
+def test_dedupe_collapses_same_sub_label_keyword_gaps():
+    """Multiple sub_changes for one role block → one fix card."""
+    raw_fixes = [
+        {
+            "section": "experience",
+            "sub_label": "Razorpay | EM",
+            "gap_reason": "Missing fintech keyword",
+            "missing_keywords": ["fintech"],
+            "gap_type": "surface",
+            "auto_apply": True,
+            "needs_change": True,
+            "rewrite_instruction": "Add fintech",
+        },
+        {
+            "section": "experience",
+            "sub_label": "Razorpay | EM",
+            "gap_reason": "Missing payment systems keyword",
+            "missing_keywords": ["payment systems"],
+            "gap_type": "surface",
+            "auto_apply": True,
+            "needs_change": True,
+            "rewrite_instruction": "Add payment systems",
+        },
+        {
+            "section": "experience",
+            "sub_label": "Razorpay | EM",
+            "gap_reason": "Missing commerce keyword",
+            "missing_keywords": ["commerce"],
+            "gap_type": "surface",
+            "auto_apply": True,
+            "needs_change": True,
+            "rewrite_instruction": "Add commerce",
+        },
+    ]
+    deduped = _dedupe_priority_fixes(raw_fixes)
+    assert len(deduped) == 1
+    assert set(deduped[0]["missing_keywords"]) == {"fintech", "payment systems", "commerce"}

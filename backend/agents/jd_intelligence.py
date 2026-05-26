@@ -55,6 +55,36 @@ WRONG:
 {"seniority_expected": "vp", "jd_seniority_level": "staff"}
 """
 
+# Few-shot block for must_have vs nice_to_have bucketing (F008, F019 eval fixtures).
+_JD_SKILL_BUCKET_FEW_SHOT = """
+MUST-HAVE vs NICE-TO-HAVE BUCKETING (follow exactly):
+
+RULE: If a skill appears in a JD section explicitly labeled "Requirements", "Required",
+"Must Have", or "Qualifications" — it MUST go in must_have_skills, regardless of how
+common or basic the skill seems (e.g. Python, SQL, JIRA, Git, Agile).
+
+RULE: Skills only in "Nice to Have", "Preferred", "Good to have", "Bonus", or marked
+"strong plus" / "ideally" go in nice_to_have_skills ONLY.
+
+Example F008 — JD_002 Data Analyst (Requirements lists Python; Nice to Have lists dbt):
+JD excerpt: "Requirements: ... Experience with Python or R for data wrangling ...
+Nice to Have: Experience with dbt for data transformation"
+CORRECT:
+{"must_have_skills": ["SQL", "Python or R", "Tableau or Power BI", ...],
+ "nice_to_have_skills": ["dbt", "Google BigQuery", "Redshift", "A/B testing methodology"]}
+WRONG (Python in nice_to_have when Requirements explicitly require it):
+{"must_have_skills": ["SQL", "Tableau"], "nice_to_have_skills": ["Python", "dbt"]}
+
+Example F019 — JD_004 Business Analyst (domain exposure is "strong plus", not mandatory):
+JD excerpt: "Requirements: ... Hands-on JIRA experience ... Working knowledge of SQL ...
+Exposure to payments domain: UPI, NEFT, IMPS, or card networks is a strong plus"
+CORRECT:
+{"must_have_skills": ["JIRA", "SQL", "BRDs/FSDs", "Agile/Scrum", ...],
+ "nice_to_have_skills": ["payments domain UPI/NEFT/IMPS", "Postman", "Microsoft D365", "PMP/CBAP"]}
+WRONG (treating domain exposure as must_have):
+{"must_have_skills": ["payments domain", "UPI", "NEFT", "JIRA"], "nice_to_have_skills": ["SQL"]}
+"""
+
 _IC_SENIORITY = frozenset({"junior", "mid", "senior", "staff"})
 _LEADERSHIP_LEVELS = frozenset({"manager", "director", "vp", "c-suite"})
 
@@ -131,8 +161,16 @@ class JDIntelligenceAgent(BaseAgent):
             "- 'work with global teams' → overlapping hours with US/EU, communication signal\n\n"
             "Return ONLY valid JSON with these exact keys:\n"
             "- role_title (string): exact title as written in the JD\n"
-            "- must_have_skills (list of strings): explicitly required, dealbreaker if missing\n"
-            "- nice_to_have_skills (list of strings): preferred or bonus, not dealbreakers\n"
+            "- must_have_skills (list of strings): skills explicitly stated as REQUIRED in the JD. "
+            "  Rules: "
+            "  (0) If a skill appears under a section labeled 'Requirements', 'Required', 'Must Have', "
+            "  or 'Qualifications', it MUST be in must_have_skills — never demote to nice_to_have. "
+            "  (1) If JD says 'or' between two skills (e.g. 'Java or Python'), treat as ONE combined entry like 'Java or Python' — do NOT split into two separate must-haves. "
+            "  (2) If JD uses phrases like 'strong plus', 'preferred', 'nice to have', 'ideally', or 'bonus' — place in nice_to_have_skills, NEVER in must_have_skills. "
+            "  (3) Include ALL explicitly required skills from the Requirements section — do not skip items like REST API design, Git, code review, or Agile if they appear in Requirements. "
+            "  (4) Do NOT include role-implied skills not stated in the JD text.\n"
+            "- nice_to_have_skills (list of strings): skills the JD marks as preferred, bonus, or optional. "
+            "  Always include items from 'Nice to Have' / 'Preferred' / 'Good to have' sections here, never in must_have_skills.\n"
             "- hidden_signals (list of dicts): each dict has 'signal' (string) and 'implication' (string) — "
             "  e.g. {\"signal\": \"owns roadmap\", \"implication\": \"no PM, high ownership expected\"}\n"
             "- semantic_skill_map (dict): maps each JD skill/phrase → list of resume terms a candidate might use instead — "
@@ -150,6 +188,7 @@ class JDIntelligenceAgent(BaseAgent):
             "  Put Director/VP/EM titles HERE, not in seniority_expected. "
             "  Infer from title AND responsibilities — use responsibilities over title.\n"
             + _JD_SENIORITY_FEW_SHOT
+            + _JD_SKILL_BUCKET_FEW_SHOT
             + "\nNo extra keys. No markdown fences. No explanations."
         )
 
