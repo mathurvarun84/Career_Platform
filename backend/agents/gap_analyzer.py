@@ -962,10 +962,40 @@ class GapAnalyzerAgent(BaseAgent):
         )
 
     def _section_has_content(self, section_text: Optional[SectionText]) -> bool:
-        """True when sectioner/A1 provided non-empty section text."""
+        """True when sectioner/A1 provided non-empty section text.
+
+        Checks full_text first; falls back to sub_entries so sections whose
+        full_text is populated by the parser (rather than A1 verbatim copy)
+        still register as present.
+        """
         if not section_text:
             return False
-        return bool((section_text.full_text or "").strip())
+        if (section_text.full_text or "").strip():
+            return True
+        return bool(
+            section_text.sub_entries
+            and any((e.verbatim_text or "").strip() for e in section_text.sub_entries)
+        )
+
+    def _section_original_content(self, section_text: Optional[SectionText]) -> str:
+        """Return best available original text for a section.
+
+        Prefers full_text (parser-backed); falls back to sub_entries concat so
+        sections like projects that get sub_entries from A1 but no full_text
+        still expose their original content to the UI Fixes tab.
+        """
+        if not section_text:
+            return ""
+        if (section_text.full_text or "").strip():
+            return section_text.full_text
+        if section_text.sub_entries:
+            parts = [
+                (e.verbatim_text or "").strip()
+                for e in section_text.sub_entries
+                if (e.verbatim_text or "").strip()
+            ]
+            return "\n\n".join(parts)
+        return ""
 
     def _ensure_missing_summary_gap(
         self,
@@ -1059,8 +1089,7 @@ class GapAnalyzerAgent(BaseAgent):
             section_name = gap.get("section", "")
             section_text = resume_sections.get(section_name)
 
-            # Backfill original_content from sectioner full_text
-            gap["original_content"] = section_text.full_text if section_text else ""
+            gap["original_content"] = self._section_original_content(section_text)
             gap["present_in_resume"] = self._section_has_content(section_text)
 
             valid_labels = (
@@ -1110,7 +1139,7 @@ class GapAnalyzerAgent(BaseAgent):
                     "gap_reason": "No change needed",
                     "missing_keywords": [],
                     "rewrite_instruction": "",
-                    "original_content": section_text.full_text if section_text else "",
+                    "original_content": self._section_original_content(section_text),
                     "present_in_resume": self._section_has_content(section_text),
                     "sub_changes": [],
                 })

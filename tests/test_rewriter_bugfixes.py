@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
+from unittest.mock import patch
 
 from backend.agents.rewriter import (
     COMPANY_HEADER_START,
@@ -85,6 +87,28 @@ def test_placeholder_bleed_strips_from_all_styles() -> None:
     assert "[" not in repaired["aggressive"]
     assert "[" not in repaired["top_1_percent"]
     assert any("stripped" in a for a in anomalies)
+
+
+def test_rewrite_monolithic_returns_after_first_success() -> None:
+    """Regression: trace call_label must not drop parse/return (double LLM call)."""
+    agent = RewriterAgent()
+    payload = {
+        "balanced": "Balanced summary.",
+        "aggressive": "Aggressive summary.",
+        "top_1_percent": "Top summary.",
+    }
+    with patch.object(
+        RewriterAgent,
+        "_call_llm",
+        return_value=json.dumps(payload),
+    ) as mock_llm:
+        result = agent._rewrite_monolithic(
+            "summary",
+            "Original summary text.",
+            {"rewrite_instruction": "Strengthen.", "missing_keywords": ["Python"]},
+        )
+    mock_llm.assert_called_once()
+    assert result == payload
 
 
 def test_experience_never_monolithic_without_sub_entries() -> None:

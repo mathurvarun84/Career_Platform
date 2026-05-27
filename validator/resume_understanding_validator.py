@@ -631,7 +631,7 @@ def _detect_sub_entries(section_text: str, section_type: str) -> list[dict]:
 
 
 def _labels_overlap(a: str, b: str) -> bool:
-    """True if two label strings share enough tokens to be the same entry."""
+    """True if two label strings refer to the same employer/role block."""
     stopwords = {
         # Locations only — do NOT include role titles
         "india", "remote", "hybrid", "onsite",
@@ -641,6 +641,16 @@ def _labels_overlap(a: str, b: str) -> bool:
         "company", "experience", "via", "consulting", "engagement",
         "present", "current",
     }
+    # Role-title tokens must not alone trigger overlap (e.g. two different
+    # "Engineering Manager" roles at Flipkart vs Apttus share these).
+    role_tokens = {
+        "engineering", "engineer", "manager", "management", "head",
+        "senior", "lead", "consultant", "consulting", "software",
+        "director", "developer", "analyst", "architect", "principal",
+        "staff", "associate", "professional", "technical", "technology",
+    }
+    # Consulting intermediaries — shared "via Altran" must not collapse two clients.
+    vendor_tokens = {"altran", "accenture", "deloitte", "capgemini", "wipro"}
 
     def normalized(s: str) -> str:
         s = re.sub(r'\d{4}', '', s.lower())
@@ -654,6 +664,9 @@ def _labels_overlap(a: str, b: str) -> bool:
             if len(w) > 3 and w.lower() not in stopwords
         }
 
+    def distinctive_overlap(ta: set[str], tb: set[str]) -> set[str]:
+        return (ta & tb) - role_tokens - vendor_tokens
+
     na, nb = normalized(a), normalized(b)
     if na and nb and (na in nb or nb in na):
         return True
@@ -661,7 +674,14 @@ def _labels_overlap(a: str, b: str) -> bool:
     ta, tb = tokens(a), tokens(b)
     if not ta or not tb:
         return False
-    return bool(ta & tb) and len(ta & tb) / min(len(ta), len(tb)) > 0.6
+    shared = distinctive_overlap(ta, tb)
+    if not shared:
+        return False
+    ta_dist = ta - role_tokens - vendor_tokens
+    tb_dist = tb - role_tokens - vendor_tokens
+    if not ta_dist or not tb_dist:
+        return False
+    return len(shared) / min(len(ta_dist), len(tb_dist)) > 0.5
 
 
 def _normalize_entry_text(text: str) -> str:
@@ -736,8 +756,11 @@ def _find_matching_detected_block(
 
 def _entry_looks_truncated(verbatim: str, block_text: str) -> bool:
     """True when A1 verbatim is clearly shorter than the source block."""
-    if not verbatim or not block_text:
+    if not block_text:
         return False
+    # Empty verbatim (A1 completely dropped the text) is always truncated.
+    if not verbatim:
+        return True
     if '...' in verbatim or '…' in verbatim:
         return True
     v_norm = _normalize_entry_text(verbatim)
@@ -1335,7 +1358,40 @@ class ResumeUnderstandingValidator:
                     existing_entries, detected_blocks, 'experience',
                 )
                 all_anomalies.extend(trunc_anomalies)
-                if len(detected_blocks) != len(existing_entries):
+                if len(detected_blocks) > len(existing_entries):
+                    # A1 missed some entries — backfill from regex instead of silently
+                    # trusting A1's incomplete count. This prevents the SectionerGate
+                    # from firing (39s LLM call) just to recover entries A1 dropped.
+                    existing_labels_for_overlap = [
+                        e.get('label', '') if isinstance(e, dict) else getattr(e, 'label', '')
+                        for e in existing_entries
+                    ]
+                    added_by_backfill = 0
+                    for block in detected_blocks:
+                        block_label = block.get('label', '') or ''
+                        block_text = block.get('text', '') or ''
+                        if not block_label or not block_text:
+                            continue
+                        if any(_labels_overlap(block_label, lbl) for lbl in existing_labels_for_overlap):
+                            continue
+                        existing_entries.append({
+                            'label': block_label,
+                            'verbatim_text': block_text,
+                        })
+                        existing_labels_for_overlap.append(block_label)
+                        added_by_backfill += 1
+                    if added_by_backfill:
+                        all_anomalies.append(
+                            f"experience: A1 missed {added_by_backfill} entries "
+                            f"(A1={len(existing_entries) - added_by_backfill}, "
+                            f"regex={len(detected_blocks)}) — backfilled from regex"
+                        )
+                    else:
+                        all_anomalies.append(
+                            f"experience: A1={len(existing_entries)} entries, "
+                            f"regex={len(detected_blocks)} — keeping A1 (source of truth)"
+                        )
+                elif len(detected_blocks) < len(existing_entries):
                     all_anomalies.append(
                         f"experience: A1={len(existing_entries)} entries, "
                         f"regex={len(detected_blocks)} — keeping A1 (source of truth)"

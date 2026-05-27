@@ -1517,6 +1517,8 @@ class RewriterAgent(BaseAgent):
                     prompt,
                     call_label=f"section:{section}",
                 )
+                parsed = self._parse_json(raw)
+                return SectionRewrite(**parsed).model_dump()
             except Exception as exc:
                 if attempt == 1:
                     logging.warning(

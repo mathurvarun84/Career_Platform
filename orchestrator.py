@@ -175,6 +175,18 @@ class Orchestrator:
             ground_truth = audit.get("ground_truth_count", 0)
             a1_count = audit.get("sub_entries_count", 0)
 
+            # Diagnostic: log what keys and sub_entry counts are actually in resume_sections
+            section_debug = {
+                k: len(getattr(v, "sub_entries", None) or v.get("sub_entries", []) if isinstance(v, dict) else [])
+                if v is not None else 0
+                for k, v in resume_sections.items()
+            }
+            logging.info(
+                "SectionerGate: section_keys=%s sub_entry_counts=%s",
+                list(resume_sections.keys()),
+                section_debug,
+            )
+
             # Allow a tolerance of 1 — A1 missing exactly 1 entry doesn't
             # justify a full Sectioner LLM call.
             needs = (ground_truth - a1_count) > 1
@@ -658,10 +670,16 @@ class Orchestrator:
                 elif hasattr(existing, "full_text"):
                     existing_text = str(existing.full_text or "")
                 if len(sec_text.strip()) >= len(existing_text.strip()):
+                    # Preserve sub_entries from A1 — only patch full_text from parser.
+                    existing_subs = []
+                    if isinstance(existing, dict):
+                        existing_subs = existing.get("sub_entries") or []
+                    elif hasattr(existing, "sub_entries"):
+                        existing_subs = existing.sub_entries or []
                     resume_sections[sec_name] = SectionText(
                         header=sec_name,
                         full_text=sec_text.strip(),
-                        sub_entries=[],
+                        sub_entries=existing_subs,
                     )
         else:
             if has_jd:
@@ -714,10 +732,17 @@ class Orchestrator:
                 existing = resume_sections.get(sec_name)
                 existing_text = (existing.full_text if hasattr(existing, "full_text") else "") if existing else ""
                 if sec_text.strip() and (not existing or not str(existing_text).strip()):
+                    # Preserve sub_entries from A1 — only patch full_text from parser.
+                    existing_subs = []
+                    if existing is not None:
+                        if isinstance(existing, dict):
+                            existing_subs = existing.get("sub_entries") or []
+                        elif hasattr(existing, "sub_entries"):
+                            existing_subs = existing.sub_entries or []
                     resume_sections[sec_name] = SectionText(
                         header=sec_name,
                         full_text=sec_text.strip(),
-                        sub_entries=[],
+                        sub_entries=existing_subs,
                     )
             resume_sections = self._sync_experience_sections(
                 resume_sections, resume_text, resume_und

@@ -460,6 +460,23 @@ def _extract_section_blocks(text: str) -> Dict[str, str]:
             "honours",
             "accomplishments",
         ],
+        "projects": [
+            "projects",
+            "personal projects",
+            "side projects",
+            "key projects",
+            "notable projects",
+            "project highlights",
+        ],
+        "publications": ["publications", "research", "papers"],
+        "extracurriculars": [
+            "extracurriculars",
+            "extra-curriculars",
+            "activities",
+            "volunteer",
+            "volunteering",
+            "interests",
+        ],
     }
     blocks = {key: "" for key in headings}
     all_headings = [name for aliases in headings.values() for name in aliases]
