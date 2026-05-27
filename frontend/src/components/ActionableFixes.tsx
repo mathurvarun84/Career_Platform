@@ -484,7 +484,7 @@ export default function ActionableFixes({
         if (match?.verbatim_text) {
           return match.verbatim_text.trim();
         }
-        if (process.env.NODE_ENV !== "production") {
+        if (import.meta.env.DEV) {
           console.warn(
             "[getBeforeText] No sub_entry match for sub_label:", fix.sub_label,
             "in section:", key,
@@ -529,8 +529,7 @@ export default function ActionableFixes({
         return "";
       }
 
-      const rewriteBlock =
-        analysisResult?.rewrites?.rewrites?.[key]?.balanced;
+      const rewriteBlock = analysisResult?.rewrites?.[key]?.balanced;
       if (typeof rewriteBlock === "string" && rewriteBlock.trim()) {
         return rewriteBlock.trim();
       }
@@ -691,7 +690,6 @@ export default function ActionableFixes({
 
   const onUndo = useCallback(
     async (fix: PriorityFix, fixKey: string) => {
-      const sectionKey = getSectionKey(fix);
       if (jobId) {
         const patch = getPatchForFix(fix);
         if (patch?.patch_id) {
