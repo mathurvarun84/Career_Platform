@@ -60,8 +60,8 @@
     "hash": "71b312c233bf1254d7be16df65f8e50a"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\main.py": {
-    "mtime": 1779646393.1618547,
-    "hash": "b097f7eaafeefde9a2bfbc7e331c28a1"
+    "mtime": 1779864984.7163374,
+    "hash": "f7bf26922754b7fd1397c96793c1448e"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\persistence.py": {
     "mtime": 1779015179.672361,
@@ -239,6 +239,10 @@
     "mtime": 1775363326.509018,
     "hash": "9ac9efc4a587ceaa103e367f73675ba8"
   },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\engine\\recruiter_preview.py": {
+    "mtime": 1779864972.3722844,
+    "hash": "83d90543733f5dcf5552af1096914584"
+  },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\engine\\resume_builder.py": {
     "mtime": 1779272727.4957902,
     "hash": "fe31ca001ec2396f8981e01502c362f3"
@@ -280,24 +284,24 @@
     "hash": "baad65aa18522ed957bd8e60499c7a2e"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\App.tsx": {
-    "mtime": 1779544951.27632,
-    "hash": "7af9389400fb0c44583d2820dca5428a"
+    "mtime": 1779864997.1712227,
+    "hash": "96ee3f0c8f56d1ca4235b054a67b4840"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\App1.tsx": {
     "mtime": 1777116556.226019,
     "hash": "c5e44a49ac2a44373fba5d1a7fe35be4"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\EvaluationDashboard.tsx": {
-    "mtime": 1779625618.5957973,
-    "hash": "7bc0d039c9e73a15958e1856dccd1f3d"
+    "mtime": 1779864999.8213663,
+    "hash": "acd8010368dd49c8ef33bf66952b9835"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\main.tsx": {
     "mtime": 1777969345.228021,
     "hash": "02760fd465e086d32bb291155b9c4de8"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\api\\analyze.ts": {
-    "mtime": 1779704044.4399164,
-    "hash": "a2f74fb9678ccebd7e2799747ebc73b6"
+    "mtime": 1779865003.8392737,
+    "hash": "4c80084500df0c566cdccf0824908d08"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\api\\client.ts": {
     "mtime": 1779646064.8012211,
@@ -344,8 +348,8 @@
     "hash": "dd06f2eda40cc8d2b6b03bf35a1f9f47"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\RecruiterSimulation.tsx": {
-    "mtime": 1779202712.295634,
-    "hash": "e01fad08ec57096d8fa610af74cf2b27"
+    "mtime": 1779865012.3943534,
+    "hash": "b71fb6a8c226dcc25ca7f91616e8cd32"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\ResumeUpload.tsx": {
     "mtime": 1778241349.948106,
@@ -396,8 +400,8 @@
     "hash": "b5330cf5ae29829a70543084bbb263e4"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\upload\\AnalysisProgress.tsx": {
-    "mtime": 1779120265.5124934,
-    "hash": "f2bec206c3deb19ca6db1ca4bcfac885"
+    "mtime": 1779864992.0073924,
+    "hash": "134ca14ee956eb62e26e39ebc67a23ad"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\upload\\CareerPositioning.tsx": {
     "mtime": 1777619859.6606286,
@@ -426,6 +430,10 @@
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\hooks\\useProgressStore.ts": {
     "mtime": 1779516881.4073434,
     "hash": "37996c581a91d4c1c1e135bb93faf1cd"
+  },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\hooks\\useRecruiterSimPoll.ts": {
+    "mtime": 1779864993.8139646,
+    "hash": "c8e87652eeeb9b047f446a03490071c2"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\hooks\\useRescore.ts": {
     "mtime": 1779525932.6818707,
@@ -460,12 +468,12 @@
     "hash": "3dd1508527a98fe785f7a418fb98501b"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\store\\useResumeStore.ts": {
-    "mtime": 1779544941.9052746,
-    "hash": "98704569da7f0dce6138fa5ad94658f7"
+    "mtime": 1779865011.6954563,
+    "hash": "77a5924d02851ef8bccf719cd3b009ce"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\types\\index.ts": {
-    "mtime": 1779646046.4757504,
-    "hash": "92c804af104bc065a53844bb6a7091a5"
+    "mtime": 1779864991.3614519,
+    "hash": "eea4df38d0c2ccaee06446c36cab3522"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\utils\\actionableFixes.ts": {
     "mtime": 1779704283.481431,
@@ -602,6 +610,10 @@
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\tests\\test_pdf_experience_fragment_rejoin.py": {
     "mtime": 1778873065.6888742,
     "hash": "40ba305c21c2979ddd150fecb8692011"
+  },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\tests\\test_recruiter_preview.py": {
+    "mtime": 1779864972.3722844,
+    "hash": "7ebb6091c91de33aac38d45aa88a8771"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\tests\\test_resume_understanding_persona_generic.py": {
     "mtime": 1778932397.3946185,

@@ -9,10 +9,13 @@ import json
 import logging
 import os
 import re
+import time
 from abc import ABC, abstractmethod
 
 import anthropic
 from dotenv import load_dotenv
+
+from engine.llm_trace import record_llm_call
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -37,7 +40,26 @@ class BaseAgent(ABC):
     def run(self, input_dict: dict) -> dict:
         pass
 
-    def _call_llm(self, system_prompt: str, user_message: str) -> str:
+    def _call_llm(
+        self,
+        system_prompt: str,
+        user_message: str,
+        *,
+        call_label: str = "",
+    ) -> str:
+        prompt_chars = len(system_prompt) + len(user_message)
+        started = time.perf_counter()
+
+        def _log_duration() -> None:
+            record_llm_call(
+                agent=self.__class__.__name__,
+                provider=self.provider,
+                model=self.model,
+                duration_ms=(time.perf_counter() - started) * 1000,
+                prompt_chars=prompt_chars,
+                call_label=call_label,
+            )
+
         if self.provider == "openai":
             from openai import OpenAI
 
@@ -64,6 +86,7 @@ class BaseAgent(ABC):
                         response_format={"type": "json_object"},
                         temperature=0
                     )
+                    _log_duration()
                     return response.choices[0].message.content
                 except Exception as e:
                     if attempt == 0:
@@ -93,6 +116,7 @@ class BaseAgent(ABC):
                         messages=[{"role": "user", "content": user_message}],
                         temperature=0
                     )
+                    _log_duration()
                     return message.content[0].text
                 except anthropic.APIError as e:
                     if attempt == 0:

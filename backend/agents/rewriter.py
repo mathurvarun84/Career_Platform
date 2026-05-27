@@ -1408,7 +1408,11 @@ class RewriterAgent(BaseAgent):
 
         for attempt in range(2):
             try:
-                raw = self._call_llm(SYSTEM_PROMPT, prompt)
+                raw = self._call_llm(
+                    SYSTEM_PROMPT,
+                    prompt,
+                    call_label=f"sub_entry:{section}:{sub.get('sub_label', 'unknown')[:40]}",
+                )
                 parsed = self._parse_json(raw)
                 result = SectionRewrite(**parsed)
                 patch_raw = _finalize_sub_entry_patch(
@@ -1508,9 +1512,11 @@ class RewriterAgent(BaseAgent):
 
         for attempt in range(2):
             try:
-                raw = self._call_llm(SYSTEM_PROMPT, prompt)
-                parsed = self._parse_json(raw)
-                return SectionRewrite(**parsed).model_dump()
+                raw = self._call_llm(
+                    SYSTEM_PROMPT,
+                    prompt,
+                    call_label=f"section:{section}",
+                )
             except Exception as exc:
                 if attempt == 1:
                     logging.warning(

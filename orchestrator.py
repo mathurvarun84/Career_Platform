@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import re
 import tempfile
+import time
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Callable, Dict, Optional
@@ -28,6 +29,7 @@ from backend.agents.sectioner_agent import SectionerAgent
 from backend.agents.rewriter import RewriterAgent
 from backend.role_fit import compute_role_fit
 from engine.ats_scorer import score_resume
+from engine.llm_trace import PhaseTimer, log_trace_summary, record_phase, reset_trace
 from engine.percentile import get_percentile
 from validators import ResumeUnderstandingValidator
 from validator.rewriter_validator import (
@@ -591,9 +593,11 @@ class Orchestrator:
     ) -> Dict[str, Any]:
         uid = user_id or self.user_id or "anonymous"
         run_id = generate_run_id()
+        reset_trace(run_id)
         if progress_cb: progress_cb({"step":1,"label":"Reading your resume...","pct":10})
         has_jd = bool(jd_text and jd_text.strip())
-        ats_result = score_resume(resume_text, jd_text if has_jd else None)
+        with PhaseTimer("ats_score"):
+            ats_result = score_resume(resume_text, jd_text if has_jd else None)
         if partial_result_cb:
             partial_result_cb({"ats": ats_result})
 
@@ -624,17 +628,18 @@ class Orchestrator:
                     )
         else:
             if has_jd:
-                with ThreadPoolExecutor(max_workers=2) as executor:
-                    fut_resume = executor.submit(
-                        self.resume_understanding.run,
-                        {"resume_text": resume_text, "user_id": uid},
-                    )
-                    fut_jd = executor.submit(
-                        self.jd_intelligence.run,
-                        {"jd_text": jd_text},
-                    )
-                    resume_und = fut_resume.result()
-                    jd_intel = fut_jd.result()
+                with PhaseTimer("a1_a2_parallel"):
+                    with ThreadPoolExecutor(max_workers=2) as executor:
+                        fut_resume = executor.submit(
+                            self.resume_understanding.run,
+                            {"resume_text": resume_text, "user_id": uid},
+                        )
+                        fut_jd = executor.submit(
+                            self.jd_intelligence.run,
+                            {"jd_text": jd_text},
+                        )
+                        resume_und = fut_resume.result()
+                        jd_intel = fut_jd.result()
                 if jd_intel:
                     from backend.few_shot_prompts import detect_role_family
 
@@ -648,14 +653,16 @@ class Orchestrator:
                 except Exception as e:
                     logging.warning("Failed to save jd_intelligence to session store: %s", e)
             else:
-                resume_und = self.resume_understanding.run({
-                    "resume_text": resume_text,
-                    "user_id": uid,
-                })
+                with PhaseTimer("a1_only"):
+                    resume_und = self.resume_understanding.run({
+                        "resume_text": resume_text,
+                        "user_id": uid,
+                    })
                 jd_intel = None
 
-            resume_und = ResumeUnderstandingValidator().validate_and_fix(resume_und, resume_text)
-            resume_sections = self._extract_a1_sections(resume_und)
+            with PhaseTimer("a1_validator_and_sections"):
+                resume_und = ResumeUnderstandingValidator().validate_and_fix(resume_und, resume_text)
+                resume_sections = self._extract_a1_sections(resume_und)
             # Save A1 output to session store
             try:
                 save_agent_output(uid, run_id, "resume_understanding", resume_und)
@@ -746,25 +753,28 @@ class Orchestrator:
                 save_full_run_result(uid, run_id, early_result)
             except Exception as _save_exc:
                 logging.warning("Failed to save early_result to session store: %s", _save_exc)
+            log_trace_summary()
             return early_result
         # ─────────────────────────────────────────────────────────────────────
 
         if has_jd:
             if progress_cb: progress_cb({"step":2,"label":"Analyzing gaps against JD...","pct":45})
-            resume_sections = self._merge_sectioner_into_sections(
-                resume_sections, resume_text, resume_und
-            )
+            with PhaseTimer("sectioner_merge"):
+                resume_sections = self._merge_sectioner_into_sections(
+                    resume_sections, resume_text, resume_und
+                )
             resume_sections = self._sync_experience_sections(
                 resume_sections, resume_text, resume_und
             )
-            gap_result = self.gap_analyzer.run({
-                "resume_understanding": resume_und,
-                "jd_intelligence": jd_intel,
-                "resume_text": resume_text,
-                "resume_sections": resume_sections,
-                "jd_text": jd_text,
-                "mode": "gap_closer",
-            })
+            with PhaseTimer("a3_gap_closer"):
+                gap_result = self.gap_analyzer.run({
+                    "resume_understanding": resume_und,
+                    "jd_intelligence": jd_intel,
+                    "resume_text": resume_text,
+                    "resume_sections": resume_sections,
+                    "jd_text": jd_text,
+                    "mode": "gap_closer",
+                })
             resume_sections = self._sync_experience_sections(
                 resume_sections, resume_text, resume_und
             )
@@ -830,6 +840,7 @@ class Orchestrator:
         sim_result = None
         patches_raw = []
         validation_summary = None
+        _parallel_t0 = time.perf_counter()
         with ThreadPoolExecutor(max_workers=3) as executor:
             fut_rewrite = None
             fut_eval = None
@@ -1020,6 +1031,8 @@ class Orchestrator:
                 except Exception as exc:
                     logging.warning("Recruiter Sim (Agent 5) failed: %s. Continuing without simulation.", exc)
 
+        record_phase("parallel_a4_eval_sim", (time.perf_counter() - _parallel_t0) * 1000)
+
         if has_jd and isinstance(gap_result, dict):
             _ensure_jd_match_score_after(gap_result)
         if partial_result_cb:
@@ -1111,4 +1124,5 @@ class Orchestrator:
             save_full_run_result(uid, run_id, final_result)
         except Exception as e:
             logging.warning("Failed to save full run result to session store: %s", e)
+        log_trace_summary()
         return final_result
