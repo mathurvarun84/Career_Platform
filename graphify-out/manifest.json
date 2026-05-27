@@ -12,8 +12,8 @@
     "hash": "d41d8cd98f00b204e9800998ecf8427e"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\orchestrator.py": {
-    "mtime": 1779647653.3755982,
-    "hash": "b1e805953eb1a63ec98ef4e87a96dd0f"
+    "mtime": 1779798639.317624,
+    "hash": "af76189c4defbe744b0d969542572e5d"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\parser.py": {
     "mtime": 1779625618.5957973,
@@ -88,8 +88,8 @@
     "hash": "9921b213dffa3c184d6b28ffa3494037"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\gap_analyzer.py": {
-    "mtime": 1779784194.348333,
-    "hash": "0b66e779ddf2ed882d457a6b02b5c316"
+    "mtime": 1779792820.9930618,
+    "hash": "e0c7e8a213e17c326093f138d43714af"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\jd_fetcher.py": {
     "mtime": 1778485614.6300335,
@@ -108,8 +108,8 @@
     "hash": "83ce8ee12a2e8f785520f552e47a9262"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\rewriter.py": {
-    "mtime": 1779782259.7169397,
-    "hash": "ac072c69f200977b4e68fd9aed6b54ff"
+    "mtime": 1779864195.8548236,
+    "hash": "ac66b4a76d2a85976aa5f3394b7f0f35"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\sectioner_agent.py": {
     "mtime": 1779020523.060724,
@@ -304,8 +304,8 @@
     "hash": "b4357caec0baeea3c205fef9f8ca8a75"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\ActionableFixes.tsx": {
-    "mtime": 1779792226.642538,
-    "hash": "0ef7d4d554d4b336f93dd0b666b5cfc6"
+    "mtime": 1779863025.7409399,
+    "hash": "d3bdfe340700350127997c296e96c1ac"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\CareerPathPanel.tsx": {
     "mtime": 1779304111.896737,
@@ -555,6 +555,10 @@
     "mtime": 1779647703.3758166,
     "hash": "923c3663dd22769ca62787c29b60ea0d"
   },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\tests\\test_fixes_4_8.py": {
+    "mtime": 1779798637.5581777,
+    "hash": "919d3163fea99a5c0023eaeb4cc7452c"
+  },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\tests\\test_gap_analyzer_contract.py": {
     "mtime": 1779784207.2484555,
     "hash": "20cbf52dfbceb835b3dec9fe962e0537"
@@ -624,8 +628,8 @@
     "hash": "d8470d86abb723f263f638e9c71c7b73"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\validator\\rewriter_validator.py": {
-    "mtime": 1779782310.3972595,
-    "hash": "5dab4147b062749659eec8c2ffc3aef3"
+    "mtime": 1779798635.043746,
+    "hash": "0074a7f154735a8acba9d7e89d7dfdc3"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\AGENTS.md": {
     "mtime": 1777470909.726195,

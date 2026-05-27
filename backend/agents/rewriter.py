@@ -938,6 +938,67 @@ class RewriterAgent(BaseAgent):
 
         return mapped
 
+    def _run_parallel_sub_entry_rewrites(
+        self,
+        section: str,
+        jobs: dict[int, tuple[dict, str]],
+        section_context: str,
+        *,
+        resume_text: str = "",
+        section_text: SectionText | None = None,
+        max_workers: int = 4,
+    ) -> dict[int, tuple["SectionRewrite", dict | None]]:
+        """
+        Run focused sub-entry LLM rewrites in parallel.
+
+        Args:
+            jobs: entry_index → (sub_change dict, verbatim text).
+
+        Returns:
+            Same keys as jobs; values are (SectionRewrite, patch_dict | None).
+        """
+        if not jobs:
+            return {}
+
+        results: dict[int, tuple[SectionRewrite, dict | None]] = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as entry_executor:
+            futures = {
+                entry_executor.submit(
+                    self._rewrite_sub_entry,
+                    section,
+                    sub,
+                    section_context,
+                    verbatim,
+                    resume_text=resume_text,
+                    section_text=section_text,
+                ): i
+                for i, (sub, verbatim) in jobs.items()
+            }
+            for fut in as_completed(futures):
+                i = futures[fut]
+                results[i] = fut.result()
+        return results
+
+    def _append_stitched_sub_entry(
+        self,
+        section: str,
+        entry_rw: SectionRewrite,
+        *,
+        entry_label: str,
+        stitched_b: list[str],
+        stitched_a: list[str],
+        stitched_t: list[str],
+    ) -> None:
+        """Append one sub-entry rewrite (or verbatim) into the three style lists."""
+        if section == "experience":
+            stitched_b.append(_ensure_experience_markers(entry_rw.balanced, entry_label))
+            stitched_a.append(_ensure_experience_markers(entry_rw.aggressive, entry_label))
+            stitched_t.append(_ensure_experience_markers(entry_rw.top_1_percent, entry_label))
+        else:
+            stitched_b.append(entry_rw.balanced)
+            stitched_a.append(entry_rw.aggressive)
+            stitched_t.append(entry_rw.top_1_percent)
+
     def _rewrite_with_sub_changes(
         self,
         section: str,
@@ -971,48 +1032,63 @@ class RewriterAgent(BaseAgent):
                 "RewriterAgent: section '%s' has no sub_entries — iterating sub_changes only",
                 section,
             )
+            section_context = gap.get("rewrite_instruction", "")
             stitched_b, stitched_a, stitched_t = [], [], []
-            for sub in sub_changes:
+            degraded_items: list[tuple[str, dict, str]] = []
+            rewrite_jobs: dict[int, tuple[dict, str]] = {}
+
+            for idx, sub in enumerate(sub_changes):
                 original_text = (sub.get("original_text") or "").strip()
                 if not original_text and section_text:
                     original_text = self._resolve_sub_text(
                         section_text, str(sub.get("sub_label", "") or "")
                     )
                 if not sub.get("needs_change", True):
+                    degraded_items.append(("verbatim", sub, original_text))
+                elif not original_text:
+                    logging.warning(
+                        "RewriterAgent: no verbatim anchor for sub_label '%s' — skipping",
+                        sub.get("sub_label", "unknown"),
+                    )
+                    degraded_items.append(("skip", sub, ""))
+                else:
+                    degraded_items.append(("rewrite", sub, original_text))
+                    rewrite_jobs[idx] = (sub, original_text)
+
+            rewrite_results = self._run_parallel_sub_entry_rewrites(
+                section,
+                rewrite_jobs,
+                section_context,
+                resume_text=resume_text,
+                section_text=section_text,
+            )
+
+            for idx, (kind, sub, original_text) in enumerate(degraded_items):
+                if kind == "skip":
+                    continue
+                if kind == "verbatim":
                     text = original_text
                     if section == "experience":
                         text = _ensure_experience_markers(text, sub.get("sub_label", ""))
                     stitched_b.append(text)
                     stitched_a.append(text)
                     stitched_t.append(text)
-                elif not original_text:
-                    logging.warning(
-                        "RewriterAgent: no verbatim anchor for sub_label '%s' — skipping",
-                        sub.get("sub_label", "unknown"),
-                    )
                     continue
-                else:
-                    entry_rw, patch_raw = self._rewrite_sub_entry(
-                        section,
-                        sub,
-                        gap.get("rewrite_instruction", ""),
-                        original_text,
-                        resume_text=resume_text,
-                        section_text=section_text,
-                    )
-                    if patch_raw:
-                        patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
-                        patch_raw.setdefault("section", section)
-                        patch_raw.setdefault("sub_entry_label", sub.get("sub_label", ""))
-                        collected_patches.append(patch_raw)
-                    if section == "experience":
-                        stitched_b.append(_ensure_experience_markers(entry_rw.balanced, sub.get("sub_label", "")))
-                        stitched_a.append(_ensure_experience_markers(entry_rw.aggressive, sub.get("sub_label", "")))
-                        stitched_t.append(_ensure_experience_markers(entry_rw.top_1_percent, sub.get("sub_label", "")))
-                    else:
-                        stitched_b.append(entry_rw.balanced)
-                        stitched_a.append(entry_rw.aggressive)
-                        stitched_t.append(entry_rw.top_1_percent)
+
+                entry_rw, patch_raw = rewrite_results[idx]
+                if patch_raw:
+                    patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
+                    patch_raw.setdefault("section", section)
+                    patch_raw.setdefault("sub_entry_label", sub.get("sub_label", ""))
+                    collected_patches.append(patch_raw)
+                self._append_stitched_sub_entry(
+                    section,
+                    entry_rw,
+                    entry_label=str(sub.get("sub_label", "") or ""),
+                    stitched_b=stitched_b,
+                    stitched_a=stitched_a,
+                    stitched_t=stitched_t,
+                )
             fallback = _build_content_from_sub_entries(section, [], full_text_fallback=f"[{section} rewrite unavailable]")
             return (SectionRewrite(
                 balanced=sep.join(stitched_b) or fallback,
@@ -1048,13 +1124,36 @@ class RewriterAgent(BaseAgent):
                     sub_change_map[i] = sub
                     break
 
-        # Master loop — drives from sectioner sub_entries
+        # Parallel LLM rewrites for entries that need change; stitch in sub_entry order.
+        section_context = gap.get("rewrite_instruction", "")
+        rewrite_jobs: dict[int, tuple[dict, str]] = {}
+
+        for i, entry in enumerate(section_text.sub_entries):
+            verbatim = entry.verbatim_text.strip()
+            if not verbatim:
+                continue
+            sub = sub_change_map.get(i)
+            if sub is not None and sub.get("needs_change", True):
+                rewrite_jobs[i] = (sub, verbatim)
+
+        rewrite_results = self._run_parallel_sub_entry_rewrites(
+            section,
+            rewrite_jobs,
+            section_context,
+            resume_text=resume_text,
+            section_text=section_text,
+        )
+
         stitched_b, stitched_a, stitched_t = [], [], []
 
         for i, entry in enumerate(section_text.sub_entries):
             verbatim = entry.verbatim_text.strip()
             if not verbatim:
-                logging.warning("RewriterAgent: sub_entry[%d] for '%s' has empty verbatim_text — skipping", i, section)
+                logging.warning(
+                    "RewriterAgent: sub_entry[%d] for '%s' has empty verbatim_text — skipping",
+                    i,
+                    section,
+                )
                 continue
 
             sub = sub_change_map.get(i)
@@ -1069,29 +1168,21 @@ class RewriterAgent(BaseAgent):
                 stitched_t.append(text)
                 continue
 
-            # needs_change=True → LLM rewrite
-            entry_rw, patch_raw = self._rewrite_sub_entry(
-                section,
-                sub,
-                gap.get("rewrite_instruction", ""),
-                verbatim,
-                resume_text=resume_text,
-                section_text=section_text,
-            )
+            entry_rw, patch_raw = rewrite_results[i]
             if patch_raw:
                 patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
                 patch_raw.setdefault("section", section)
                 patch_raw.setdefault("sub_entry_label", entry.label)
                 collected_patches.append(patch_raw)
 
-            if section == "experience":
-                stitched_b.append(_ensure_experience_markers(entry_rw.balanced, entry.label))
-                stitched_a.append(_ensure_experience_markers(entry_rw.aggressive, entry.label))
-                stitched_t.append(_ensure_experience_markers(entry_rw.top_1_percent, entry.label))
-            else:
-                stitched_b.append(entry_rw.balanced)
-                stitched_a.append(entry_rw.aggressive)
-                stitched_t.append(entry_rw.top_1_percent)
+            self._append_stitched_sub_entry(
+                section,
+                entry_rw,
+                entry_label=entry.label,
+                stitched_b=stitched_b,
+                stitched_a=stitched_a,
+                stitched_t=stitched_t,
+            )
 
         if len(stitched_b) != len([e for e in section_text.sub_entries if e.verbatim_text.strip()]):
             logging.warning(
