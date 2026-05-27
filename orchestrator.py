@@ -30,11 +30,26 @@ from backend.role_fit import compute_role_fit
 from engine.ats_scorer import score_resume
 from engine.percentile import get_percentile
 from validators import ResumeUnderstandingValidator
-from validator.rewriter_validator import assert_structural_completeness
+from validator.rewriter_validator import (
+    assert_structural_completeness,
+    backfill_missing_rewrite_sections,
+)
 from validator.experience_audit import (
     ensure_experience_completeness,
     log_experience_audit,
 )
+
+
+def _ensure_jd_match_score_after(gap_result: dict) -> None:
+    """Default JD after-score when evaluate output omits estimated_score_after."""
+    if gap_result.get("jd_match_score_after") is not None:
+        return
+    before = gap_result.get("jd_match_score_before") or gap_result.get("match_score") or 0
+    try:
+        before = int(before)
+    except (TypeError, ValueError):
+        before = 0
+    gap_result["jd_match_score_after"] = min(100, before + 5)
 
 
 def _dedupe_sub_entries(section_text) -> Any:
@@ -689,24 +704,25 @@ class Orchestrator:
         # Compute before A3/A4/A5. If underqualified, return early to save
         # ~75% of token cost (skips GapAnalyzer, Sectioner, Rewriter, RecruiterSim).
         role_fit: dict | None = None
+        role_fit_precheck: dict | None = None
         if has_jd and jd_intel and resume_und:
             try:
-                role_fit = compute_role_fit(resume_und, jd_intel)
+                role_fit_precheck = compute_role_fit(resume_und, jd_intel)
                 logging.info(
-                    "Role fit — fitness=%s score=%s exp_gap=%s seniority_gap=%s",
-                    role_fit["fitness"], role_fit["score"],
-                    role_fit["experience_gap"], role_fit["seniority_gap"],
+                    "Role fit (pre-A3) — fitness=%s score=%s exp_gap=%s seniority_gap=%s",
+                    role_fit_precheck["fitness"], role_fit_precheck["score"],
+                    role_fit_precheck["experience_gap"], role_fit_precheck["seniority_gap"],
                 )
             except Exception as _rf_exc:
-                logging.warning("compute_role_fit failed (non-fatal): %s", _rf_exc)
-                role_fit = None
+                logging.warning("compute_role_fit pre-check failed (non-fatal): %s", _rf_exc)
+                role_fit_precheck = None
 
         # Early exit: underqualified → skip A3, Sectioner, A4, A5 entirely.
         # A1 + A2 output is enough for the frontend gate screen.
         if (
             has_jd
-            and role_fit is not None
-            and role_fit.get("fitness") == "underqualified"
+            and role_fit_precheck is not None
+            and role_fit_precheck.get("fitness") == "underqualified"
         ):
             logging.info("Role fit: underqualified — early exit, skipping A3/A4/A5")
             if progress_cb:
@@ -724,7 +740,7 @@ class Orchestrator:
                 "jd_intelligence": jd_intel,
                 "patches": [],
                 "validation": None,
-                "role_fit": role_fit,
+                "role_fit": role_fit_precheck,
             }
             try:
                 save_full_run_result(uid, run_id, early_result)
@@ -795,6 +811,19 @@ class Orchestrator:
             logging.warning("Failed to save gap_analyzer to session store: %s", e)
         if partial_result_cb:
             partial_result_cb({"gap": gap_result, "resume": resume_und})
+
+        if has_jd and jd_intel and resume_und and isinstance(gap_result, dict):
+            try:
+                role_fit = compute_role_fit(resume_und, jd_intel, gap_result)
+                logging.info(
+                    "Role fit (post-A3) — fitness=%s score=%s unanswerable=%s",
+                    role_fit["fitness"],
+                    role_fit["score"],
+                    role_fit.get("unanswerable_evidence_gaps", 0),
+                )
+            except Exception as _rf_exc:
+                logging.warning("compute_role_fit post-A3 failed (non-fatal): %s", _rf_exc)
+                role_fit = role_fit_precheck
 
         rewrites = None
         eval_gap = None
@@ -889,20 +918,37 @@ class Orchestrator:
                                 "RewriterValidator failed: %s. Using raw rewriter output.",
                                 exc,
                             )
+                            if isinstance(rewrites, dict):
+                                rewrite_map = rewrites.get("rewrites", {})
+                                missing_sections = assert_structural_completeness(
+                                    rewrite_map,
+                                    resume_sections,
+                                )
+                                if missing_sections:
+                                    rewrites["rewrites"] = backfill_missing_rewrite_sections(
+                                        rewrite_map,
+                                        resume_sections,
+                                        missing_sections,
+                                    )
                         log_experience_audit(
                             "post_rewriter_validator",
                             resume_text,
                             resume_sections,
                             rewrites.get("rewrites") if isinstance(rewrites, dict) else rewrites,
                         )
+                        rewrite_map = rewrites.get("rewrites", {})
                         missing_sections = assert_structural_completeness(
-                            rewrites.get("rewrites", {}),
+                            rewrite_map,
                             resume_sections,
                         )
                         if missing_sections:
                             logging.error(
-                                "Structural completeness FAILED — sections missing from "
-                                "rewrites: %s. Docx will be incomplete.",
+                                "Structural completeness FAILED — backfilling sections: %s",
+                                missing_sections,
+                            )
+                            rewrites["rewrites"] = backfill_missing_rewrite_sections(
+                                rewrite_map,
+                                resume_sections,
                                 missing_sections,
                             )
                         try:
@@ -948,8 +994,12 @@ class Orchestrator:
                     estimated_after = eval_gap.get("estimated_score_after")
                     if isinstance(estimated_after, int):
                         gap_result["jd_match_score_after"] = estimated_after
+                    else:
+                        _ensure_jd_match_score_after(gap_result)
                 except Exception as exc:
                     logging.warning("Gap evaluate scoring failed: %s", exc)
+                    if isinstance(gap_result, dict):
+                        _ensure_jd_match_score_after(gap_result)
 
             if fut_sim:
                 try:
@@ -969,6 +1019,9 @@ class Orchestrator:
                             )
                 except Exception as exc:
                     logging.warning("Recruiter Sim (Agent 5) failed: %s. Continuing without simulation.", exc)
+
+        if has_jd and isinstance(gap_result, dict):
+            _ensure_jd_match_score_after(gap_result)
         if partial_result_cb:
             partial_result_cb({"rewrites": rewrites, "gap": gap_result, "sim": sim_result})
 

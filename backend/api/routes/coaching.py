@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.agents.coaching_agent import CoachingAgent, bullet_is_meaningful
+from backend.agents.gap_analyzer import _fuzzy_match_label
 from backend.schemas.career_memory import CareerMemoryEntry, career_memory_store
 
 logger = logging.getLogger(__name__)
@@ -86,6 +87,23 @@ def _normalise_skill(
     if "commun" in lower:
         return "communication"
     return "technical"
+
+
+def _insert_bullet_in_verbatim(verbatim: str, bullet_line: str, placement: str) -> str:
+    """Insert bullet_line at the start or end of a sub-entry verbatim block."""
+    if placement == "start":
+        first_nl = verbatim.find("\n")
+        if first_nl != -1:
+            return (
+                verbatim[: first_nl + 1]
+                + bullet_line
+                + "\n"
+                + verbatim[first_nl + 1 :]
+            )
+        if verbatim.strip():
+            return bullet_line + "\n" + verbatim
+        return bullet_line
+    return verbatim.rstrip() + "\n" + bullet_line
 
 
 def _sync_legacy_job_answer(job: dict[str, Any], entry: CareerMemoryEntry) -> None:
@@ -199,39 +217,54 @@ def add_bullet(req: AddBulletRequest) -> AddBulletResponse:
     inserted = False
     found_in_doc = False
     if bullet_text and section:
-        current_text = job.get("resume_text_patched") or job.get("resume_text", "")
         bullet_line = bullet_text if bullet_text.startswith("•") else f"• {bullet_text}"
-
-        # Locate insertion point: prefer sub_label entry, then full section, then end.
         resume_sections = job.get("result", {}).get("resume", {}).get("resume_sections", {})
-        target = ""
-        sec_data = resume_sections.get(section.lower(), {})
-        if isinstance(sec_data, dict):
-            if req.sub_label:
-                for entry in (sec_data.get("sub_entries") or []):
-                    if entry.get("label") == req.sub_label:
-                        target = entry.get("verbatim_text", "")
+        section_key = section.lower()
+        sec_data = resume_sections.get(section_key, {})
+        matched_entry: dict[str, Any] | None = None
+
+        if isinstance(sec_data, dict) and req.sub_label:
+            sub_entries = sec_data.get("sub_entries") or []
+            valid_labels = {
+                e.get("label", "")
+                for e in sub_entries
+                if isinstance(e, dict) and e.get("label")
+            }
+            matched_label = _fuzzy_match_label(req.sub_label, valid_labels)
+            if matched_label:
+                for entry in sub_entries:
+                    if isinstance(entry, dict) and entry.get("label") == matched_label:
+                        matched_entry = entry
                         break
-            if not target:
-                target = sec_data.get("full_text", "")
 
-        updated_text = current_text
-        if target and target.strip() in current_text:
-            pos = current_text.find(target.strip())
-            first_nl = current_text.find("\n", pos)
-            if placement == "start" and first_nl != -1:
-                updated_text = (
-                    current_text[:first_nl + 1] + bullet_line + "\n" + current_text[first_nl + 1:]
+        if matched_entry is not None:
+            old_verbatim = matched_entry.get("verbatim_text", "")
+            new_verbatim = _insert_bullet_in_verbatim(old_verbatim, bullet_line, placement)
+            matched_entry["verbatim_text"] = new_verbatim
+
+            full_text = sec_data.get("full_text", "")
+            if old_verbatim and old_verbatim in full_text:
+                sec_data["full_text"] = full_text.replace(old_verbatim, new_verbatim, 1)
+
+            current_text = job.get("resume_text_patched") or job.get("resume_text", "")
+            if old_verbatim and old_verbatim in current_text:
+                job["resume_text_patched"] = current_text.replace(
+                    old_verbatim, new_verbatim, 1
                 )
-            else:
-                end = pos + len(target.strip())
-                updated_text = current_text[:end] + "\n" + bullet_line + current_text[end:]
-        else:
-            updated_text = current_text.rstrip() + "\n" + bullet_line
-
-        inserted = True
-        found_in_doc = bullet_line in updated_text or bullet_text in updated_text
-        job["resume_text_patched"] = updated_text
+            inserted = True
+            found_in_doc = bullet_line in new_verbatim or bullet_text in new_verbatim
+        elif isinstance(sec_data, dict) and not req.sub_label:
+            old_full = sec_data.get("full_text", "")
+            if old_full.strip():
+                new_full = _insert_bullet_in_verbatim(old_full, bullet_line, placement)
+                sec_data["full_text"] = new_full
+                current_text = job.get("resume_text_patched") or job.get("resume_text", "")
+                if old_full in current_text:
+                    job["resume_text_patched"] = current_text.replace(
+                        old_full, new_full, 1
+                    )
+                inserted = True
+                found_in_doc = bullet_line in new_full or bullet_text in new_full
 
     if approved or legacy:
         if legacy:
@@ -241,7 +274,7 @@ def add_bullet(req: AddBulletRequest) -> AddBulletResponse:
 
     return AddBulletResponse(
         inserted=inserted,
-        found_in_doc=(inserted and found_in_doc) or approved,
+        found_in_doc=found_in_doc,
         success=approved or bool(legacy),
         career_memory_id=req.career_memory_id,
     )

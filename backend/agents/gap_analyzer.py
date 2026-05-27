@@ -899,6 +899,14 @@ class GapAnalyzerAgent(BaseAgent):
                         jd_analysis=jd_analysis or {},
                         resume_text=inp.resume_text or "",
                     )
+                elif mode == "evaluate":
+                    if not isinstance(parsed.get("estimated_score_after"), int):
+                        before = parsed.get("jd_match_score_before") or 0
+                        try:
+                            before = int(before)
+                        except (TypeError, ValueError):
+                            before = 0
+                        parsed["estimated_score_after"] = min(100, before + 5)
 
                 output = output_model(**parsed)
                 return output.model_dump()

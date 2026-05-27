@@ -134,7 +134,17 @@ _RAW_TO_CANONICAL: dict[str, str] = {
 _RAW_TO_CANONICAL.update({canon: canon for canon in _CANONICAL_ALIASES})
 
 
+_BULLET_SEP = re.compile(r"\s*[•\-\*]\s+")
+
+
 def _split_bullets(text: str) -> list[str]:
+    if _BULLET_SEP.search(text):
+        parts = [
+            re.sub(r"^[•\-\*]\s*", "", part.strip())
+            for part in _BULLET_SEP.split(text)
+            if part.strip()
+        ]
+        return [part for part in parts if part]
     lines = []
     for raw_line in text.splitlines():
         line = raw_line.strip().lstrip("-*").strip()
@@ -396,6 +406,42 @@ def _get_section_text(resume_sections: dict, section_name: str) -> SectionText |
         except Exception:
             return None
     return None
+
+
+def backfill_missing_rewrite_sections(
+    rewrites: dict,
+    resume_sections: dict,
+    missing_sections: list[str] | None = None,
+) -> dict:
+    """
+    Inject verbatim section content for rewrite keys absent from A4 output.
+
+    Mirrors the missing-section branch inside RewriterValidator.validate_and_fix().
+    """
+    result = dict(rewrites)
+    targets = missing_sections or assert_structural_completeness(result, resume_sections)
+    for canonical in targets:
+        if canonical in result and _variants_have_content(_get_rewrite_variants(result, canonical)):
+            continue
+        section_text = _get_section_text(resume_sections, canonical)
+        if not section_text:
+            continue
+        content = _build_content_from_sub_entries(
+            canonical,
+            section_text.sub_entries or [],
+            full_text_fallback=section_text.full_text,
+        )
+        if content.strip():
+            logging.warning(
+                "backfill_missing_rewrite_sections: injecting verbatim for '%s'",
+                canonical,
+            )
+            result[canonical] = {
+                "balanced": content,
+                "aggressive": content,
+                "top_1_percent": content,
+            }
+    return result
 
 
 def assert_structural_completeness(

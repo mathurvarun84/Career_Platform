@@ -525,15 +525,13 @@ export default function ActionableFixes({
         return patch.replacement_text;
       }
 
+      if (fix.sub_label) {
+        return "";
+      }
+
       const rewriteBlock =
         analysisResult?.rewrites?.rewrites?.[key]?.balanced;
       if (typeof rewriteBlock === "string" && rewriteBlock.trim()) {
-        if (process.env.NODE_ENV !== "production") {
-          console.warn(
-            "[getAfterText] Fell back to section-level rewrite for fix:",
-            fix.section, fix.sub_label ?? "(no sub_label)"
-          );
-        }
         return rewriteBlock.trim();
       }
 

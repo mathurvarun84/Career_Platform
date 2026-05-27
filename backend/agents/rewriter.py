@@ -27,6 +27,8 @@ COMPANY_HEADER_START = "##COMPANY##"
 COMPANY_ROLE_START   = "##ROLE##"
 HEADER_END           = "##END_HEADER##"
 
+_BULLET_SEP = _re.compile(r"\s*[•\-\*]\s+")
+
 # Sections that carry sub_entries — content must be built from sub_entries, not full_text
 _SUB_ENTRY_SECTIONS = frozenset({"experience", "projects", "education", "certifications"})
 
@@ -971,7 +973,11 @@ class RewriterAgent(BaseAgent):
             )
             stitched_b, stitched_a, stitched_t = [], [], []
             for sub in sub_changes:
-                original_text = sub.get("original_text", "")
+                original_text = (sub.get("original_text") or "").strip()
+                if not original_text and section_text:
+                    original_text = self._resolve_sub_text(
+                        section_text, str(sub.get("sub_label", "") or "")
+                    )
                 if not sub.get("needs_change", True):
                     text = original_text
                     if section == "experience":
@@ -979,6 +985,12 @@ class RewriterAgent(BaseAgent):
                     stitched_b.append(text)
                     stitched_a.append(text)
                     stitched_t.append(text)
+                elif not original_text:
+                    logging.warning(
+                        "RewriterAgent: no verbatim anchor for sub_label '%s' — skipping",
+                        sub.get("sub_label", "unknown"),
+                    )
+                    continue
                 else:
                     entry_rw, patch_raw = self._rewrite_sub_entry(
                         section,
@@ -986,6 +998,7 @@ class RewriterAgent(BaseAgent):
                         gap.get("rewrite_instruction", ""),
                         original_text,
                         resume_text=resume_text,
+                        section_text=section_text,
                     )
                     if patch_raw:
                         patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
@@ -1063,6 +1076,7 @@ class RewriterAgent(BaseAgent):
                 gap.get("rewrite_instruction", ""),
                 verbatim,
                 resume_text=resume_text,
+                section_text=section_text,
             )
             if patch_raw:
                 patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
@@ -1215,6 +1229,7 @@ class RewriterAgent(BaseAgent):
         original_verbatim: str = "",
         *,
         resume_text: str = "",
+        section_text: SectionText | None = None,
     ) -> tuple[SectionRewrite, dict | None]:
         """
         Rewrites a SINGLE resume sub-entry with a focused LLM call.
@@ -1230,7 +1245,23 @@ class RewriterAgent(BaseAgent):
 
         Fallback: if LLM call fails after retry, returns original verbatim text for all 3 styles.
         """
-        original_text = original_verbatim or sub.get("original_text", "")
+        original_text = (original_verbatim or sub.get("original_text", "")).strip()
+        if not original_text and section_text:
+            original_text = self._resolve_sub_text(
+                section_text, str(sub.get("sub_label", "") or "")
+            )
+        if not original_text:
+            logging.warning(
+                "RewriterAgent: no verbatim anchor for sub_label '%s' in '%s' — skipping LLM",
+                sub.get("sub_label", "unknown"),
+                section,
+            )
+            return SectionRewrite(
+                balanced="",
+                aggressive="",
+                top_1_percent="",
+            ), None
+
         rewrite_hint = sub.get("rewrite_instruction", "")
         missing_kw = sub.get("missing_keywords", [])
 
@@ -1424,8 +1455,20 @@ class RewriterAgent(BaseAgent):
         for entry in section_text.sub_entries:
             if any(w.lower() in entry.label.lower() for w in words):
                 return entry.verbatim_text
-        # 4. Last resort: full section text (never return empty)
-        return section_text.full_text
+        # 4. Shared fuzzy label rescue (same as gap_analyzer)
+        from backend.agents.gap_analyzer import _fuzzy_match_label
+
+        valid_labels = {entry.label for entry in section_text.sub_entries if entry.label}
+        rescued = _fuzzy_match_label(sub_label, valid_labels)
+        if rescued:
+            for entry in section_text.sub_entries:
+                if entry.label == rescued:
+                    return entry.verbatim_text
+        logging.warning(
+            "RewriterAgent: _resolve_sub_text failed for sub_label '%s'",
+            sub_label,
+        )
+        return ""
 
     def _labels_match(self, a: str, b: str) -> bool:
         """Return true when two sub-entry labels refer to the same original entry."""
@@ -1526,6 +1569,13 @@ class RewriterAgent(BaseAgent):
         return styles
 
     def _split_bullets(self, text: str) -> list[str]:
+        if _BULLET_SEP.search(text):
+            parts = [
+                _re.sub(r"^[•\-\*]\s*", "", part.strip())
+                for part in _BULLET_SEP.split(text)
+                if part.strip()
+            ]
+            return [part for part in parts if part]
         lines = []
         for raw_line in text.splitlines():
             line = raw_line.strip().lstrip("-*").strip()
