@@ -8,6 +8,7 @@ from unittest.mock import patch
 from backend.agents.rewriter import COMPANY_HEADER_START, RewriterAgent
 from backend.schemas.common import SectionText, SubEntry
 from engine.resume_builder import build_final_docx
+from orchestrator import Orchestrator
 from validator.experience_audit import (
     count_experience_markers,
     detect_ground_truth_entries,
@@ -503,6 +504,97 @@ def test_validator_rebuilds_partial_rewrite() -> None:
     )
     balanced = repaired["rewrites"]["experience"]["balanced"]
     assert balanced.count(COMPANY_HEADER_START) >= 6
+
+
+MMYYYY_EXPERIENCE_TEXT = """Senior Developer | Infosys — Bengaluru
+06/2019 - 08/2022
+• Built microservices platform
+
+Software Engineer | Wipro — Pune
+03/2016 - 05/2019
+• Delivered client projects
+
+Junior Developer | TCS — Chennai
+01/2014 - 02/2016
+• Maintained enterprise apps
+"""
+
+MMYYYY_RESUME_TEXT = f"""Ravi Kumar
+ravi@example.com
+
+EXPERIENCE
+{MMYYYY_EXPERIENCE_TEXT}
+"""
+
+_SECTIONER_GATE = Orchestrator()
+
+
+def test_mm_yyyy_date_ranges_detect_three_entries() -> None:
+    """Indian MM/YYYY date formats must count toward ground-truth entry detection."""
+    blocks = detect_ground_truth_entries(MMYYYY_RESUME_TEXT)
+    assert len(blocks) == 3, f"expected 3, got {len(blocks)}: {[b['label'] for b in blocks]}"
+
+
+def test_needs_sectioner_true_when_a1_misses_more_than_one() -> None:
+    """6 ground-truth jobs vs 3 A1 entries should trigger Sectioner."""
+    partial_sections = {
+        "experience": {
+            "header": "experience",
+            "full_text": "",
+            "sub_entries": [
+                {"label": "Infosys", "verbatim_text": "Infosys\n• one"},
+                {"label": "Wipro", "verbatim_text": "Wipro\n• two"},
+                {"label": "TCS", "verbatim_text": "TCS\n• three"},
+            ],
+        }
+    }
+    assert _SECTIONER_GATE._needs_sectioner(partial_sections, VARUN_RESUME_TEXT) is True
+
+
+def test_needs_sectioner_false_when_a1_matches_ground_truth() -> None:
+    """Clean A1 output with all 7 entries should skip Sectioner."""
+    ground = detect_ground_truth_entries(VARUN_RESUME_TEXT)
+    sections = {
+        "experience": {
+            "header": "experience",
+            "full_text": "\n\n".join(b["text"] for b in ground),
+            "sub_entries": [
+                {"label": b["label"], "verbatim_text": b["text"]} for b in ground
+            ],
+        }
+    }
+    assert len(ground) == 7
+    assert _SECTIONER_GATE._needs_sectioner(sections, VARUN_RESUME_TEXT) is False
+
+
+def test_needs_sectioner_false_when_missing_only_one_entry() -> None:
+    """Tolerance: off-by-one mismatch should not trigger Sectioner."""
+    ground = detect_ground_truth_entries(VARUN_RESUME_TEXT)
+    assert len(ground) == 7
+    sections = {
+        "experience": {
+            "header": "experience",
+            "full_text": "",
+            "sub_entries": [
+                {"label": b["label"], "verbatim_text": b["text"]} for b in ground[:6]
+            ],
+        }
+    }
+    assert _SECTIONER_GATE._needs_sectioner(sections, VARUN_RESUME_TEXT) is False
+
+
+def test_needs_sectioner_true_for_mm_yyyy_when_a1_truncated() -> None:
+    """MM/YYYY resumes must not false-negative the gate when A1 truncates heavily."""
+    partial_sections = {
+        "experience": {
+            "header": "experience",
+            "full_text": "",
+            "sub_entries": [
+                {"label": "Infosys", "verbatim_text": "Infosys\n• one"},
+            ],
+        }
+    }
+    assert _SECTIONER_GATE._needs_sectioner(partial_sections, MMYYYY_RESUME_TEXT) is True
 
 
 if __name__ == "__main__":

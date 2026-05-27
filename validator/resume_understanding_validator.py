@@ -82,9 +82,11 @@ _DATE_RANGE_RE = re.compile(
 # Core date-range token (do NOT use [-–—to]+ — that wrongly matches letters t/o inside words)
 _DATE_RANGE_CORE = (
     r'(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?'
+    r'(?:(?:0?[1-9]|1[0-2])/)?'
     r'(?:19|20)\d{2}'
     r'\s*(?:–|—|-|to)\s*'
     r'(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?'
+    r'(?:(?:0?[1-9]|1[0-2])/)?'
     r'(?:(?:19|20)\d{2}|\bPresent\b|\bCurrent\b|\bTill\s+Date\b|\bOn\s?Going\b)'
 )
 
@@ -415,6 +417,8 @@ def _is_role_header_line(line: str) -> bool:
     """True when a line structurally looks like a role/company header."""
     s = line.strip()
     if not s or s.startswith(('•', '-', '*', '·', '●')):
+        return False
+    if _is_experience_date_anchor_line(s):
         return False
     if len(s) > 160:
         return False

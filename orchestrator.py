@@ -157,6 +157,42 @@ class Orchestrator:
             for k, v in sections.items()
         }
 
+    def _needs_sectioner(self, resume_sections: dict, resume_text: str) -> bool:
+        """
+        Returns True when SectionerAgent should run as a fallback.
+
+        Fires when log_experience_audit detects that A1 is missing more than
+        one experience entry compared to the ground-truth count from the raw
+        resume text. Skips Sectioner on clean resumes where A1 delivered all
+        entries correctly.
+        """
+        try:
+            audit = log_experience_audit(
+                "sectioner_gate",
+                resume_text,
+                resume_sections,
+            )
+            ground_truth = audit.get("ground_truth_count", 0)
+            a1_count = audit.get("sub_entries_count", 0)
+
+            # Allow a tolerance of 1 — A1 missing exactly 1 entry doesn't
+            # justify a full Sectioner LLM call.
+            needs = (ground_truth - a1_count) > 1
+
+            logging.info(
+                "SectionerGate: ground_truth=%d a1_count=%d needs_sectioner=%s",
+                ground_truth,
+                a1_count,
+                needs,
+            )
+            return needs
+        except Exception as exc:
+            # If the gate itself errors, default to running Sectioner (safe fallback).
+            logging.warning(
+                "SectionerGate check failed (%s) — defaulting to run Sectioner.", exc
+            )
+            return True
+
     def _merge_sectioner_into_sections(
         self,
         resume_sections: Dict[str, Any],
@@ -603,6 +639,7 @@ class Orchestrator:
 
         cache_hit = bool(cached_stage_data)
         if cache_hit:
+            logging.info("SectionerGate: cache_hit — Sectioner skipped.")
             resume_und = dict(cached_stage_data.get("resume_und") or {})
             jd_intel = cached_stage_data.get("jd_intel")
             resume_sections = cached_stage_data.get("resume_sections") or {}
@@ -759,22 +796,67 @@ class Orchestrator:
 
         if has_jd:
             if progress_cb: progress_cb({"step":2,"label":"Analyzing gaps against JD...","pct":45})
-            with PhaseTimer("sectioner_merge"):
-                resume_sections = self._merge_sectioner_into_sections(
-                    resume_sections, resume_text, resume_und
-                )
-            resume_sections = self._sync_experience_sections(
-                resume_sections, resume_text, resume_und
+            run_sectioner = (not cache_hit) and self._needs_sectioner(
+                resume_sections, resume_text
             )
-            with PhaseTimer("a3_gap_closer"):
-                gap_result = self.gap_analyzer.run({
-                    "resume_understanding": resume_und,
-                    "jd_intelligence": jd_intel,
-                    "resume_text": resume_text,
-                    "resume_sections": resume_sections,
-                    "jd_text": jd_text,
-                    "mode": "gap_closer",
-                })
+            with PhaseTimer("a3_sectioner_parallel"):
+                with ThreadPoolExecutor(max_workers=2) as executor:
+                    fut_gap = executor.submit(
+                        self.gap_analyzer.run,
+                        {
+                            "resume_understanding": resume_und,
+                            "jd_intelligence": jd_intel,
+                            "resume_text": resume_text,
+                            "resume_sections": resume_sections,
+                            "jd_text": jd_text,
+                            "mode": "gap_closer",
+                        },
+                    )
+                    fut_sectioner = (
+                        executor.submit(
+                            self.sectioner.run,
+                            {"resume_text": resume_text},
+                        )
+                        if run_sectioner
+                        else None
+                    )
+                    gap_result = fut_gap.result()
+
+                    if fut_sectioner is not None:
+                        try:
+                            from backend.schemas.common import SectionText
+
+                            sectioner_raw = fut_sectioner.result() or {}
+                            sectioner_sections = {
+                                k: SectionText(**v) if isinstance(v, dict) else v
+                                for k, v in sectioner_raw.items()
+                            }
+                            for name, sec in sectioner_sections.items():
+                                cur = resume_sections.get(name)
+                                if not cur:
+                                    resume_sections[name] = sec
+                                    continue
+                                cur_count = len(cur.sub_entries or [])
+                                new_count = len(sec.sub_entries or [])
+                                cur_len = len(cur.full_text or "")
+                                new_len = len(sec.full_text or "")
+                                if (new_count > cur_count) or (
+                                    new_count == cur_count and new_len > cur_len
+                                ):
+                                    resume_sections[name] = sec
+                            resume_und["resume_sections"] = self._dump_sections(
+                                resume_sections
+                            )
+                            logging.info(
+                                "SectionerGate: Sectioner ran and merged successfully."
+                            )
+                        except Exception as exc:
+                            logging.warning("Sectioner merge skipped: %s", exc)
+                    else:
+                        logging.info(
+                            "SectionerGate: Sectioner skipped — A1 sub_entries "
+                            "count matches ground truth."
+                        )
             resume_sections = self._sync_experience_sections(
                 resume_sections, resume_text, resume_und
             )
