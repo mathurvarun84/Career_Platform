@@ -52,27 +52,42 @@ const STEPS = [
   },
 ] as const;
 
-const INSIGHTS = [
-  {
-    title: "Resume structure",
-    body: "Sections, headings, and skill signals recruiters skim first.",
-  },
-  {
-    title: "JD fit & keywords",
-    body: "Overlap between your bullets and the role’s must-have language.",
-  },
-  {
-    title: "ATS & percentile",
-    body: "Formatting and impact cues versus similar profiles in our benchmark.",
-  },
-  {
-    title: "Recommendations",
-    body: "Prioritised fixes and positioning tailored to this posting.",
-  },
-] as const;
+interface LiveFindings {
+  ats_score: number | null;
+  ats_breakdown: Record<string, number> | null;
+  seniority: string | null;
+  strengths: string[];
+  weaknesses: string[];
+  tech_stack: string[];
+  experience_years: number | null;
+  jd_match_score: number | null;
+  top_priority_fix: string | null;
+  sections_changed: number | null;
+  percentile: number | null;
+  shortlist_rate: number | null;
+}
 
-const TIP_COPY =
-  "Career Platform scores four dimensions separately—keyword coverage is only one part of what lands interviews.";
+const INITIAL_FINDINGS: LiveFindings = {
+  ats_score: null,
+  ats_breakdown: null,
+  seniority: null,
+  strengths: [],
+  weaknesses: [],
+  tech_stack: [],
+  experience_years: null,
+  jd_match_score: null,
+  top_priority_fix: null,
+  sections_changed: null,
+  percentile: null,
+  shortlist_rate: null,
+};
+
+interface FindingCard {
+  id: string;
+  label: string;
+  value: string;
+  accent: string;
+}
 
 /** Supabase `AuthError`-shaped object without importing the full type graph here. */
 interface AuthLikeError {
@@ -207,38 +222,441 @@ function computeCrawlCap(completed: Set<number>, awaitingFinal: boolean): number
   return 98;
 }
 
-type InsightBadge = "pending" | "scanning" | "done";
-
-function badgeStyles(kind: InsightBadge): CSSProperties {
-  if (kind === "done") {
-    return {
-      background: PALETTE.successBg,
-      color: PALETTE.success,
-      border: `1px solid ${PALETTE.success}`,
-    };
-  }
-  if (kind === "scanning") {
-    return {
-      background: PALETTE.activeBg,
-      color: PALETTE.primary,
-      border: `1px solid ${PALETTE.primary}`,
-    };
-  }
-  return {
-    background: "#f3f4f6",
-    color: PALETTE.muted,
-    border: `1px solid ${PALETTE.border}`,
-  };
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
 }
 
-function badgeLabel(kind: InsightBadge): string {
-  if (kind === "done") {
-    return "Done";
+function mergeLiveFindingsFromPayload(
+  prev: LiveFindings,
+  payload: Record<string, unknown>
+): LiveFindings {
+  const partial = asRecord(payload.partial_result) ?? payload;
+  let next = { ...prev };
+
+  const ats = asRecord(partial.ats);
+  if (ats && typeof ats.score === "number") {
+    const breakdown = asRecord(ats.breakdown);
+    next = {
+      ...next,
+      ats_score: ats.score,
+      ats_breakdown: breakdown
+        ? (Object.fromEntries(
+            Object.entries(breakdown).filter(([, v]) => typeof v === "number")
+          ) as Record<string, number>)
+        : next.ats_breakdown,
+    };
   }
-  if (kind === "scanning") {
-    return "Scanning";
+
+  const resume = asRecord(partial.resume);
+  if (resume) {
+    const rawSeniority = resume.seniority;
+    let seniority: string | null = next.seniority;
+    if (typeof rawSeniority === "string") {
+      seniority = rawSeniority;
+    } else if (rawSeniority && typeof rawSeniority === "object") {
+      const sv = (rawSeniority as { value?: unknown }).value;
+      if (typeof sv === "string") {
+        seniority = sv;
+      }
+    }
+    next = {
+      ...next,
+      seniority,
+      strengths: Array.isArray(resume.strengths)
+        ? (resume.strengths as string[])
+        : next.strengths,
+      weaknesses: Array.isArray(resume.weaknesses)
+        ? (resume.weaknesses as string[])
+        : next.weaknesses,
+      tech_stack: Array.isArray(resume.tech_stack)
+        ? (resume.tech_stack as string[])
+        : next.tech_stack,
+      experience_years:
+        typeof resume.experience_years === "number"
+          ? resume.experience_years
+          : next.experience_years,
+    };
   }
-  return "Pending";
+
+  const gap = asRecord(partial.gap);
+  if (gap) {
+    if (Array.isArray(gap.weaknesses) && gap.weaknesses.length > 0) {
+      next = { ...next, weaknesses: gap.weaknesses as string[] };
+    }
+    const rawFixes = gap.priority_fixes;
+    let topFix: string | null = null;
+    if (Array.isArray(rawFixes) && rawFixes.length > 0) {
+      const first = rawFixes[0];
+      if (typeof first === "string") {
+        topFix = first;
+      } else {
+        const fixObj = asRecord(first);
+        topFix =
+          (typeof fixObj?.issue === "string" && fixObj.issue) ||
+          (typeof fixObj?.gap_reason === "string" && fixObj.gap_reason) ||
+          null;
+      }
+    }
+    const sectionsChanged = gap.sections_changed;
+    next = {
+      ...next,
+      jd_match_score:
+        typeof gap.jd_match_score_before === "number"
+          ? gap.jd_match_score_before
+          : typeof gap.match_score === "number"
+            ? gap.match_score
+            : next.jd_match_score,
+      top_priority_fix: topFix ?? next.top_priority_fix,
+      sections_changed: Array.isArray(sectionsChanged)
+        ? sectionsChanged.length
+        : next.sections_changed,
+    };
+  }
+
+  const percentile = asRecord(partial.percentile);
+  if (percentile && typeof percentile.percentile === "number") {
+    next = { ...next, percentile: percentile.percentile };
+  }
+
+  const sim = asRecord(partial.sim);
+  if (sim && typeof sim.shortlist_rate === "number") {
+    next = { ...next, shortlist_rate: sim.shortlist_rate };
+  }
+
+  return next;
+}
+
+function payloadHasPartialData(payload: Record<string, unknown>): boolean {
+  return Boolean(
+    payload.partial_result ||
+      payload.ats ||
+      payload.resume ||
+      payload.gap ||
+      payload.percentile ||
+      payload.sim
+  );
+}
+
+function waitingStatusMessage(
+  activeStepIndex: number,
+  completedSteps: Set<number>
+): string {
+  if (completedSteps.has(3)) {
+    return "Finalising your dashboard…";
+  }
+  if (completedSteps.has(2)) {
+    return "Running recruiter simulation and market benchmarks…";
+  }
+  if (completedSteps.has(1)) {
+    return "Scoring JD fit and identifying gaps…";
+  }
+  if (completedSteps.has(0)) {
+    return "Resume parsed — ATS and profile analysis running…";
+  }
+  if (activeStepIndex === 0) {
+    return "Parsing your resume — first results appear in a few seconds";
+  }
+  if (activeStepIndex === 1) {
+    return "Matching your profile to the job description…";
+  }
+  if (activeStepIndex === 2) {
+    return "Calculating ATS score and benchmarks…";
+  }
+  if (activeStepIndex === 3) {
+    return "Generating rewrites and recruiter insights…";
+  }
+  return "Starting analysis…";
+}
+
+function buildFindingCards(f: LiveFindings): FindingCard[] {
+  const cards: FindingCard[] = [];
+
+  if (f.ats_score !== null) {
+    const score = f.ats_score;
+    const quality = score >= 75 ? "strong" : score >= 55 ? "average" : "needs work";
+    cards.push({
+      id: "ats_score",
+      label: "ATS compatibility score",
+      value: `${score}/100 — ${quality}`,
+      accent: score >= 75 ? PALETTE.success : score >= 55 ? "#d97706" : PALETTE.error,
+    });
+  }
+
+  if (f.ats_breakdown) {
+    const dims = f.ats_breakdown;
+    const worst = Object.entries(dims).sort(([, a], [, b]) => a - b)[0];
+    if (worst) {
+      const dimLabels: Record<string, string> = {
+        keyword_match: "Keyword match",
+        formatting: "Formatting",
+        readability: "Readability",
+        impact_metrics: "Impact & metrics",
+      };
+      const label = dimLabels[worst[0]] ?? worst[0];
+      const pct = Math.round((worst[1] / 25) * 100);
+      cards.push({
+        id: "ats_weak_dim",
+        label: "Weakest dimension",
+        value: `${label} — ${pct}% of max`,
+        accent: PALETTE.error,
+      });
+    }
+  }
+
+  if (f.seniority) {
+    const seniorityLabels: Record<string, string> = {
+      junior: "Junior (0–2 yrs)",
+      mid: "Mid-level (3–5 yrs)",
+      senior: "Senior (6–9 yrs)",
+      staff: "Staff / Principal",
+      lead: "Tech Lead",
+      manager: "Engineering Manager",
+      director: "Director+",
+    };
+    cards.push({
+      id: "seniority",
+      label: "Career level detected",
+      value: seniorityLabels[f.seniority] ?? f.seniority,
+      accent: PALETTE.primary,
+    });
+  }
+
+  if (f.experience_years !== null && f.experience_years > 0) {
+    cards.push({
+      id: "exp_years",
+      label: "Total experience found",
+      value: `${f.experience_years} year${f.experience_years === 1 ? "" : "s"} across ${
+        f.tech_stack.length > 0
+          ? `${f.tech_stack.length} technologies`
+          : "multiple roles"
+      }`,
+      accent: PALETTE.primary,
+    });
+  }
+
+  if (f.weaknesses.length > 0) {
+    cards.push({
+      id: "top_weakness",
+      label: "Key gap to address",
+      value: f.weaknesses[0],
+      accent: PALETTE.error,
+    });
+  }
+
+  if (f.jd_match_score !== null) {
+    const match = f.jd_match_score;
+    const matchLabel =
+      match >= 70 ? "strong fit" : match >= 50 ? "partial fit" : "significant gaps";
+    cards.push({
+      id: "jd_match",
+      label: "JD match score",
+      value: `${match}% — ${matchLabel}`,
+      accent: match >= 70 ? PALETTE.success : match >= 50 ? "#d97706" : PALETTE.error,
+    });
+  }
+
+  if (f.top_priority_fix) {
+    cards.push({
+      id: "priority_fix",
+      label: "Biggest gap identified",
+      value: f.top_priority_fix,
+      accent: "#d97706",
+    });
+  }
+
+  if (f.sections_changed !== null && f.sections_changed > 0) {
+    cards.push({
+      id: "sections_changed",
+      label: "Sections being optimised",
+      value: `${f.sections_changed} section${
+        f.sections_changed === 1 ? "" : "s"
+      } — rewrites generating now`,
+      accent: PALETTE.primary,
+    });
+  }
+
+  if (f.percentile !== null) {
+    const pct = Math.round(f.percentile);
+    cards.push({
+      id: "percentile",
+      label: "Market position",
+      value: `Top ${100 - pct}% of candidates at your level`,
+      accent: pct >= 60 ? PALETTE.success : "#d97706",
+    });
+  }
+
+  if (f.shortlist_rate !== null) {
+    const ratePct = Math.round(f.shortlist_rate * 100);
+    cards.push({
+      id: "shortlist_rate",
+      label: "Recruiter shortlist rate",
+      value: `${ratePct}% of simulated recruiters would shortlist`,
+      accent: ratePct >= 50 ? PALETTE.success : "#d97706",
+    });
+  }
+
+  return cards;
+}
+
+function FindingCard({ card }: { card: FindingCard }): ReactElement {
+  const [visible, setVisible] = useState(false);
+  const [flash, setFlash] = useState(true);
+
+  useEffect(() => {
+    const t1 = window.setTimeout(() => setVisible(true), 30);
+    const t2 = window.setTimeout(() => setFlash(false), 800);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, []);
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-start",
+        gap: "10px",
+        paddingTop: "10px",
+        paddingBottom: "10px",
+        paddingLeft: "12px",
+        paddingRight: "12px",
+        background: flash ? PALETTE.activeBg : PALETTE.white,
+        border: `1px solid ${PALETTE.border}`,
+        borderLeft: `3px solid ${card.accent}`,
+        borderRadius: "8px",
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(6px)",
+        transition: "opacity 0.35s ease, transform 0.35s ease, background 0.6s ease",
+      }}
+    >
+      <div>
+        <div
+          style={{
+            fontSize: "11px",
+            color: PALETTE.muted,
+            marginBottom: "2px",
+          }}
+        >
+          {card.label}
+        </div>
+        <div
+          style={{
+            fontSize: "13px",
+            fontWeight: 500,
+            color: PALETTE.text,
+            lineHeight: 1.45,
+            wordBreak: "break-word",
+          }}
+        >
+          {card.value}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LiveFindingsPanel({
+  findings,
+  activeStepIndex,
+  completedSteps,
+  barPct,
+}: {
+  findings: LiveFindings;
+  activeStepIndex: number;
+  completedSteps: Set<number>;
+  barPct: number;
+}): ReactElement {
+  const cards = buildFindingCards(findings);
+  const visibleCards = cards.slice(-5);
+
+  return (
+    <div
+      style={{
+        border: `1px solid ${PALETTE.activeBorder}`,
+        borderRadius: "12px",
+        background: PALETTE.activeBg,
+        paddingTop: "14px",
+        paddingBottom: "14px",
+        paddingLeft: "14px",
+        paddingRight: "14px",
+        width: "100%",
+        minHeight: "140px",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "row",
+          alignItems: "baseline",
+          justifyContent: "space-between",
+          marginBottom: "10px",
+        }}
+      >
+        <div
+          style={{
+            fontSize: "13px",
+            fontWeight: 700,
+            color: PALETTE.text,
+          }}
+        >
+          Live findings
+        </div>
+        <div style={{ fontSize: "12px", fontWeight: 700, color: PALETTE.primary }}>
+          {Math.round(barPct)}%
+        </div>
+      </div>
+      <div
+        style={{
+          fontSize: "12px",
+          color: PALETTE.muted,
+          marginBottom: visibleCards.length > 0 ? "10px" : "12px",
+          lineHeight: 1.45,
+        }}
+      >
+        {visibleCards.length > 0
+          ? "From your resume — more results appear as analysis continues."
+          : waitingStatusMessage(activeStepIndex, completedSteps)}
+      </div>
+
+      {visibleCards.length === 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          {[0, 1].map((i) => (
+            <div
+              key={i}
+              aria-hidden
+              style={{
+                height: "52px",
+                borderRadius: "8px",
+                border: `1px solid ${PALETTE.border}`,
+                background: `linear-gradient(90deg, ${PALETTE.white} 0%, #e0e7ff 50%, ${PALETTE.white} 100%)`,
+                backgroundSize: "200% 100%",
+                animation: "ripFindingShimmer 1.4s ease-in-out infinite",
+                animationDelay: `${i * 0.2}s`,
+              }}
+            />
+          ))}
+        </div>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "8px",
+            maxHeight: "280px",
+            overflowY: "auto",
+            paddingRight: "2px",
+          }}
+        >
+          {visibleCards.map((card) => (
+            <FindingCard key={card.id} card={card} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 async function pollAnalysisResult(
@@ -316,6 +734,7 @@ export default function AnalysisProgress({
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [upgradeData, setUpgradeData] = useState<{ uploadsThisMonth: number; limit: number } | null>(null);
   const [limitBlocked, setLimitBlocked] = useState(false);
+  const [findings, setFindings] = useState<LiveFindings>(INITIAL_FINDINGS);
   const { isMobile } = useWindowSize();
 
   const onCompleteRef = useRef(onComplete);
@@ -343,6 +762,7 @@ export default function AnalysisProgress({
   }, [analysisFinal, errorMessage, completedSteps, awaitingFinalPacket]);
 
   useEffect(() => {
+    setFindings(INITIAL_FINDINGS);
     let aborted = false;
     const controller = new AbortController();
     let timeoutId = window.setTimeout(() => controller.abort(), ANALYZE_TIMEOUT_MS);
@@ -438,10 +858,18 @@ export default function AnalysisProgress({
             ) {
               trackedJobId = (raw as { job_id: string }).job_id;
             }
-            onCompleteRef.current(normalizeAnalysisResult(raw));
+            const normalized = normalizeAnalysisResult(raw);
+            setFindings((f) =>
+              mergeLiveFindingsFromPayload(f, normalized as unknown as Record<string, unknown>)
+            );
+            onCompleteRef.current(normalized);
           }
           if (ev === "error") {
             throwIfSseErrorPayload(payload);
+          }
+
+          if (ev === "partial" || payloadHasPartialData(payload)) {
+            setFindings((f) => mergeLiveFindingsFromPayload(f, payload));
           }
         };
 
@@ -533,6 +961,7 @@ export default function AnalysisProgress({
     setBarPct(0);
     setAnalysisFinal(false);
     setAwaitingFinalPacket(false);
+    setFindings(INITIAL_FINDINGS);
     setRunKey((k) => k + 1);
   }, []);
 
@@ -566,18 +995,6 @@ export default function AnalysisProgress({
     return !completedSteps.has(index) && index > activeStepIndex;
   }
 
-  const insightBadge = (index: number): InsightBadge => {
-    if (completedSteps.has(index)) {
-      return "done";
-    }
-    if (activeStepIndex >= 0 && index === activeStepIndex) {
-      return "scanning";
-    }
-    return "pending";
-  };
-
-  const showTip = completedSteps.has(1);
-
   return (
     <div
       role="status"
@@ -598,6 +1015,10 @@ export default function AnalysisProgress({
       <style>{`
         @keyframes ripProgressSpin {
           to { transform: rotate(360deg); }
+        }
+        @keyframes ripFindingShimmer {
+          0% { background-position: 100% 0; }
+          100% { background-position: -100% 0; }
         }
       `}</style>
 
@@ -824,112 +1245,20 @@ export default function AnalysisProgress({
 
         <div
           style={{
-            width: isMobile ? "100%" : "280px",
-            flex: isMobile ? "1 1 auto" : "0 0 280px",
-            minWidth: isMobile ? 0 : "260px",
+            width: isMobile ? "100%" : "340px",
+            flex: isMobile ? "1 1 auto" : "0 0 340px",
+            minWidth: isMobile ? 0 : "300px",
+            alignSelf: "flex-start",
+            position: isMobile ? "static" : "sticky",
+            top: isMobile ? undefined : "72px",
           }}
         >
-          <div
-            style={{
-              fontSize: "13px",
-              fontWeight: 700,
-              color: PALETTE.muted,
-              letterSpacing: "0.06em",
-              textTransform: "uppercase",
-              marginBottom: "12px",
-            }}
-          >
-            What we&apos;re checking
-          </div>
-
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {INSIGHTS.map((insight, index) => {
-              const kind = insightBadge(index);
-              return (
-                <div
-                  key={insight.title}
-                  style={{
-                    border: `1px solid ${PALETTE.border}`,
-                    borderRadius: "12px",
-                    paddingTop: "12px",
-                    paddingBottom: "12px",
-                    paddingLeft: "12px",
-                    paddingRight: "12px",
-                    marginBottom: "10px",
-                    background: PALETTE.white,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "row",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      marginBottom: "8px",
-                    }}
-                  >
-                    <div
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 700,
-                        color: PALETTE.text,
-                      }}
-                    >
-                      {insight.title}
-                    </div>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        textTransform: "uppercase",
-                        letterSpacing: "0.04em",
-                        borderRadius: "999px",
-                        paddingLeft: "8px",
-                        paddingRight: "8px",
-                        paddingTop: "3px",
-                        paddingBottom: "3px",
-                        ...badgeStyles(kind),
-                      }}
-                    >
-                      {badgeLabel(kind)}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "12px", color: PALETTE.muted, lineHeight: 1.5 }}>
-                    {insight.body}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          {showTip ? (
-            <div
-              style={{
-                marginTop: "8px",
-                borderRadius: "12px",
-                border: `1px dashed ${PALETTE.primary}`,
-                background: PALETTE.activeBg,
-                paddingTop: "12px",
-                paddingBottom: "12px",
-                paddingLeft: "14px",
-                paddingRight: "14px",
-              }}
-            >
-              <div
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 700,
-                  color: PALETTE.primary,
-                  marginBottom: "6px",
-                }}
-              >
-                Did you know?
-              </div>
-              <div style={{ fontSize: "12px", color: PALETTE.text, lineHeight: 1.55 }}>
-                {TIP_COPY}
-              </div>
-            </div>
-          ) : null}
+          <LiveFindingsPanel
+            findings={findings}
+            activeStepIndex={activeStepIndex}
+            completedSteps={completedSteps}
+            barPct={barPct}
+          />
         </div>
       </div>
 

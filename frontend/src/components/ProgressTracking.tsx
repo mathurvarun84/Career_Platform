@@ -17,6 +17,7 @@ import { pageContainerStyle } from "../utils/pageLayout";
 import { isEvidenceGap } from "../utils/roleFitEvidence";
 import type {
   CareerMemoryEntry,
+  InterviewProgressSnapshot,
   PriorityFix,
   ProgressSnapshot,
 } from "../types";
@@ -79,6 +80,11 @@ export default function ProgressTracking({
   const analysisResult = useResumeStore((state) => state.analysisResult);
   const resetAnalysis = useResumeStore((state) => state.resetAnalysis);
   const setActiveTab = useResumeStore((state) => state.setActiveTab);
+  const pastSessions = useResumeStore((state) => state.interview_history.past_sessions);
+  const fetchInterviewHistory = useResumeStore((state) => state.fetchInterviewHistory);
+  const interviewHistoryLoading = useResumeStore(
+    (state) => state.interview_history.is_loading
+  );
   const [expandedEntries, setExpandedEntries] = useState<Record<string, boolean>>({});
   const [syncError, setSyncError] = useState<string | null>(null);
   const containerStyle = pageContainerStyle(isMobile);
@@ -92,6 +98,10 @@ export default function ProgressTracking({
     () => (careerRecord.length > 0 ? careerRecord : IS_MOCK ? mockCareerRecord : []),
     [careerRecord]
   );
+
+  useEffect(() => {
+    void fetchInterviewHistory();
+  }, [fetchInterviewHistory]);
 
   useEffect(() => {
     if (!sessionId || IS_MOCK) {
@@ -177,6 +187,25 @@ export default function ProgressTracking({
       [entryId]: !prev[entryId],
     }));
   };
+
+  const interviewSnapshots: InterviewProgressSnapshot[] = useMemo(() => {
+    const SIGNAL_RANK: Record<string, number> = { weak: 0, developing: 1, strong: 2 };
+    return pastSessions.map((s) => {
+      const scores = s.dimension_scorecard.map(
+        (d) => SIGNAL_RANK[d.signal_strength] ?? 0
+      );
+      const average_signal_strength =
+        scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+      return {
+        timestamp: s.created_at,
+        company: s.company,
+        seniority: s.seniority,
+        dimensions_covered: s.dimension_scorecard.map((d) => d.dimension),
+        average_signal_strength,
+        anti_patterns_count: s.anti_pattern_report.reduce((sum, ap) => sum + ap.count, 0),
+      };
+    });
+  }, [pastSessions]);
 
   const handleStartNewAnalysis = () => {
     setActiveTab("overview");
@@ -493,6 +522,120 @@ export default function ProgressTracking({
             )}
           </div>
         </div>
+
+        {/* Interview Practice History */}
+        {interviewHistoryLoading ? (
+          <div
+            style={{
+              background: "#ffffff",
+              border: "1.5px solid #e5e7eb",
+              borderRadius: 18,
+              padding: "20px 24px",
+              marginTop: 24,
+              fontSize: 13,
+              color: "#9ca3af",
+            }}
+          >
+            Loading interview history...
+          </div>
+        ) : interviewSnapshots.length > 0 ? (
+          <div
+            style={{
+              background: "#ffffff",
+              border: "1.5px solid #e5e7eb",
+              borderRadius: 18,
+              overflow: "hidden",
+              marginTop: 24,
+            }}
+          >
+            <div style={{ padding: "16px 24px", borderBottom: "1.5px solid #e5e7eb" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>
+                Interview Practice History
+              </div>
+              <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>
+                {interviewSnapshots.length} session
+                {interviewSnapshots.length !== 1 ? "s" : ""} completed
+              </div>
+            </div>
+
+            <div
+              style={{
+                padding: "16px 24px",
+                display: "flex",
+                flexDirection: "column",
+                gap: 10,
+              }}
+            >
+              {interviewSnapshots.map((snap, i) => {
+                const SENIORITY_LABELS: Record<string, string> = {
+                  junior: "Junior",
+                  mid: "Mid",
+                  senior: "Senior",
+                  staff: "Staff",
+                  em: "EM",
+                };
+                const SIGNAL_STYLE: Record<string, React.CSSProperties> = {
+                  strong: { background: "#dcfce7", color: "#166534", borderColor: "#86efac" },
+                  developing: {
+                    background: "#fef9c3",
+                    color: "#854d0e",
+                    borderColor: "#fde047",
+                  },
+                  weak: { background: "#fee2e2", color: "#991b1b", borderColor: "#fca5a5" },
+                };
+                const signalStrength =
+                  snap.average_signal_strength >= 1.5
+                    ? "strong"
+                    : snap.average_signal_strength >= 0.75
+                      ? "developing"
+                      : "weak";
+
+                return (
+                  <div
+                    key={`${snap.timestamp}-${i}`}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "12px 16px",
+                      background: "#f9fafb",
+                      border: "1.5px solid #e5e7eb",
+                      borderRadius: 12,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 500, color: "#111827" }}>
+                        {snap.company.charAt(0).toUpperCase() + snap.company.slice(1)} ·{" "}
+                        {SENIORITY_LABELS[snap.seniority]}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2 }}>
+                        {snap.dimensions_covered.map((d) => d.replace(/_/g, " ")).join(", ")}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "right" }}>
+                      <div
+                        style={{
+                          display: "inline-block",
+                          border: "1.5px solid",
+                          borderRadius: 999,
+                          padding: "2px 10px",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          ...(SIGNAL_STYLE[signalStrength] ?? SIGNAL_STYLE.weak),
+                        }}
+                      >
+                        {signalStrength.charAt(0).toUpperCase() + signalStrength.slice(1)}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>
+                        {new Date(snap.timestamp).toLocaleDateString()}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ) : null}
 
         <div
           style={{

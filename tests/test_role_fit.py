@@ -52,3 +52,35 @@ def test_zero_min_years_no_experience_gap():
     result = compute_role_fit(resume, jd, {})
     assert result["experience_gap"] == 0
     assert result["seniority_gap"] >= 3
+
+
+def test_em_17_years_director_jd_is_stretch_not_underqualified():
+    """EM → AD/Director with 17Y vs 15+ min should be stretch, not no-fit."""
+    resume = {"experience_years": 17, "seniority": "em"}
+    jd = {
+        "min_years_required": 15,
+        "jd_seniority_level": "director",
+        "seniority_expected": "staff",
+    }
+    result = compute_role_fit(resume, jd, {})
+    assert result["experience_gap"] == 0
+    assert result["seniority_gap"] == 1
+    assert result["fitness"] == "stretch"
+
+
+def test_director_resume_director_jd_qualified():
+    """Resume tagged director must not default to mid-level rank."""
+    resume = {"experience_years": 17, "seniority": "director"}
+    jd = {"min_years_required": 15, "jd_seniority_level": "director"}
+    result = compute_role_fit(resume, jd, {})
+    assert result["seniority_gap"] == 0
+    assert result["fitness"] == "qualified"
+
+
+def test_staff_resume_director_jd_two_level_stretch():
+    """Staff IC → Director with YoE met is a 2-level stretch."""
+    resume = {"experience_years": 17, "seniority": "staff"}
+    jd = {"min_years_required": 15, "jd_seniority_level": "director"}
+    result = compute_role_fit(resume, jd, {})
+    assert result["seniority_gap"] == 2
+    assert result["fitness"] == "stretch"

@@ -179,10 +179,31 @@ class BaseAgent(ABC):
             start = cleaned.index("{")
             end = cleaned.rindex("}") + 1
             return json.loads(cleaned[start:end])
-        except (ValueError, json.JSONDecodeError) as e:
-            raise ValueError(
-                f"{self.__class__.__name__}: JSON parse failed - {cleaned[:200]}"
-            ) from e
+        except (ValueError, json.JSONDecodeError):
+            pass
+
+        # A2 — Final retry: ask the model to fix the malformed JSON
+        repair_prompt = (
+            f"The following response is malformed JSON. "
+            f"Return ONLY valid JSON, no markdown, no preamble:\n\n{raw}"
+        )
+        try:
+            repaired = self._call_llm(
+                "You are a JSON repair assistant. Return ONLY valid JSON.",
+                repair_prompt
+            )
+            # Clean and parse the repaired response
+            repaired_cleaned = repaired.strip()
+            repaired_cleaned = re.sub(r"^```(?:json)?\s*", "", repaired_cleaned, flags=re.IGNORECASE)
+            repaired_cleaned = re.sub(r"\s*```$", "", repaired_cleaned.strip())
+            return json.loads(repaired_cleaned)
+        except Exception:
+            # Return structured fallback — never raise on JSON parse
+            return {
+                "_parse_error": True,
+                "context": f"{self.__class__.__name__}",
+                "raw": cleaned[:200],
+            }
 
     def _repair_truncated_json(self, text: str) -> dict | None:
         """

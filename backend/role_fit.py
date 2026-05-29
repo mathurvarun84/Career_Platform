@@ -6,23 +6,23 @@ from __future__ import annotations
 
 from typing import Any, Dict
 
+# Unified ladder: IC (1–4) → management (5–6) → exec (7–8).
+# Resume Agent 1 uses em | senior_em | director; JD Agent 2 uses manager | director | vp.
 _SENIORITY_RANK = {
     "junior": 1,
     "mid": 2,
     "senior": 3,
     "staff": 4,
+    "em": 5,
+    "senior_em": 5,
     "manager": 5,
+    "engineering_manager": 5,
     "director": 6,
+    "associate_director": 6,
+    "ad": 6,
     "vp": 7,
     "c-suite": 8,
     "unknown": 0,
-}
-
-_RESUME_SENIORITY_RANK = {
-    "junior": 1,
-    "mid": 2,
-    "senior": 3,
-    "staff": 4,
 }
 
 _RECOMMENDED_ROLES = {
@@ -30,6 +30,9 @@ _RECOMMENDED_ROLES = {
     "mid": ["Software Engineer II", "SDE 2", "Backend Engineer"],
     "senior": ["Senior Software Engineer", "Staff Engineer", "Tech Lead"],
     "staff": ["Staff Engineer", "Principal Engineer", "Engineering Lead", "EM (small team)"],
+    "em": ["Engineering Manager", "Senior Engineering Manager"],
+    "senior_em": ["Senior Engineering Manager", "Director of Engineering (small org)"],
+    "director": ["Director of Engineering", "Senior Director of Engineering"],
 }
 
 _NEXT_STEP_ROLES = {
@@ -37,6 +40,9 @@ _NEXT_STEP_ROLES = {
     "mid": ["Senior Software Engineer", "Tech Lead"],
     "senior": ["Staff Engineer", "Engineering Lead", "Engineering Manager"],
     "staff": ["Senior Staff Engineer", "Principal Engineer", "Engineering Manager"],
+    "em": ["Senior Engineering Manager", "Director of Engineering"],
+    "senior_em": ["Director of Engineering", "Associate Director of Engineering"],
+    "director": ["Senior Director of Engineering", "VP Engineering"],
 }
 
 _EVIDENCE_SIGNALS = {
@@ -64,7 +70,41 @@ def _enum_value(raw: Any) -> str:
         return ""
     if hasattr(raw, "value"):
         return str(raw.value).lower().strip()
-    return str(raw).lower().strip()
+    return str(raw).lower().strip().replace(" ", "_")
+
+
+def _seniority_rank(label: str, years: int = 0, *, for_jd: bool = False) -> int:
+    """
+    Map a seniority label to the unified ladder.
+
+    JD unknown → 0 (ignore seniority gap). Resume unknown → years-based inference
+    so 17Y EM profiles are not treated as mid-level IC.
+    """
+    key = _enum_value(label) or "unknown"
+    rank = _SENIORITY_RANK.get(key, 0)
+    if rank > 0:
+        return rank
+    if for_jd:
+        return 0
+    if years >= 15:
+        return _SENIORITY_RANK["em"]
+    if years >= 11:
+        return _SENIORITY_RANK["staff"]
+    if years >= 6:
+        return _SENIORITY_RANK["senior"]
+    if years >= 3:
+        return _SENIORITY_RANK["mid"]
+    return _SENIORITY_RANK["junior"]
+
+
+def _jd_seniority_rank(jd_intel: dict) -> int:
+    """Prefer explicit JD band; fall back to seniority_expected when band is unknown."""
+    primary = _seniority_rank(
+        jd_intel.get("jd_seniority_level") or "", for_jd=True
+    )
+    if primary > 0:
+        return primary
+    return _seniority_rank(jd_intel.get("seniority_expected") or "", for_jd=True)
 
 
 def compute_role_fit(
@@ -94,11 +134,16 @@ def compute_role_fit(
     experience_gap = max(0, jd_min_years - candidate_years)
 
     raw_resume_seniority = _enum_value(resume_und.get("seniority")) or "mid"
-    raw_jd_seniority = _enum_value(jd_intel.get("jd_seniority_level")) or "unknown"
 
-    resume_rank = _RESUME_SENIORITY_RANK.get(raw_resume_seniority, 2)
-    jd_rank = _SENIORITY_RANK.get(raw_jd_seniority, 0)
+    resume_rank = _seniority_rank(raw_resume_seniority, candidate_years, for_jd=False)
+    jd_rank = _jd_seniority_rank(jd_intel)
     seniority_gap = max(0, jd_rank - resume_rank) if jd_rank > 0 else 0
+
+    # Strong YoE meeting JD minimum → do not label as underqualified for 1–2 level stretch.
+    if experience_gap == 0 and candidate_years >= jd_min_years and seniority_gap <= 2:
+        seniority_underqualified = False
+    else:
+        seniority_underqualified = seniority_gap >= 3
 
     gap_result = gap_result or {}
     unanswerable = 0
@@ -113,7 +158,7 @@ def compute_role_fit(
     score -= min(unanswerable * 2, 14)
     score = max(0, min(100, score))
 
-    if experience_gap > 5 or seniority_gap >= 3:
+    if experience_gap > 5 or seniority_underqualified:
         fitness = "underqualified"
     elif experience_gap > 1 or seniority_gap >= 1:
         fitness = "stretch"

@@ -1,0 +1,534 @@
+{
+  "_meta": {
+    "version": "2.0.0",
+    "description": "Company behavioral frameworks mapped to the 7 interview dimensions. Each company entry includes: display_name, framework name, values (mapped to dimensions), dimension focus by seniority, and what_they_evaluate — the evaluator lens that gets injected into the question generation prompt so the LLM knows what THIS company weighs in each dimension. Update quarterly.",
+    "dimensions": ["ownership","impact_and_scale","influence_without_authority","problem_solving","collaboration","growth_mindset","conflict_resolution"]
+  },
+
+  "amazon": {
+    "display_name": "Amazon",
+    "framework": "Leadership Principles (16 LPs)",
+    "values": [
+      {"id": "customer_obsession",   "name": "Customer Obsession",         "maps_to_dimension": "ownership"},
+      {"id": "ownership",            "name": "Ownership",                  "maps_to_dimension": "ownership"},
+      {"id": "invent_simplify",      "name": "Invent and Simplify",        "maps_to_dimension": "problem_solving"},
+      {"id": "right_a_lot",          "name": "Are Right, A Lot",           "maps_to_dimension": "problem_solving"},
+      {"id": "learn_curious",        "name": "Learn and Be Curious",       "maps_to_dimension": "growth_mindset"},
+      {"id": "hire_develop",         "name": "Hire and Develop the Best",  "maps_to_dimension": "influence_without_authority"},
+      {"id": "think_big",            "name": "Think Big",                  "maps_to_dimension": "impact_and_scale"},
+      {"id": "bias_for_action",      "name": "Bias for Action",            "maps_to_dimension": "ownership"},
+      {"id": "frugality",            "name": "Frugality",                  "maps_to_dimension": "problem_solving"},
+      {"id": "earn_trust",           "name": "Earn Trust",                 "maps_to_dimension": "collaboration"},
+      {"id": "dive_deep",            "name": "Dive Deep",                  "maps_to_dimension": "problem_solving"},
+      {"id": "disagree_commit",      "name": "Have Backbone; Disagree and Commit", "maps_to_dimension": "conflict_resolution"},
+      {"id": "deliver_results",      "name": "Deliver Results",            "maps_to_dimension": "impact_and_scale"},
+      {"id": "strive_best",          "name": "Strive to be Earth's Best Employer", "maps_to_dimension": "collaboration"},
+      {"id": "success_scale",        "name": "Success and Scale Bring Broad Responsibility", "maps_to_dimension": "impact_and_scale"},
+      {"id": "vocally_self_critical", "name": "Are Vocally Self-Critical",  "maps_to_dimension": "growth_mindset"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "collaboration", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "Did you act without being asked? Did you own the outcome — including the failure path — not just the effort? Amazon's bar-raisers specifically check: did you draw an artificial line around your role, or did you step past it?",
+      "impact_and_scale":            "Amazon wants numbers, not adjectives. They trace the line from your specific action to a business or customer metric. 'Significantly improved' is a red flag. The result should appear early in your answer, not in the last sentence.",
+      "problem_solving":             "Structured decision-making under uncertainty. They probe: what data did you gather, what did you assume, how did you size the risk, did you course-correct when new data arrived? 'Dive Deep' means they may ask follow-up questions 3 levels deep.",
+      "influence_without_authority": "Amazon values people who raise the bar for their team. They look for mentoring, hiring calibration, cross-team alignment — evidence you made others better, not just yourself.",
+      "collaboration":               "Earn Trust — candid, respectful relationships under pressure. They probe for genuine collaboration, not just task handoffs. Conflict handled directly, not escalated sideways.",
+      "growth_mindset":              "Learn and Be Curious: genuine intellectual curiosity AND the ability to receive hard feedback without defensiveness. They want behavioral change as evidence, not just acknowledgement.",
+      "conflict_resolution":         "Disagree and Commit has two equal halves. They check: did you raise the disagreement with data? AND did you execute fully after the decision was made, even if you disagreed? Undermining post-decision is a hard fail."
+    }
+  },
+
+  "google": {
+    "display_name": "Google",
+    "framework": "Four Hiring Attributes (GCA, Leadership, Googleyness, RRK)",
+    "values": [
+      {"id": "gca",        "name": "General Cognitive Ability",  "maps_to_dimension": "problem_solving"},
+      {"id": "leadership", "name": "Emergent Leadership",        "maps_to_dimension": "influence_without_authority"},
+      {"id": "googleyness","name": "Googleyness",                "maps_to_dimension": "collaboration"},
+      {"id": "rrk",        "name": "Role-Related Knowledge",     "maps_to_dimension": "ownership"}
+    ],
+    "ic_focus_dimensions":  ["problem_solving", "ownership", "growth_mindset"],
+    "em_focus_dimensions":  ["influence_without_authority", "collaboration", "conflict_resolution"],
+    "what_they_evaluate": {
+      "ownership":                   "RRK: do you have genuine depth in your domain? Google probes for candidates who don't just complete tasks but understand the system deeply — the why, not just the how.",
+      "impact_and_scale":            "Google values impact that is data-informed and measurable. They look for candidates who instrument their work and can explain the delta their contribution made.",
+      "problem_solving":             "GCA: How you think matters more than what you know. They want structured decomposition of ambiguous problems, explicit hypothesis testing, and willingness to say 'I don't know' and reason from first principles.",
+      "influence_without_authority": "Emergent leadership: Google expects everyone to lead when their skills are needed, regardless of title. They look for data-driven persuasion, not hierarchical authority. Cross-functional alignment built through demos, prototypes, and evidence.",
+      "collaboration":               "Googleyness: comfort with ambiguity, curiosity about other people's ideas, empathy, humility. They probe: do you credit teammates naturally? Can you adapt your working style?",
+      "growth_mindset":              "Learning agility: Google wants engineers who update their beliefs when evidence warrants it — intellectual honesty over consistency. They look for the specific moment a belief changed, not just general openness.",
+      "conflict_resolution":         "Google probes for direct engagement — did you raise the disagreement with the person, or route around them? They value principled resolution: what each party gave up, relationship intact afterward."
+    }
+  },
+
+  "meta": {
+    "display_name": "Meta",
+    "framework": "Meta Core Values (6) — Jedi behavioral round",
+    "values": [
+      {"id": "move_fast",       "name": "Move Fast",                          "maps_to_dimension": "ownership"},
+      {"id": "focus_impact",    "name": "Focus on Long-Term Impact",          "maps_to_dimension": "impact_and_scale"},
+      {"id": "build_awesome",   "name": "Build Awesome Things",               "maps_to_dimension": "problem_solving"},
+      {"id": "live_future",     "name": "Live in the Future",                 "maps_to_dimension": "growth_mindset"},
+      {"id": "direct_respect",  "name": "Be Direct and Respect Your Colleagues", "maps_to_dimension": "conflict_resolution"},
+      {"id": "meta_mates_me",   "name": "Meta, Metamates, Me",                "maps_to_dimension": "collaboration"}
+    ],
+    "ic_focus_dimensions":  ["impact_and_scale", "ownership", "problem_solving"],
+    "em_focus_dimensions":  ["influence_without_authority", "impact_and_scale", "conflict_resolution"],
+    "what_they_evaluate": {
+      "ownership":                   "Move Fast: Meta wants urgency with judgment, not recklessness. They probe: did you make a principled decision about what was 'good enough to ship'? The red flag is either excessive caution OR shipping without thinking about risk.",
+      "impact_and_scale":            "Long-Term Impact: Meta specifically checks whether you sacrificed long-term value for a short-term metric win. They want candidates who can name what they gave up and why the long-term bet was worth it. Numbers are required.",
+      "problem_solving":             "Build Awesome Things: Meta values shipping things that are not just functional but excellent. They probe for quality of thinking: did you consider second-order effects, cross-product surfaces, and long-term maintainability?",
+      "influence_without_authority": "Meta expects engineers to drive alignment without needing a title. They probe: did you build genuine conviction in others, or just compliance? The red flag is being a 'lone wolf' who executes well but doesn't bring people along.",
+      "collaboration":               "Meta, Metamates, Me: company first, then team, then self. They probe for candidates who genuinely put team success above personal credit, especially under pressure.",
+      "growth_mindset":              "Live in the Future: Meta wants builders who are intellectually curious about what comes next, and who have changed their approach based on new data. They probe for specific belief updates, not general openness.",
+      "conflict_resolution":         "Be Direct: Meta wants engineers who raise disagreements directly and early — 'Be Direct and Respect Your Colleagues' is tested through conflict stories. The red flag is routing around people or being passive-aggressive."
+    }
+  },
+
+  "stripe": {
+    "display_name": "Stripe",
+    "framework": "Operating Principles — grouped as How We Work / Who We Are / Leaders",
+    "values": [
+      {"id": "users_first",      "name": "Put Users First",             "maps_to_dimension": "ownership"},
+      {"id": "move_urgency",     "name": "Move with Urgency",           "maps_to_dimension": "ownership"},
+      {"id": "rigor",            "name": "Rigorous Thinking",           "maps_to_dimension": "problem_solving"},
+      {"id": "craftsmanship",    "name": "Care About Craftsmanship",    "maps_to_dimension": "problem_solving"},
+      {"id": "seek_feedback",    "name": "Seek Feedback and Adjust",    "maps_to_dimension": "growth_mindset"},
+      {"id": "curiosity",        "name": "Curiosity and Resilience",    "maps_to_dimension": "growth_mindset"},
+      {"id": "trust",            "name": "Trust and Transparency",      "maps_to_dimension": "collaboration"},
+      {"id": "writing_culture",  "name": "Writing Culture",             "maps_to_dimension": "influence_without_authority"}
+    ],
+    "ic_focus_dimensions":  ["problem_solving", "ownership", "growth_mindset"],
+    "em_focus_dimensions":  ["influence_without_authority", "problem_solving", "collaboration"],
+    "what_they_evaluate": {
+      "ownership":                   "Stripe wants engineers who instinctively see a user problem and act — putting users first, moving with urgency. They probe: did you cross a team boundary to fix something? The 'Leveler' (Stripe's bar-raiser equivalent) checks both the instinct AND the judgment about when to escalate.",
+      "impact_and_scale":            "Stripe values impact that is user-measurable — specifically for developers who use Stripe's APIs. They probe for candidates who track adoption, error rates, and integration success, not just internal metrics.",
+      "problem_solving":             "Stripe is obsessed with rigor. The behavioral round feels like a technical interview: they probe your reasoning process, how you evaluated alternatives, what assumptions you challenged. Vague reasoning is as much a red flag as wrong answers.",
+      "influence_without_authority": "Stripe's writing culture is central here — they expect engineers to build alignment through clear, written arguments. They probe: did you write a doc, a proposal, a design spec? Did you make the case in writing?",
+      "collaboration":               "Trust and Transparency: Stripe values candid, intellectually honest collaboration. They probe for candidates who named disagreements clearly and resolved them with evidence, not consensus or silence.",
+      "growth_mindset":              "Seek Feedback and Adjust: Stripe wants engineers who treat feedback as data and update their approach. They probe for specific examples of a belief or approach that changed, with evidence of the change in behavior.",
+      "conflict_resolution":         "Intellectual courage: Stripe wants candidates who challenge shallow thinking and push back with structured arguments. They also probe for the ability to commit after losing the argument — rigor without rigidity."
+    }
+  },
+
+  "atlassian": {
+    "display_name": "Atlassian",
+    "framework": "Five Core Values",
+    "values": [
+      {"id": "open_no_bs",       "name": "Open Company, No Bullshit",    "maps_to_dimension": "conflict_resolution"},
+      {"id": "heart_balance",    "name": "Build with Heart and Balance", "maps_to_dimension": "problem_solving"},
+      {"id": "dont_eff_customer","name": "Don't #@!% the Customer",      "maps_to_dimension": "ownership"},
+      {"id": "play_as_team",     "name": "Play as a Team",               "maps_to_dimension": "collaboration"},
+      {"id": "be_the_change",    "name": "Be the Change You Seek",       "maps_to_dimension": "ownership"}
+    ],
+    "ic_focus_dimensions":  ["collaboration", "ownership", "conflict_resolution"],
+    "em_focus_dimensions":  ["influence_without_authority", "collaboration", "conflict_resolution"],
+    "what_they_evaluate": {
+      "ownership":                   "Be the Change You Seek: Atlassian hires people who see dysfunction and act without being asked. They probe: did you identify the broken thing AND drive the fix? 'I flagged it' is not enough.",
+      "impact_and_scale":            "Atlassian probes for impact on team outcomes and product quality — not just personal output. They want to see measurable improvement to how the team or product works, with evidence.",
+      "problem_solving":             "Build with Heart and Balance: they probe for trade-off thinking — did you balance feature completeness with shipping on time? Did you make a principled call about quality?",
+      "influence_without_authority": "Atlassian's TEAM Anywhere culture means influence is almost always remote and async. They probe: did you build alignment through written communication, Confluence docs, Loom videos?",
+      "collaboration":               "Play as a Team is the most distinctly Atlassian value. They probe for candidates who invest in team outcomes at a cost to personal output — helped someone else succeed, improved team process, removed a collective blocker.",
+      "growth_mindset":              "Atlassian probes for candidates who actively seek and give direct feedback. Learning stories should involve a specific behavioral change, not just intellectual acknowledgement.",
+      "conflict_resolution":         "Open Company, No Bullshit: they probe for direct communication — did you raise the uncomfortable truth with the right person, at the right time, without softening it to uselessness?"
+    }
+  },
+
+  "microsoft": {
+    "display_name": "Microsoft",
+    "framework": "Growth Mindset Culture (Satya Nadella) + Model Coach Care",
+    "values": [
+      {"id": "growth_mindset", "name": "Growth Mindset",              "maps_to_dimension": "growth_mindset"},
+      {"id": "customer_first", "name": "Customer Obsession",          "maps_to_dimension": "ownership"},
+      {"id": "diversity",      "name": "Diversity and Inclusion",     "maps_to_dimension": "collaboration"},
+      {"id": "one_microsoft",  "name": "One Microsoft",               "maps_to_dimension": "collaboration"},
+      {"id": "model_coach",    "name": "Model, Coach, and Care",      "maps_to_dimension": "influence_without_authority"},
+      {"id": "clarity_energy", "name": "Create Clarity, Generate Energy, Deliver Success", "maps_to_dimension": "impact_and_scale"}
+    ],
+    "ic_focus_dimensions":  ["growth_mindset", "problem_solving", "collaboration"],
+    "em_focus_dimensions":  ["influence_without_authority", "growth_mindset", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "Microsoft probes for customer-first thinking: did you start from the customer's need and work backward? They also probe for broad responsibility — did you see the downstream impact of your decision on other teams or users?",
+      "impact_and_scale":            "Create Clarity: Microsoft values impact that is communicated clearly and measured at scale. They probe for candidates who can articulate the delta their work created, quantified, and who considered enterprise-scale implications.",
+      "problem_solving":             "Microsoft probes for structured thinking and the ability to navigate ambiguity without losing clarity. Growth mindset applies here too: did you update your approach when the first solution didn't work?",
+      "influence_without_authority": "Model, Coach, and Care: Microsoft explicitly wants leaders who model the behavior they want to see, invest in the growth of their team, and care about individuals — not just output.",
+      "collaboration":               "One Microsoft: they probe for cross-org, cross-timezone collaboration. Did you treat other teams as genuine partners or as dependencies? Did you adapt your communication for cultural and timezone differences?",
+      "growth_mindset":              "This is Microsoft's flagship value since Nadella. They probe for a genuine shift in mental model, not just a learned skill. The distinction: 'I learned a new technology' (fixed mindset framed as growth) vs 'I changed how I approach ambiguous systems' (genuine growth mindset).",
+      "conflict_resolution":         "Microsoft probes for inclusive conflict resolution — did you seek diverse perspectives, especially from quieter voices? Did you separate the disagreement from the person?"
+    }
+  },
+
+  "netflix": {
+    "display_name": "Netflix",
+    "framework": "Netflix Culture Deck — Freedom and Responsibility",
+    "values": [
+      {"id": "judgment",     "name": "Judgment",             "maps_to_dimension": "problem_solving"},
+      {"id": "selflessness", "name": "Selflessness",         "maps_to_dimension": "collaboration"},
+      {"id": "courage",      "name": "Courage",              "maps_to_dimension": "conflict_resolution"},
+      {"id": "communication","name": "Communication",        "maps_to_dimension": "influence_without_authority"},
+      {"id": "inclusion",    "name": "Inclusion",            "maps_to_dimension": "collaboration"},
+      {"id": "integrity",    "name": "Integrity",            "maps_to_dimension": "ownership"},
+      {"id": "curiosity",    "name": "Curiosity",            "maps_to_dimension": "growth_mindset"},
+      {"id": "innovation",   "name": "Innovation",           "maps_to_dimension": "problem_solving"},
+      {"id": "passion",      "name": "Passion",              "maps_to_dimension": "impact_and_scale"},
+      {"id": "excellence",   "name": "Excellence",           "maps_to_dimension": "impact_and_scale"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "conflict_resolution"],
+    "what_they_evaluate": {
+      "ownership":                   "Netflix's 'Highly Aligned, Loosely Coupled' culture means they hire for autonomous judgment. They probe: did you make a high-quality decision without being micromanaged? Did you know when enough information was enough, and when to escalate? Excessive escalation is as much a failure signal as recklessness.",
+      "impact_and_scale":            "Netflix probes for excellence at scale — specifically, reliability and performance at streaming infrastructure scale. They want candidates who understand the difference between 'works in staging' and 'degrades gracefully under failure at 200M users'.",
+      "problem_solving":             "Judgment is Netflix's first cultural value. They probe for good decision-making under uncertainty: did you identify the reversible vs irreversible nature of the decision? Did you optimise the downside, not just the upside?",
+      "influence_without_authority": "Netflix values direct, high-bandwidth communication. They probe for candidates who influence through clarity and precision — written memos, direct conversations, evidence-based proposals.",
+      "collaboration":               "Selflessness at Netflix means giving candid feedback to teammates even when uncomfortable. They probe: did you give real feedback, or polite feedback? Did you put the team's output above your own comfort?",
+      "growth_mindset":              "Curiosity: Netflix probes for genuine intellectual curiosity — candidates who explore topics outside their immediate domain, who ask 'why' before 'how', who read broadly.",
+      "conflict_resolution":         "Courage: Netflix wants candidates who say the hard thing in the room, not after. They probe for specific instances of voicing an unpopular view with evidence, and for handling the social discomfort that followed."
+    }
+  },
+
+  "apple": {
+    "display_name": "Apple",
+    "framework": "Apple Values — Craftsmanship, Privacy, Collaboration, Inclusion",
+    "values": [
+      {"id": "craftsmanship",  "name": "Craftsmanship and Excellence",  "maps_to_dimension": "problem_solving"},
+      {"id": "privacy",        "name": "Privacy by Design",             "maps_to_dimension": "ownership"},
+      {"id": "collaboration",  "name": "Deep Collaboration",            "maps_to_dimension": "collaboration"},
+      {"id": "innovation",     "name": "Innovation Through Diversity",  "maps_to_dimension": "growth_mindset"},
+      {"id": "ownership",      "name": "End-to-End Ownership",          "maps_to_dimension": "ownership"}
+    ],
+    "ic_focus_dimensions":  ["problem_solving", "ownership", "collaboration"],
+    "em_focus_dimensions":  ["influence_without_authority", "collaboration", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "Apple probes for end-to-end ownership with an obsession for quality — not just shipping, but shipping something excellent. They also probe for privacy-by-default thinking: was privacy a design consideration from the start, or an afterthought?",
+      "impact_and_scale":            "Apple values impact that serves their customers deeply — they probe for candidates who think about the full user experience, not just the feature metric. Depth over breadth.",
+      "problem_solving":             "Craftsmanship: Apple probes for candidates who push beyond 'good enough' to find the elegant solution. They want to see iteration, attention to edge cases, and the willingness to start over when the first approach isn't right.",
+      "influence_without_authority": "Apple is famously matrix-organized with deep cross-functional dependencies. They probe for candidates who built alignment across hardware, software, and design — not just within their vertical.",
+      "collaboration":               "Apple values deep collaboration over loud collaboration. They probe: did you genuinely incorporate others' ideas, or did you just consult them? Did the outcome reflect the team's collective thinking?",
+      "growth_mindset":              "Apple probes for intellectual humility and genuine openness to being wrong — especially from strong individual contributors who are used to being right.",
+      "conflict_resolution":         "Apple probes for principled disagreement — did you push back on a design or technical direction with a structured argument? Did you have the conviction to hold your position under pressure from a senior leader?"
+    }
+  },
+
+  "flipkart": {
+    "display_name": "Flipkart",
+    "framework": "Flipkart Leadership Expectations — Ownership, Scale, Customer Centricity",
+    "values": [
+      {"id": "ownership",         "name": "End-to-End Ownership",          "maps_to_dimension": "ownership"},
+      {"id": "customer_centricity","name": "Customer Centricity",          "maps_to_dimension": "ownership"},
+      {"id": "scale_thinking",    "name": "Scale and Reliability Thinking","maps_to_dimension": "impact_and_scale"},
+      {"id": "technical_depth",   "name": "Technical Depth",               "maps_to_dimension": "problem_solving"},
+      {"id": "team_building",     "name": "Team Building",                 "maps_to_dimension": "influence_without_authority"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "collaboration"],
+    "what_they_evaluate": {
+      "ownership":                   "Flipkart's HM round specifically probes end-to-end ownership — design to production monitoring. They want to see candidates who treated a system as genuinely theirs: handled on-call, drove post-mortems, monitored user impact metrics after launch.",
+      "impact_and_scale":            "Flipkart probes for scale thinking — did the candidate design for 10x the current load? Did they think about Tier 2/3 users with constrained devices? Impact on cost efficiency is also probed.",
+      "problem_solving":             "Flipkart is known for depth in debugging and systems thinking. The machine coding culture extends into behavioral rounds: they want candidates who can walk through a production problem systematically, not just describe the solution.",
+      "influence_without_authority": "Flipkart probes for candidates who drove cross-team alignment — especially between product, engineering, and data teams, which often move at different speeds.",
+      "collaboration":               "Flipkart probes for candidates who communicate clearly across technical and non-technical stakeholders. The bar is: can you explain a complex system decision to a product manager or business team?",
+      "growth_mindset":              "Flipkart probes for candidates who sought feedback on their technical decisions and changed their approach. They value intellectual humility at senior levels.",
+      "conflict_resolution":         "Flipkart probes for candidates who handled technical or product disagreements directly — especially disagreements about prioritisation or technical debt, which are common in high-growth orgs."
+    }
+  },
+
+  "swiggy": {
+    "display_name": "Swiggy",
+    "framework": "Swiggy Engineering Principles — Ownership, Reliability, Speed",
+    "values": [
+      {"id": "ownership",     "name": "Full-Stack Ownership",       "maps_to_dimension": "ownership"},
+      {"id": "reliability",   "name": "Reliability at Scale",       "maps_to_dimension": "impact_and_scale"},
+      {"id": "speed",         "name": "Speed with Judgment",        "maps_to_dimension": "ownership"},
+      {"id": "data_driven",   "name": "Data-Driven Decisions",      "maps_to_dimension": "problem_solving"},
+      {"id": "user_empathy",  "name": "User Empathy",               "maps_to_dimension": "ownership"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "collaboration"],
+    "what_they_evaluate": {
+      "ownership":                   "Swiggy's bar-raiser round focuses on full ownership — did you build it, monitor it, and fix it when it broke? They probe for candidates who didn't hand off their system the moment it shipped.",
+      "impact_and_scale":            "Swiggy probes for reliability impact — specifically, did the candidate improve a system's availability, latency, or cost at scale? They value engineers who understand the economics of hypergrowth.",
+      "problem_solving":             "Swiggy's interview strongly reflects their real-time logistics context. They probe for structured debugging, data-driven decision-making, and the ability to make fast calls under pressure.",
+      "influence_without_authority": "Swiggy probes for cross-functional alignment stories — especially between engineering, product, and data teams on shared infra decisions.",
+      "collaboration":               "Swiggy probes for candidates who worked effectively across teams that move at different speeds — e.g., aligning a fast-moving product team with a platform team that has a slower release cycle.",
+      "growth_mindset":              "Swiggy values engineers who adapted their approach when a technical decision broke at higher scale — they probe for honest ownership of the 'this worked at 10x but failed at 100x' category of failure.",
+      "conflict_resolution":         "Swiggy probes for candidates who resolved prioritisation conflicts between product and engineering directly — naming the trade-off, making a principled call, and communicating it clearly."
+    }
+  },
+
+  "zomato": {
+    "display_name": "Zomato",
+    "framework": "Zomato Engineering Culture — Speed, Ownership, Customer Obsession",
+    "values": [
+      {"id": "ownership",      "name": "Extreme Ownership",          "maps_to_dimension": "ownership"},
+      {"id": "speed",          "name": "Speed of Execution",         "maps_to_dimension": "ownership"},
+      {"id": "first_principles","name": "First-Principles Thinking", "maps_to_dimension": "problem_solving"},
+      {"id": "data_obsession", "name": "Data Obsession",             "maps_to_dimension": "impact_and_scale"},
+      {"id": "customer_focus", "name": "Customer Focus",             "maps_to_dimension": "ownership"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "Zomato probes for extreme ownership — candidates who took a problem all the way from identification to resolution without waiting for direction. Speed of execution is also probed: did you move fast with good judgment?",
+      "impact_and_scale":            "Zomato probes for data-driven impact — specifically, did you measure before and after? Did you think about the full customer journey, not just the feature metric?",
+      "problem_solving":             "First-principles thinking: Zomato probes for candidates who questioned assumptions before building. They value engineers who ask 'why does this need to exist?' before asking 'how do we build it?'",
+      "influence_without_authority": "Zomato probes for cross-team influence stories — especially candidates who aligned product, ops, and engineering teams on a shared goal.",
+      "collaboration":               "Zomato probes for candidates who worked across the company's three-sided marketplace (consumers, restaurants, delivery partners) and understood how a decision affects each side.",
+      "growth_mindset":              "Zomato probes for candidates who updated their approach based on production data — specifically, 'this looked right in design but behaved differently in production' stories.",
+      "conflict_resolution":         "Zomato probes for candidates who navigated speed vs. quality trade-offs explicitly — and communicated the decision to stakeholders directly and transparently."
+    }
+  },
+
+  "razorpay": {
+    "display_name": "Razorpay",
+    "framework": "Razorpay Engineering Culture — Developer-First, Reliability, Ownership",
+    "values": [
+      {"id": "developer_first", "name": "Developer-First Mindset",    "maps_to_dimension": "ownership"},
+      {"id": "reliability",     "name": "Reliability and Correctness","maps_to_dimension": "impact_and_scale"},
+      {"id": "ownership",       "name": "End-to-End Ownership",        "maps_to_dimension": "ownership"},
+      {"id": "simplicity",      "name": "Simplicity in Design",        "maps_to_dimension": "problem_solving"},
+      {"id": "trust",           "name": "Trust and Compliance",        "maps_to_dimension": "ownership"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "problem_solving", "ownership"],
+    "what_they_evaluate": {
+      "ownership":                   "Razorpay probes for ownership that includes reliability and correctness — not just feature delivery. They want candidates who treated the financial correctness of their system as a non-negotiable personal responsibility.",
+      "impact_and_scale":            "Razorpay values reliability impact — specifically, did the candidate improve system reliability, reduce error rates, or improve API success rates measurably? Developer experience metrics (SDK adoption, integration time) are also valued.",
+      "problem_solving":             "Razorpay probes for simplicity: did the candidate find the simplest correct solution, or did they over-engineer? They also probe for rigor on correctness — especially idempotency and consistency in financial flows.",
+      "influence_without_authority": "Razorpay probes for cross-team alignment — especially between engineering, compliance, and product teams, which often have conflicting priorities in a regulated fintech environment.",
+      "collaboration":               "Razorpay probes for candidates who communicated complex technical trade-offs (compliance vs. UX, reliability vs. speed) to non-technical stakeholders clearly.",
+      "growth_mindset":              "Razorpay probes for candidates who changed their technical approach after discovering a reliability or correctness issue they had initially missed.",
+      "conflict_resolution":         "Razorpay probes for candidates who navigated compliance/regulatory constraints vs. product velocity conflicts — making a principled call and standing by it."
+    }
+  },
+
+  "cred": {
+    "display_name": "CRED",
+    "framework": "CRED Culture — Craft, Trust, Ownership",
+    "values": [
+      {"id": "craft",     "name": "Obsession with Craft",    "maps_to_dimension": "problem_solving"},
+      {"id": "trust",     "name": "Trust and Safety",        "maps_to_dimension": "ownership"},
+      {"id": "ownership", "name": "Deep Ownership",          "maps_to_dimension": "ownership"},
+      {"id": "clarity",   "name": "Clarity of Thinking",     "maps_to_dimension": "problem_solving"},
+      {"id": "impact",    "name": "Impact Over Effort",      "maps_to_dimension": "impact_and_scale"}
+    ],
+    "ic_focus_dimensions":  ["problem_solving", "ownership", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "problem_solving", "ownership"],
+    "what_they_evaluate": {
+      "ownership":                   "CRED probes for deep ownership with a quality bar — candidates who didn't just ship but cared about whether it was excellent. Trust and safety is a specific probe: did you treat security as your responsibility?",
+      "impact_and_scale":            "CRED probes for impact that serves their premium user base. They specifically look for NPS-level quality improvements, not just throughput or latency.",
+      "problem_solving":             "Craft obsession: CRED probes for candidates who go beyond functional correctness to find elegant solutions. Clarity of thinking is probed — can you explain your approach precisely?",
+      "influence_without_authority": "CRED probes for candidates who drove design decisions across product, design, and engineering — especially in a fast-moving consumer fintech context.",
+      "collaboration":               "CRED probes for candidates who worked effectively with design teams — treating design constraints as first-class requirements, not as negotiable.",
+      "growth_mindset":              "CRED probes for candidates who raised their own quality bar — who set a standard for themselves that nobody else mandated.",
+      "conflict_resolution":         "CRED probes for candidates who pushed back on 'good enough' shipping decisions when the quality bar wasn't met — raising the concern directly and making the case for the right standard."
+    }
+  },
+
+  "meesho": {
+    "display_name": "Meesho",
+    "framework": "Meesho Engineering Culture — Frugality, Bharat Focus, Ownership",
+    "values": [
+      {"id": "frugal_innovation","name": "Frugal Innovation",         "maps_to_dimension": "problem_solving"},
+      {"id": "bharat_focus",     "name": "Bharat-First Design",       "maps_to_dimension": "ownership"},
+      {"id": "ownership",        "name": "Extreme Ownership",         "maps_to_dimension": "ownership"},
+      {"id": "data_driven",      "name": "Data-Driven Decisions",     "maps_to_dimension": "impact_and_scale"},
+      {"id": "speed",            "name": "Speed of Execution",        "maps_to_dimension": "ownership"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "Meesho probes for extreme ownership — candidates who owned the full outcome including user adoption, not just the technical delivery. Speed with frugality is a combined probe: did you move fast AND keep costs low?",
+      "impact_and_scale":            "Meesho specifically probes for cost-efficiency thinking alongside scale. They want candidates who can explain the infrastructure cost of their system and demonstrate they optimised it.",
+      "problem_solving":             "Frugal innovation: Meesho probes for elegant, low-cost solutions to hard problems. They value candidates who questioned whether the expensive approach was necessary before committing to it.",
+      "influence_without_authority": "Meesho probes for cross-team influence in a fast-moving, resource-constrained environment — especially aligning product and engineering under tight cost and timeline constraints.",
+      "collaboration":               "Meesho probes for candidates who worked with user research or ops teams to understand the actual Bharat user — not just engineered from assumptions.",
+      "growth_mindset":              "Meesho probes for candidates who changed their approach after discovering that urban-user assumptions didn't hold for Tier 3 users.",
+      "conflict_resolution":         "Meesho probes for candidates who resolved cost vs. feature quality trade-offs directly — making a data-backed call and communicating it clearly to business stakeholders."
+    }
+  },
+
+  "phonepe": {
+    "display_name": "PhonePe",
+    "framework": "PhonePe Engineering Culture — Reliability, Ownership, Scale",
+    "values": [
+      {"id": "reliability",   "name": "Reliability at National Scale", "maps_to_dimension": "impact_and_scale"},
+      {"id": "ownership",     "name": "Deep Technical Ownership",      "maps_to_dimension": "ownership"},
+      {"id": "rigor",         "name": "Rigor and Correctness",         "maps_to_dimension": "problem_solving"},
+      {"id": "speed",         "name": "Speed with Safety",             "maps_to_dimension": "ownership"},
+      {"id": "collaboration", "name": "Cross-Team Collaboration",      "maps_to_dimension": "collaboration"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "PhonePe probes for ownership with correctness as the bar — not just shipping, but shipping something that maintains financial invariants. Speed with safety is a specific probe: did you move fast while maintaining reliability guarantees?",
+      "impact_and_scale":            "PhonePe probes for scale at national infrastructure level — did the candidate design for peak event loads (festivals, bill payment days)? Did they build graceful degradation, not just happy-path throughput?",
+      "problem_solving":             "PhonePe probes for rigorous debugging of financial systems — specifically: idempotency, exactly-once semantics, reconciliation. They want candidates who understand why correctness in payments is harder than correctness in other domains.",
+      "influence_without_authority": "PhonePe probes for cross-team influence across infrastructure, product, and compliance — especially in the context of regulatory requirements that cut across team boundaries.",
+      "collaboration":               "PhonePe probes for candidates who communicated complex reliability/correctness trade-offs to non-engineering stakeholders — product, compliance, and business teams.",
+      "growth_mindset":              "PhonePe probes for candidates who updated their design approach after a production failure — specifically ones who changed the architectural approach, not just the implementation.",
+      "conflict_resolution":         "PhonePe probes for candidates who stood firm on correctness requirements against product pressure to ship faster — making the principled case and holding the line."
+    }
+  },
+
+  "uber": {
+    "display_name": "Uber",
+    "framework": "Uber Cultural Norms — Customer Obsession, Meritocracy, Big Bold Bets",
+    "values": [
+      {"id": "customer_obsession","name": "Customer Obsession",       "maps_to_dimension": "ownership"},
+      {"id": "celebrate_differences","name": "Celebrate Differences", "maps_to_dimension": "collaboration"},
+      {"id": "act_like_owner",   "name": "Act Like an Owner",         "maps_to_dimension": "ownership"},
+      {"id": "bold_ideas",       "name": "Big Bold Bets",             "maps_to_dimension": "problem_solving"},
+      {"id": "persevere",        "name": "Persevere",                 "maps_to_dimension": "growth_mindset"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "collaboration"],
+    "what_they_evaluate": {
+      "ownership":                   "Uber probes for owner-level thinking — did you treat the system's reliability, cost, and user experience as your own problem? They probe for candidates who escalated upward AND sideways when a problem was bigger than their team.",
+      "impact_and_scale":            "Uber probes for marketplace-level impact — specifically, did the candidate understand how their work affected both sides of the marketplace (riders and drivers)? Single-sided impact stories are incomplete.",
+      "problem_solving":             "Big Bold Bets: Uber probes for candidates who proposed an unconventional solution when the obvious one wasn't good enough — and had the data to back it.",
+      "influence_without_authority": "Uber probes for cross-functional alignment across safety, legal, product, and engineering — especially under regulatory pressure.",
+      "collaboration":               "Uber probes for candidates who worked across geo and cultural boundaries — the company is global and matrix-organised. Did you adapt to your collaborators' context?",
+      "growth_mindset":              "Persevere: Uber probes for candidates who hit a wall, changed their approach, and kept going — with evidence of the new approach working.",
+      "conflict_resolution":         "Uber probes for candidates who navigated safety vs. growth trade-offs explicitly — especially in product decisions where moving fast had safety implications."
+    }
+  },
+
+  "linkedin": {
+    "display_name": "LinkedIn",
+    "framework": "LinkedIn Culture — Members First, Relationships Matter, Be Open and Honest",
+    "values": [
+      {"id": "members_first",  "name": "Members First",           "maps_to_dimension": "ownership"},
+      {"id": "relationships",  "name": "Relationships Matter",    "maps_to_dimension": "collaboration"},
+      {"id": "be_open",        "name": "Be Open, Honest and Constructive", "maps_to_dimension": "conflict_resolution"},
+      {"id": "demand_excellence","name": "Demand Excellence",     "maps_to_dimension": "impact_and_scale"},
+      {"id": "take_intelligent_risks","name": "Take Intelligent Risks", "maps_to_dimension": "problem_solving"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "collaboration", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "LinkedIn probes for members-first ownership — did the candidate's decision start from member impact? They also probe for long-term thinking: did you consider the second-order effect on member trust?",
+      "impact_and_scale":            "Demand Excellence: LinkedIn probes for measurable improvement to member engagement, connection quality, or platform reliability.",
+      "problem_solving":             "Take Intelligent Risks: LinkedIn probes for candidates who made a calculated bet with data — neither risk-averse nor reckless. They specifically probe: what was the downside scenario, and how did you manage it?",
+      "influence_without_authority": "LinkedIn probes for cross-team alignment — especially between product, trust/safety, and engineering teams, which often have competing objectives.",
+      "collaboration":               "Relationships Matter: LinkedIn probes for candidates who invested in cross-team relationships as a strategic resource — not just as nice-to-have.",
+      "growth_mindset":              "LinkedIn probes for candidates who sought feedback on their leadership decisions, not just their technical decisions.",
+      "conflict_resolution":         "Be Open and Honest: LinkedIn probes for candidates who named a difficult truth in a meeting or document — and managed the social dynamics that followed."
+    }
+  },
+
+  "airbnb": {
+    "display_name": "Airbnb",
+    "framework": "Airbnb Core Values — Belong Anywhere, Hosting, Craftsmanship",
+    "values": [
+      {"id": "belong_anywhere", "name": "Belong Anywhere",          "maps_to_dimension": "collaboration"},
+      {"id": "champion_mission","name": "Champion the Mission",      "maps_to_dimension": "ownership"},
+      {"id": "be_a_host",       "name": "Be a Host",                 "maps_to_dimension": "collaboration"},
+      {"id": "simplify",        "name": "Simplify",                  "maps_to_dimension": "problem_solving"},
+      {"id": "every_frame",     "name": "Every Frame Matters",       "maps_to_dimension": "problem_solving"}
+    ],
+    "ic_focus_dimensions":  ["problem_solving", "ownership", "collaboration"],
+    "em_focus_dimensions":  ["influence_without_authority", "collaboration", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "Airbnb probes for mission-driven ownership — did the candidate connect their work to the broader goal of building trust between strangers? They value candidates who see their system's effect on host and guest trust.",
+      "impact_and_scale":            "Airbnb probes for marketplace impact — specifically, did the work improve host success rates, guest satisfaction, or community trust? Single-side impact stories are incomplete.",
+      "problem_solving":             "Simplify + Every Frame Matters: Airbnb probes for elegant, user-centric solutions. They value candidates who removed complexity, not just added features.",
+      "influence_without_authority": "Airbnb probes for cross-functional alignment across trust/safety, design, and engineering — all three have equal weight in product decisions.",
+      "collaboration":               "Be a Host: Airbnb specifically probes for candidates who created welcoming conditions for their teammates — psychological safety, inclusive discussions, making space for quiet voices.",
+      "growth_mindset":              "Airbnb probes for candidates who updated their approach based on community or host feedback — showing they genuinely listened to external signals, not just internal metrics.",
+      "conflict_resolution":         "Airbnb probes for candidates who navigated safety vs. conversion trade-offs — where protecting hosts or guests required pushing back on a revenue-optimising product decision."
+    }
+  },
+
+  "salesforce": {
+    "display_name": "Salesforce",
+    "framework": "Salesforce V2MOM + Ohana Culture — Trust, Customer Success, Innovation, Equality, Sustainability",
+    "values": [
+      {"id": "trust",       "name": "Trust",              "maps_to_dimension": "ownership"},
+      {"id": "customer_success","name": "Customer Success","maps_to_dimension": "ownership"},
+      {"id": "innovation",  "name": "Innovation",         "maps_to_dimension": "problem_solving"},
+      {"id": "equality",    "name": "Equality",           "maps_to_dimension": "collaboration"},
+      {"id": "sustainability","name": "Sustainability",    "maps_to_dimension": "impact_and_scale"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "collaboration"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "Salesforce probes for customer-success ownership — did the candidate track the downstream impact on customer outcomes, not just internal delivery metrics? Trust is also a specific probe: did you treat reliability as a non-negotiable?",
+      "impact_and_scale":            "Salesforce probes for enterprise-scale impact — did the candidate think about multi-tenancy, compliance, global availability? Impact should be measured in customer retention or adoption terms.",
+      "problem_solving":             "Innovation: Salesforce probes for candidates who solved a customer problem in an unexpected way — but grounded in customer signal, not just internal assumptions.",
+      "influence_without_authority": "Salesforce probes for cross-cloud and cross-org alignment — the company is matrix-organized with many independent product clouds. Did you build alignment across cloud boundaries?",
+      "collaboration":               "Ohana culture: Salesforce probes for inclusive collaboration — did you actively bring in diverse perspectives? Did you create psychological safety in your team?",
+      "growth_mindset":              "Salesforce probes for candidates who sought customer feedback to improve their product — specifically, changed the product direction based on external signal.",
+      "conflict_resolution":         "Salesforce probes for candidates who navigated trust vs. velocity trade-offs — holding the line on reliability commitments under release pressure."
+    }
+  },
+
+  "notion": {
+    "display_name": "Notion",
+    "framework": "Notion Culture — Craft, Thoughtfulness, Doing Less But Better",
+    "values": [
+      {"id": "craft",        "name": "Craft and Thoughtfulness",    "maps_to_dimension": "problem_solving"},
+      {"id": "do_less",      "name": "Do Less, But Better",         "maps_to_dimension": "problem_solving"},
+      {"id": "ownership",    "name": "Own It End to End",           "maps_to_dimension": "ownership"},
+      {"id": "transparency", "name": "Default to Transparency",     "maps_to_dimension": "collaboration"},
+      {"id": "curiosity",    "name": "Curiosity and Learning",      "maps_to_dimension": "growth_mindset"}
+    ],
+    "ic_focus_dimensions":  ["problem_solving", "ownership", "growth_mindset"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "collaboration"],
+    "what_they_evaluate": {
+      "ownership":                   "Notion probes for end-to-end ownership with an emphasis on simplicity — did the candidate ship something minimal that genuinely worked, rather than a complex feature that partially worked?",
+      "impact_and_scale":            "Notion probes for impact on user trust and retention — specifically, did the work make users more reliant on Notion as their system of record?",
+      "problem_solving":             "Do Less But Better: Notion strongly probes for candidates who simplified rather than added. They specifically look for a decision to remove a feature, scope a problem down, or choose the minimal viable solution over the comprehensive one.",
+      "influence_without_authority": "Notion probes for cross-functional alignment across a small, high-autonomy team — did you build consensus without process overhead?",
+      "collaboration":               "Default to Transparency: Notion probes for candidates who shared context proactively — especially context that exposed their own uncertainty or mistakes.",
+      "growth_mindset":              "Notion probes for genuine intellectual curiosity — candidates who explored user behavior or product space outside their immediate feature area.",
+      "conflict_resolution":         "Notion probes for candidates who navigated 'do less' vs. user demand trade-offs — standing firm on simplicity against pressure to add features."
+    }
+  },
+
+  "groww": {
+    "display_name": "Groww",
+    "framework": "Groww Culture — Customer First, Ownership, First Principles",
+    "values": [
+      {"id": "customer_first",    "name": "Customer First",            "maps_to_dimension": "ownership"},
+      {"id": "ownership",         "name": "Extreme Ownership",         "maps_to_dimension": "ownership"},
+      {"id": "first_principles",  "name": "First Principles Thinking", "maps_to_dimension": "problem_solving"},
+      {"id": "high_bar",          "name": "High Bar for Quality",      "maps_to_dimension": "problem_solving"},
+      {"id": "transparency",      "name": "Transparency",              "maps_to_dimension": "collaboration"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "Groww probes for extreme ownership in a regulated fintech context — specifically, did the candidate treat regulatory compliance and user trust as personal responsibilities, not just product requirements?",
+      "impact_and_scale":            "Groww probes for impact measured in user financial outcomes — specifically, did the work improve investment success rates, reduce friction in the investment journey, or improve platform reliability during market volatility?",
+      "problem_solving":             "First Principles: Groww probes for candidates who questioned the conventional fintech UX before accepting it — especially candidates who simplified a complex financial concept for a first-time investor.",
+      "influence_without_authority": "Groww probes for cross-team alignment between engineering, compliance, and product — especially for features that require regulatory sign-off.",
+      "collaboration":               "Groww probes for candidates who worked across engineering and data science teams — since ML is central to their recommendation and risk systems.",
+      "growth_mindset":              "Groww probes for candidates who updated their approach after observing actual user behavior in investment flows — showing they treated user data as a learning signal.",
+      "conflict_resolution":         "Groww probes for candidates who pushed back on features that could mislead retail investors — prioritising user protection over engagement metrics."
+    }
+  },
+
+  "zepto": {
+    "display_name": "Zepto",
+    "framework": "Zepto Engineering Values — Speed, Ownership, Customer Obsession",
+    "values": [
+      {"id": "customer_obsession", "name": "Customer Obsession",         "maps_to_dimension": "ownership"},
+      {"id": "extreme_ownership",  "name": "Extreme Ownership",          "maps_to_dimension": "ownership"},
+      {"id": "speed",              "name": "Speed with Quality",         "maps_to_dimension": "problem_solving"},
+      {"id": "first_principles",   "name": "First Principles Thinking",  "maps_to_dimension": "problem_solving"},
+      {"id": "reliability",        "name": "Reliability at Scale",       "maps_to_dimension": "impact_and_scale"},
+      {"id": "collaborate",        "name": "Collaborate Without Ego",    "maps_to_dimension": "collaboration"}
+    ],
+    "ic_focus_dimensions":  ["ownership", "problem_solving", "impact_and_scale"],
+    "em_focus_dimensions":  ["influence_without_authority", "ownership", "impact_and_scale"],
+    "what_they_evaluate": {
+      "ownership":                   "Zepto probes for extreme ownership in a 10-minute delivery context — did you personally own reliability decisions when SLAs were at risk, not just feature delivery?",
+      "impact_and_scale":            "Zepto values quantified impact on order throughput, ETA accuracy, or infra cost at hypergrowth scale — adjectives without numbers fail quickly.",
+      "problem_solving":             "Zepto probes for fast, structured decisions under operational pressure — especially real-time logistics, inventory, or routing tradeoffs.",
+      "influence_without_authority": "Zepto probes for cross-team alignment between product, ops, and engineering when launch timelines compress.",
+      "collaboration":               "Zepto probes for low-ego collaboration in high-intensity sprints — sharing context early when timelines slip.",
+      "growth_mindset":              "Zepto probes for learning from operational failures — what changed in your approach after a missed SLA or outage.",
+      "conflict_resolution":         "Zepto probes for resolving prioritisation conflicts between speed and reliability with a clear, communicated decision."
+    }
+  }
+}

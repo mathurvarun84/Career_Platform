@@ -54,8 +54,10 @@ _IMPACT_RE = re.compile(
 BENCHMARKS = {
     "keyword_match": 20,
     "formatting": 21,
-    "readability": 19,
-    "impact_metrics": 18,
+    # 20 reflects typical technical resume FK range (30-55 is common for bullet-point format)
+    "readability": 20,
+    # 16 acknowledges that not all roles produce latency/scale metrics
+    "impact_metrics": 16,
 }
 
 DIMENSION_META = {
@@ -258,8 +260,8 @@ def _gap_reason(
         if gap == 0:
             return "Good quantification — numbers and scale metrics are present."
         if gap <= 4:
-            return "Add 2–3 more impact numbers: percentages, throughput (QPS/TPS), or business outcomes."
-        return "Resume lacks quantified impact — every experience bullet should have at least one number."
+            return "Add 2–3 more impact numbers: percentages, user counts, cost savings, or business outcomes."
+        return "Resume lacks quantified impact — every experience bullet should have at least one measurable number."
 
     return "Gap explanation unavailable for this dimension."
 
@@ -406,24 +408,28 @@ def _score_readability(resume_text: str) -> int:
     # Flesch-Kincaid Reading Ease
     fk = 206.835 - 1.015 * (total_words / total_sentences) - 84.6 * (total_syllables / total_words)
 
-    # Ideal for professional writing: 40–70
-    if 40 <= fk <= 70:
+    # Technical bullet-point resumes naturally land in the 30-60 FK range due to
+    # short fragments, technical nouns, and sparse connective prose. Ideal prose
+    # range (40-70) is too narrow a target; we extend the full-score band down to 30.
+    if 30 <= fk <= 70:
         score = 25
-    elif 30 <= fk < 40 or 70 < fk <= 80:
-        score = 18
-    elif 20 <= fk < 30 or 80 < fk <= 90:
-        score = 12
+    elif 20 <= fk < 30 or 70 < fk <= 80:
+        score = 20
+    elif 10 <= fk < 20 or 80 < fk <= 90:
+        score = 14
     else:
-        score = 6
+        score = 8
 
     if avg_words > 30:
-        score = max(0, score - 5)
+        score = max(0, score - 4)
 
+    # Run-on words are PDF parsing artifacts, not resume quality issues.
+    # Keep as an ats_issues warning but apply a modest score reduction only.
     runon = _count_runon_words(resume_text)
     if runon >= 3:
-        score = max(0, score - 10)
+        score = max(0, score - 6)
     elif runon >= 1:
-        score = max(0, score - 5)
+        score = max(0, score - 3)
 
     return min(25, score)
 
@@ -458,18 +464,20 @@ def _score_impact_metrics(resume_text: str) -> int:
       Returns:
           int: Score between 0-25
     """
-    score = 0
-
+    # Base score from quantified impact (%, $, ₹, numbers) — applies to all roles.
+    # Cap raised to 19 so a well-quantified non-systems role can reach a good score
+    # without needing latency/scale terms.
     impact_hits = len(_IMPACT_RE.findall(resume_text))
-    score += min(12, impact_hits * 2)
+    score = min(19, impact_hits * 2)
 
+    # Latency and scale are bonus signals for systems/infra/backend roles.
+    # They can push past the base cap up to the hard max of 25.
     latency_hits = len(_LATENCY_RE.findall(resume_text))
-    score += min(7, latency_hits * 2)
-
     scale_hits = len(_SCALE_RE.findall(resume_text))
-    score += min(6, scale_hits * 2)
+    bonus = min(6, latency_hits * 2) + min(4, scale_hits * 2)
+    score = min(25, score + bonus)
 
-    return min(25, score)
+    return score
 
 
 def _collect_issues(resume_text: str, breakdown: dict) -> list[str]:

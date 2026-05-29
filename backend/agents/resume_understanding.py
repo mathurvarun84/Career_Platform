@@ -3,7 +3,7 @@ ResumeUnderstandingAgent - Agent 1 of the Resume Intelligence Platform.
 
 Analyzes a resume text and extracts structured information including:
 - Years of experience
-- Seniority level (junior/mid/senior/staff)
+- Seniority level (junior/mid/senior/staff/em/senior_em/director)
 - Tech stack
 - Professional domains
 - Presence of metrics (quantified achievements)
@@ -31,6 +31,7 @@ from backend.schemas.agent1_schema import (
     ResumeHealthOutput,
     SenioritySignal,
 )
+from backend.seniority_from_titles import reconcile_seniority
 
 
 class ResumeUnderstandingAgent(BaseAgent):
@@ -89,8 +90,18 @@ class ResumeUnderstandingAgent(BaseAgent):
             "You have deep expertise in Indian resume norms and seniority signals across junior/mid/senior/staff levels."
             " Extract structured data and return ONLY valid JSON with these exact keys:\n\n"
             "- experience_years (int): total professional experience in years, excluding internships\n"
-            "- seniority (string): infer from BOTH title AND years — "
-            "  'junior' (0-2 yrs), 'mid' (3-5 yrs), 'senior' (6-10 yrs), 'staff' (11+ yrs or explicit Staff/Principal/Director title)\n"
+            "- seniority (string): infer from CURRENT/MOST RECENT job title FIRST, then years.\n"
+            "  MANAGEMENT TRACK (check before IC labels):\n"
+            "  'em' = Engineering Manager / Eng Manager with direct reports. "
+            "  Title contains 'Engineering Manager' → use 'em' even if 15+ years.\n"
+            "  'senior_em' = Senior Engineering Manager / Group EM / multiple teams.\n"
+            "  'director' = Director of Engineering / VP Engineering / Head of Engineering.\n"
+            "  IC TRACK (only if recent titles are IC, not people managers):\n"
+            "  'junior' (0-2 yrs), 'mid' (3-5 yrs), 'senior' (6-10 yrs IC),\n"
+            "  'staff' (Staff/Principal/Distinguished Engineer — NO 'Engineering Manager' in current role).\n"
+            "  CRITICAL: 17 years as Engineering Manager is 'em' or 'senior_em' or 'director' — NEVER 'staff'.\n"
+            "  'staff' requires Staff/Principal IC title without people-management scope.\n"
+            "  RULE: If recent title says Engineering Manager, output 'em' (or senior_em/director if title says so).\n"
             "- tech_stack (list of strings): programming languages, frameworks, databases, and cloud platforms ONLY — "
             "  exclude soft skills, methodologies (Agile/Scrum), and generic tools (MS Office, Jira, Excel, PowerPoint). "
             "  CRITICAL: only include technologies EXPLICITLY named in the resume text. "
@@ -133,6 +144,15 @@ class ResumeUnderstandingAgent(BaseAgent):
             "  staff (11+yr): org-level scale (team size, budget, hiring), "
             "business outcomes (₹/$/% revenue impact), multi-team delivery leadership, "
             "executive communication signals, hiring/building team capability\n"
+            "  em (6-10yr, manages team): team size explicitly stated (e.g. 'managed 6 engineers'), "
+            "hiring or performance management mentioned, technical depth still visible (owns architecture decisions), "
+            "cross-functional stakeholder management, delivery outcomes with business impact\n"
+            "  senior_em (10-14yr, manages managers): org design or headcount planning visible, "
+            "multiple teams or sub-orgs led, P&L or budget ownership signals, "
+            "executive-level communication (presented to C-suite / board), hiring pipeline built\n"
+            "  director (14+yr): org-level ownership (50+ engineers or multi-team org), "
+            "strategic initiative ownership, executive presence (board/investor comms), "
+            "culture and process decisions, multi-year roadmap ownership, hiring at org scale\n"
             '  inline_fix: non-empty if present=False (what to add where), empty if present=True\n\n'
             "- overall_health (str): one sentence verdict on overall resume quality as a document\n\n"
             "- sections (object): section index for downstream agents. Keys: "
@@ -164,7 +184,18 @@ class ResumeUnderstandingAgent(BaseAgent):
             parsed_output["role_family"] = detected_role
         else:
             parsed_output["role_family"] = llm_role
-        
+
+        llm_seniority = parsed_output.get("seniority", "mid")
+        if hasattr(llm_seniority, "value"):
+            llm_seniority = llm_seniority.value
+        final_seniority, corrected = reconcile_seniority(
+            str(llm_seniority),
+            resume_text,
+            int(parsed_output.get("experience_years") or 0),
+        )
+        if corrected:
+            parsed_output["seniority"] = final_seniority
+
         # Validate and structure the data using pydantic model
         # Pydantic v2 will coerce strings to enums (e.g., "senior" → Seniority.SENIOR)
         output = ResumeUnderstandingOutput(**parsed_output)

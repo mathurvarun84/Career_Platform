@@ -275,6 +275,10 @@ export interface AnalysisResult {
   job_id: string;
   /** FastAPI job id — same value used for coaching session_id after analyze completes. */
   session_id?: string;
+  /** Corpus spine ids — returned after analysis completes. */
+  run_id?: string | null;
+  resume_id?: string | null;
+  jd_id?: string | null;
   ats: ATSResult;
   resume: ResumeUnderstanding;
   gap: GapResult | null;
@@ -353,9 +357,219 @@ export interface FetchJDResult {
   error_message?: string;
 }
 
+export type BehavioralDimension =
+  | "ownership"
+  | "impact_and_scale"
+  | "influence_without_authority"
+  | "problem_solving"
+  | "collaboration"
+  | "growth_mindset"
+  | "conflict_resolution";
+
+export type AntiPatternKey =
+  | "we_default"
+  | "vague_quantification"
+  | "story_recycling"
+  | "impact_buried"
+  | "hypothesis_without_proof"
+  | "escalation_default"
+  | "scope_collapse"
+  | "no_reflection"
+  | "credit_deflection"
+  | "recency_bias"
+  | "rehearsed_script";
+
+export interface InterviewQuestion {
+  id: string;
+  text: string;
+  question_type: QuestionType;
+  dimension: BehavioralDimension;
+  why_this_question: string;
+  expected_signals: string[];
+  risky_anti_patterns: AntiPatternKey[];
+  /** Free-text risk note for candidate-specific risks outside the taxonomy. Null when taxonomy covers it. */
+  answer_risk_note: string | null;
+  company_value_ref: string;
+  source: "generated" | "bank";
+  /** Scenario setup text injected by backend. Only present for scenario questions. */
+  preamble?: string;
+}
+
+export type SignalStrength = "weak" | "developing" | "strong";
+
+export interface FollowUpQuestion {
+  id: string;
+  text: string;
+  trigger_reason: string;
+}
+
+export interface AnswerTurn {
+  question_id: string;
+  answer_text: string;
+  follow_ups: Array<{
+    question: FollowUpQuestion;
+    answer_text: string;
+  }>;
+}
+
+export type SeniorityLevel = "junior" | "mid" | "senior" | "staff" | "em";
+
+export type ExecutivePresenceLevel =
+  | "strong"
+  | "developing"
+  | "low"
+  | "not_assessable";
+
+export interface AntiPatternFired {
+  key: AntiPatternKey;
+  label: string;
+  triggered_excerpt: string;
+  interviewer_reads_as: string;
+  rewrite_suggestion: string;
+}
+
+export interface DimensionScore {
+  dimension: BehavioralDimension;
+  signal_strength: SignalStrength;
+  score_delta: string;
+  what_was_missing: string;
+  what_was_strong: string;
+}
+
+export interface LevelSignal {
+  signaled_level: SeniorityLevel;
+  declared_level: SeniorityLevel;
+  match: boolean;
+  note: string;
+}
+
+export interface PerQuestionFeedback {
+  question_id: string;
+  dimension_score: DimensionScore;
+  anti_patterns_fired: AntiPatternFired[];
+  level_signal: LevelSignal;
+  executive_presence: ExecutivePresenceLevel;
+  authenticity_note: string;
+  overall_verdict: string;
+  best_line: string;
+  coaching_close: string;
+}
+
+export interface DimensionSummary {
+  dimension: BehavioralDimension;
+  signal_strength: SignalStrength;
+  expected_for_seniority: SignalStrength;
+  gap: boolean;
+  note: string;
+}
+
+export interface SessionSummary {
+  dimension_scorecard: DimensionSummary[];
+  anti_pattern_report: Array<{
+    key: AntiPatternKey;
+    label: string;
+    count: number;
+    worst_excerpt: string;
+    fix: string;
+  }>;
+  top_strength: string;
+  top_gap: string;
+  recommended_next_dimension: BehavioralDimension;
+}
+
+export interface PastSessionSummary {
+  session_id: string;
+  company: string;
+  seniority: string;
+  created_at: string;
+  top_strength: string;
+  top_gap: string;
+  recommended_next_dimension: BehavioralDimension;
+  dimension_scorecard: DimensionSummary[];
+  anti_pattern_report: Array<{
+    key: AntiPatternKey;
+    label: string;
+    count: number;
+    worst_excerpt: string;
+    fix: string;
+  }>;
+}
+
+export interface InterviewHistoryState {
+  past_sessions: PastSessionSummary[];
+  is_loading: boolean;
+  fetch_error: string | null;
+}
+
+export interface ModelAnswer {
+  text: string;
+  what_changed: string;
+  skipped?: boolean;
+}
+
+export interface ModelAnswerCardState {
+  status: "idle" | "loading" | "loaded" | "error" | "skipped";
+  data: ModelAnswer | null;
+}
+
+export interface InterviewProgressSnapshot {
+  timestamp: string;
+  company: string;
+  seniority: string;
+  dimensions_covered: BehavioralDimension[];
+  average_signal_strength: number;
+  anti_patterns_count: number;
+}
+
+export type QuestionMode = "behavioral" | "scenario" | "mixed";
+
+export type QuestionType = "behavioral" | "scenario";
+
+export type InterviewSessionState =
+  | "idle"
+  | "configuring"
+  | "in_progress"
+  | "awaiting_follow_up"
+  | "evaluating"
+  | "feedback_shown"
+  | "summary";
+
+export interface InterviewSession {
+  session_id: string;
+  company: string;
+  seniority: string;
+  question_mode: QuestionMode;
+  questions: InterviewQuestion[];
+  answers: AnswerTurn[];
+  feedback: PerQuestionFeedback[];
+  current_question_index: number;
+  current_follow_up_count: number;
+  active_follow_up: FollowUpQuestion | null;
+  summary: SessionSummary | null;
+  state: InterviewSessionState;
+  partialFeedback?: Partial<PerQuestionFeedback> | null;
+}
+
+export interface SubmitAnswerResponse {
+  feedback: PerQuestionFeedback;
+  follow_up: FollowUpQuestion | null;
+  session_complete: boolean;
+}
+
+export interface StartInterviewResponse {
+  session_id: string;
+  questions: InterviewQuestion[];
+}
+
 export type RewriteStyle = "balanced" | "aggressive" | "top_1_percent";
 
-export type TabId = "overview" | "fixes" | "recruiter" | "gap" | "progress";
+export type TabId =
+  | "overview"
+  | "fixes"
+  | "recruiter"
+  | "gap"
+  | "progress"
+  | "mock_interview";
 
 export interface TopBarProps {
   onOpenAuthModal: () => void;

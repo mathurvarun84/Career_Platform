@@ -105,7 +105,9 @@ def get_positioning_statement(seniority: str, ats_score: int,
                                percentile: dict | None = None) -> Dict[str, Any]:
     bands = _load_bands()
     sen = seniority.lower() if seniority else "mid"
-    if sen not in bands["ctc_bands"]: sen = "mid"
+    _MGMT_FALLBACK = {"em": "em", "senior_em": "senior_em", "director": "director"}
+    if sen not in bands["ctc_bands"]:
+        sen = _MGMT_FALLBACK.get(sen, "mid")
     tier_order = ["service","startup_early","product_mid","product_unicorn","faang"]
     current_tier = get_company_tier_from_score(ats_score, jd_match_score)
     ctc = bands["ctc_bands"][sen]

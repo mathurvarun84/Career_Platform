@@ -18,6 +18,9 @@ const toIsoDaysAgo = (daysAgo: number): string => {
 
 export const MOCK_ANALYSIS_RESULT: AnalysisResult = {
   job_id: "e2a871fb-5d3b-4f01-82a8-83cf0cff41bc",
+  run_id: "e2a871fb-5d3b-4f01-82a8-83cf0cff41bc",
+  resume_id: "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+  jd_id: "b2c3d4e5-f6a7-8901-bcde-f12345678901",
   ats: {
     score: 68,
     breakdown: {

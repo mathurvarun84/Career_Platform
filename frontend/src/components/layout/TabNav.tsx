@@ -9,6 +9,7 @@ const tabs: Array<{ id: TabId; icon: string; label: string }> = [
   { id: "gap", icon: "◎", label: "Gap Analysis" },
   { id: "recruiter", icon: "👤", label: "Recruiter View" },
   { id: "fixes", icon: "✦", label: "Fixes" },
+  { id: "mock_interview", icon: "🎯", label: "Mock Interview" },
   { id: "progress", icon: "↗", label: "Progress" },
 ];
 

@@ -76,8 +76,11 @@ You are evaluating a SOFTWARE ENGINEERING resume. Apply these domain-specific ru
 SENIORITY CALIBRATION:
 - Junior (0-3yr): Look for project completion, code quality signals, testing hygiene
 - Mid (3-7yr): Expect ownership of services/components, on-call, some design decisions
-- Senior (7+yr): Expect system-level thinking, cross-team impact, mentorship, tech strategy
-- Staff/Principal: Cross-org influence, defining standards, roadmap input
+- Senior (7+yr IC): System-level thinking, cross-team impact, mentorship — NOT people managers
+- Staff/Principal IC: Cross-org influence — title must say Staff/Principal Engineer
+- EM (any YoE if title says Engineering Manager): team size, hiring, delivery, stakeholders
+- Director: org-level scope, multi-team, strategy — NOT the same as Staff IC
+- NEVER label Engineering Manager as 'staff' because years > 11
 
 METRIC STANDARDS (mark 'has_metrics: false' if only qualitative):
 - Acceptable: "reduced p99 latency from 800ms to 120ms", "scaled to 50M DAU", "cut infra cost by 30%"
@@ -115,7 +118,31 @@ Senior Software Engineer @ Zomato (2019-2023)
             },
         ),
         RoleFewShotExample(
-            label="STRONG",
+            label="STRONG_EM",
+            resume_snippet="""
+Engineering Manager @ Flipkart (2020–Present)
+- Lead 5 teams (32 engineers); owned supply-chain platform roadmap and delivery
+- Drove ₹2,500+ crore cost savings; hired and coached 8+ engineering managers
+- Architected observability rollout; cut MTTR 30% org-wide
+""",
+            expected_output={
+                "seniority_detected": "em",
+                "has_metrics": True,
+                "ownership_level": "very_high",
+                "missing_signals": [],
+                "strengths": [
+                    "explicit team scale (32 engineers)",
+                    "business outcomes in ₹",
+                    "hiring and coaching signal",
+                ],
+                "overall_score": 9,
+                "verdict": (
+                    "STRONG EM — management track. Do NOT classify as staff despite 17+ years."
+                ),
+            },
+        ),
+        RoleFewShotExample(
+            label="STRONG_IC",
             resume_snippet="""
 Staff Engineer @ Flipkart (2018-2024)
 - Architected Flipkart's supply chain orchestration layer serving 500K sellers; reduced order processing latency from 4s to 340ms (p99)
@@ -135,7 +162,7 @@ Staff Engineer @ Flipkart (2018-2024)
                     "explicit career growth trajectory",
                 ],
                 "overall_score": 9,
-                "verdict": "STRONG — Classic Staff-level profile. Architecture + cross-org + scale + mentorship all present.",
+                "verdict": "STRONG — Classic Staff IC profile. Title is Staff Engineer, not Engineering Manager.",
             },
         ),
     ],
@@ -579,7 +606,10 @@ def build_few_shot_block(role_family: str, num_examples: int = 2) -> str:
     examples = ctx.few_shot_examples
     if num_examples < 3 and len(examples) >= 2:
         weak = next((e for e in examples if e.label == "WEAK"), examples[0])
-        strong = next((e for e in examples if e.label == "STRONG"), examples[-1])
+        strong = next(
+            (e for e in examples if e.label in ("STRONG_EM", "STRONG")),
+            examples[-1],
+        )
         examples_to_use = [weak, strong]
     else:
         examples_to_use = examples[:num_examples] if num_examples else examples

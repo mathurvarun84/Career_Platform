@@ -33,6 +33,7 @@ from validator.experience_audit import (
     log_experience_audit,
     rebuild_experience_rewrites,
 )
+from validator.resume_understanding_validator import _labels_overlap
 
 from backend.agents.rewriter import (
     _ensure_experience_markers,
@@ -354,37 +355,6 @@ def _augment_experience_entries(section_text: SectionText, resume_text: str) -> 
     return augmented if augmented is not None else section_text
 
 
-def _labels_overlap(a: str, b: str) -> bool:
-    """Shared token ratio check for label matching."""
-    stopwords = {
-        "engineer", "engineering", "manager", "senior", "lead", "software",
-        "consultant", "developer", "architect", "principal", "staff",
-        "bengaluru", "bangalore", "india", "remote", "hybrid", "onsite",
-        "company", "experience", "payroll", "altran",
-    }
-
-    def normalized(s: str) -> str:
-        s = re.sub(r'\d{4}', '', s.lower())
-        return re.sub(r'[^a-z0-9]+', ' ', s).strip()
-
-    def tokens(s: str) -> set[str]:
-        s = re.sub(r'\d{4}', '', s)
-        return {
-            w.lower()
-            for w in re.split(r'[\s|–—(),.\[\]\-]+', s)
-            if len(w) > 3 and w.lower() not in stopwords
-        }
-
-    na, nb = normalized(a), normalized(b)
-    if na and nb and (na in nb or nb in na):
-        return True
-
-    ta, tb = tokens(a), tokens(b)
-    if not ta or not tb:
-        return False
-    return bool(ta & tb) and len(ta & tb) / min(len(ta), len(tb)) > 0.6
-
-
 def _get_section_text(resume_sections: dict, section_name: str) -> SectionText | None:
     """
     Resolve section from resume_sections by canonical name or alias.
@@ -501,18 +471,30 @@ def _repair_sub_entry_section(
                 )
                 continue
 
+            # Secondary guard: skip only when a distinctive employer token from the
+            # label appears in output (not shared role words like "engineering").
+            _ROLE_ONLY_TOKENS = frozenset({
+                "engineering", "engineer", "manager", "management", "head",
+                "senior", "lead", "consultant", "consulting", "software",
+                "director", "developer", "analyst", "architect", "principal",
+                "staff", "associate", "professional", "technical", "technology",
+                "role", "title", "present", "current",
+            })
             _INJECTION_STOPWORDS = frozenset({
                 "manager", "engineer", "senior", "consultant",
-                "bengaluru", "bangalore", "altran",
+                "bengaluru", "bangalore", "altran", "india", "remote",
             })
-            label_tokens = [
-                t.lower() for t in re.split(r'[\s|–—(),.\-]+', orig_label)
-                if len(t) >= 5 and t.lower() not in _INJECTION_STOPWORDS
+            distinctive_tokens = [
+                t.lower()
+                for t in re.split(r'[\s|–—(),.\-]+', orig_label)
+                if len(t) >= 5
+                and t.lower() not in _INJECTION_STOPWORDS
+                and t.lower() not in _ROLE_ONLY_TOKENS
             ]
             style_text_lower = _normalize_presence_text(style_text)
-            if label_tokens and label_tokens[0] in style_text_lower:
+            if distinctive_tokens and any(tok in style_text_lower for tok in distinctive_tokens):
                 logging.info(
-                    "%s/%s: entry '%s' — secondary guard (token heuristic), skipping injection",
+                    "%s/%s: entry '%s' — secondary guard (employer token present), skipping injection",
                     section_name, style, orig_label[:50],
                 )
                 continue
@@ -808,7 +790,7 @@ class RewriterValidator:
             exp_section = _augment_experience_entries(exp_section, resume_text)
             ground_n = len(detect_ground_truth_entries(resume_text))
             exp_variants = _get_rewrite_variants(rewrites, 'experience')
-            if ground_n > 0 and exp_variants and exp_section.sub_entries:
+            if exp_variants and exp_section.sub_entries:
                 repaired_variants = dict(exp_variants)
                 for style in ('balanced', 'aggressive', 'top_1_percent'):
                     style_text = exp_variants.get(style, '') or ''

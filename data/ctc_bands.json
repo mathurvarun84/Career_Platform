@@ -1,16 +1,105 @@
 {
+  "_meta": {
+    "unit": "LPA (Total CTC incl. RSU/ESOP at grant value)",
+    "last_updated": "2026-05",
+    "sources": [
+      "levels.fyi India 2026",
+      "AmbitionBox annual report 2025-26",
+      "Glassdoor India 2026",
+      "Dheya Career Insights 2026",
+      "Pathvio India Tech Salary Report 2026",
+      "kaam.work India Tech Salary Report 2026 (Michael Page / nasscom composite)"
+    ],
+    "refresh_cadence": "Review every 6 months — April and October.",
+    "notes": [
+      "IC track (junior→staff) and Management track (em→director) are parallel ladders.",
+      "Ranges are approximately P25 to P90 within company type.",
+      "Services director/VP roles are rare and often titled 'Delivery Head' or 'Practice Head'.",
+      "Bands updated May 2026: product_unicorn and faang tiers raised 15-25% vs prior version to match observed levels.fyi India data.",
+      "EM/senior_em/director bands include management premium over IC equivalents.",
+      "RSU/ESOP vesting schedules vary; figures use grant-value at time of offer."
+    ]
+  },
+
   "ctc_bands": {
-    "junior":  {"service":{"min":4,"max":8},"startup_early":{"min":6,"max":12},"product_mid":{"min":8,"max":15},"product_unicorn":{"min":10,"max":18},"faang":{"min":15,"max":25}},
-    "mid":     {"service":{"min":8,"max":15},"startup_early":{"min":12,"max":22},"product_mid":{"min":15,"max":28},"product_unicorn":{"min":20,"max":35},"faang":{"min":30,"max":55}},
-    "senior":  {"service":{"min":15,"max":25},"startup_early":{"min":20,"max":35},"product_mid":{"min":28,"max":45},"product_unicorn":{"min":35,"max":60},"faang":{"min":50,"max":90}},
-    "staff":   {"service":{"min":22,"max":38},"startup_early":{"min":30,"max":55},"product_mid":{"min":40,"max":70},"product_unicorn":{"min":55,"max":95},"faang":{"min":80,"max":150}}
+
+    "junior": {
+      "_note": "0–3 YOE",
+      "service":         {"min": 4,  "max": 8},
+      "startup_early":   {"min": 8,  "max": 16},
+      "product_mid":     {"min": 10, "max": 20},
+      "product_unicorn": {"min": 15, "max": 28},
+      "faang":           {"min": 25, "max": 45}
+    },
+
+    "mid": {
+      "_note": "3–7 YOE",
+      "service":         {"min": 12, "max": 22},
+      "startup_early":   {"min": 16, "max": 32},
+      "product_mid":     {"min": 20, "max": 40},
+      "product_unicorn": {"min": 30, "max": 62},
+      "faang":           {"min": 45, "max": 85}
+    },
+
+    "senior": {
+      "_note": "7–12 YOE",
+      "service":         {"min": 18, "max": 32},
+      "startup_early":   {"min": 28, "max": 55},
+      "product_mid":     {"min": 35, "max": 65},
+      "product_unicorn": {"min": 50, "max": 95},
+      "faang":           {"min": 70, "max": 150}
+    },
+
+    "staff": {
+      "_note": "12+ YOE IC — Staff / Principal / Distinguished",
+      "service":         {"min": 28, "max": 50},
+      "startup_early":   {"min": 45, "max": 80},
+      "product_mid":     {"min": 60, "max": 100},
+      "product_unicorn": {"min": 80, "max": 140},
+      "faang":           {"min": 120, "max": 260}
+    },
+
+    "em": {
+      "_note": "Engineering Manager — typically 6–10 YOE, managing 5–10 ICs",
+      "service":         {"min": 25, "max": 42},
+      "startup_early":   {"min": 35, "max": 65},
+      "product_mid":     {"min": 45, "max": 80},
+      "product_unicorn": {"min": 65, "max": 110},
+      "faang":           {"min": 90, "max": 180}
+    },
+
+    "senior_em": {
+      "_note": "Senior EM / Group EM — 10–14 YOE, multiple teams or large org",
+      "service":         {"min": 35, "max": 60},
+      "startup_early":   {"min": 55, "max": 90},
+      "product_mid":     {"min": 70, "max": 115},
+      "product_unicorn": {"min": 95, "max": 160},
+      "faang":           {"min": 145, "max": 260}
+    },
+
+    "director": {
+      "_note": "Director of Engineering / VP Eng — 14+ YOE, org-level ownership",
+      "service":         {"min": 50, "max": 90},
+      "startup_early":   {"min": 80, "max": 140},
+      "product_mid":     {"min": 100, "max": 180},
+      "product_unicorn": {"min": 140, "max": 240},
+      "faang":           {"min": 200, "max": 400}
+    }
+
   },
+
   "company_tiers": {
-    "faang":           {"label":"FAANG / Tier-1 Global","examples":["Google","Meta","Amazon","Microsoft"],"min_score":85},
-    "product_unicorn": {"label":"Indian Product Unicorn","examples":["Flipkart","Swiggy","Razorpay","CRED","PhonePe","Meesho"],"min_score":72},
-    "product_mid":     {"label":"Mid-size Product Company","examples":["Zepto","Groww","Slice","Niyo"],"min_score":60},
-    "startup_early":   {"label":"Series A-C Startup","examples":["Series A-C funded startups"],"min_score":45},
-    "service":         {"label":"IT Services / Enterprise","examples":["TCS","Infosys","Wipro","HCL"],"min_score":0}
+    "faang":           {"label": "FAANG / Tier-1 Global", "examples": ["Google", "Meta", "Amazon", "Microsoft", "Apple"], "min_score": 85},
+    "product_unicorn": {"label": "Indian Product Unicorn", "examples": ["Flipkart", "Swiggy", "Razorpay", "CRED", "PhonePe", "Meesho", "Zerodha", "Groww"], "min_score": 72},
+    "product_mid":     {"label": "Mid-size Product Company", "examples": ["Zepto", "Slice", "Niyo", "BrowserStack", "Postman", "Freshworks"], "min_score": 60},
+    "startup_early":   {"label": "Series A-C Startup", "examples": ["Series A-C funded startups"], "min_score": 45},
+    "service":         {"label": "IT Services / Enterprise", "examples": ["TCS", "Infosys", "Wipro", "HCL", "Cognizant", "Capgemini"], "min_score": 0}
   },
-  "score_to_tier": {"85":"faang","72":"product_unicorn","60":"product_mid","45":"startup_early","0":"service"}
+
+  "role_tracks": {
+    "ic":         ["junior", "mid", "senior", "staff"],
+    "management": ["em", "senior_em", "director"]
+  },
+
+  "score_to_tier": {"85": "faang", "72": "product_unicorn", "60": "product_mid", "45": "startup_early", "0": "service"}
 }

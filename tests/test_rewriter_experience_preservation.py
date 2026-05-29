@@ -162,6 +162,60 @@ def test_docx_contains_all_companies() -> None:
         path.unlink(missing_ok=True)
 
 
+def test_validator_injects_flipkart_when_only_other_engineering_manager_rewritten() -> None:
+    """
+    Regression: weak label overlap must not treat Flipkart as present when only
+    another company's Engineering Manager block exists in rewriter output.
+    """
+    entries = [
+        SubEntry(
+            label="Engineering Manager | Flipkart — Bengaluru",
+            verbatim_text=(
+                "Flipkart\nEngineering Manager | Bengaluru | Sep 2020 – Present\n"
+                "• Led platform reliability for checkout"
+            ),
+        ),
+        SubEntry(
+            label="Engineering Manager | Apttus — Pune",
+            verbatim_text=(
+                "Apttus\nEngineering Manager | Pune | Jan 2018 – Aug 2020\n"
+                "• Owned CPQ integrations"
+            ),
+        ),
+    ]
+    section_text = SectionText(
+        header="experience",
+        full_text="\n\n".join(e.verbatim_text for e in entries),
+        sub_entries=entries,
+    )
+    partial = (
+        f"{COMPANY_HEADER_START}Apttus | Pune##ROLE##Engineering Manager | "
+        f"Jan 2018 – Aug 2020##END_HEADER##\n• Rewritten Apttus bullet only"
+    )
+    output = {
+        "rewrites": {
+            "experience": {
+                "balanced": partial,
+                "aggressive": partial,
+                "top_1_percent": partial,
+            }
+        },
+        "styles": {},
+    }
+
+    repaired = RewriterValidator().validate_and_fix(
+        output,
+        {"experience": section_text.model_dump()},
+        "Flipkart Engineering Manager Bengaluru Apttus Pune CPQ",
+    )
+    balanced = repaired["rewrites"]["experience"]["balanced"]
+
+    assert "Flipkart" in balanced
+    assert "Apttus" in balanced
+    assert balanced.count(COMPANY_HEADER_START) == 2
+    assert "checkout" in balanced.lower()
+
+
 def test_validator_repairs_partial_experience_rewrite_to_full_count() -> None:
     """Validator must append the 4 unchanged entries when A4 returns only 2."""
     entries = [

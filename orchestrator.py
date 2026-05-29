@@ -626,6 +626,115 @@ class Orchestrator:
 
         return {"rewrites": fallback_rewrites, "styles": fallback_styles}
 
+    @staticmethod
+    def _build_role_fit_gate_gap(role_fit: dict, jd_intel: dict | None) -> dict:
+        """
+        Lightweight gap payload when role-fit pre-check exits before A3.
+        Keeps Overview/Gap tabs functional without running GapAnalyzer.
+        """
+        role_title = (jd_intel or {}).get("role_title", "Target role")
+        fitness = role_fit.get("fitness", "underqualified")
+        sen_gap = int(role_fit.get("seniority_gap", 0))
+        exp_gap = int(role_fit.get("experience_gap", 0))
+        fit_score = int(role_fit.get("score", 0))
+
+        parts = [f"Role fit pre-check: {fitness} for {role_title}."]
+        if sen_gap:
+            parts.append(f"Seniority gap: {sen_gap} level(s) below JD expectation.")
+        if exp_gap:
+            parts.append(f"Experience gap: {exp_gap} year(s) below minimum.")
+        parts.append(
+            "Full JD gap analysis and recruiter simulation were skipped to save cost."
+        )
+        gate_reason = " ".join(parts)
+
+        section_gaps = [
+            {
+                "section": "summary",
+                "gap_reason": gate_reason,
+                "rewrite_instruction": (
+                    "Target a role closer to your current seniority, or pick a recommended "
+                    "role from the role-fit panel before re-running analysis."
+                ),
+                "missing_keywords": [],
+                "needs_change": True,
+                "gap_type": "role_fit",
+                "requires_user_input": False,
+                "auto_apply": False,
+                "sub_changes": [],
+            }
+        ]
+        priority_fixes = priority_fixes_from_gaps(section_gaps)
+
+        return {
+            "resume_only_mode": False,
+            "jd_match_score_before": fit_score,
+            "jd_match_score_after": None,
+            "match_score": fit_score,
+            "section_gaps": section_gaps,
+            "gaps": section_gaps,
+            "priority_fixes": priority_fixes,
+            "missing_keywords": [],
+            "changes": [],
+            "role_fit_gate": True,
+        }
+
+    def _compute_deterministic_insights(
+        self,
+        ats_result: dict,
+        resume_und: dict,
+        gap_result: dict | None,
+    ) -> tuple[dict | None, dict | None]:
+        """Percentile + positioning without LLM (used on role-fit early exit too)."""
+        from engine.career_positioning import get_positioning_statement
+
+        percentile = None
+        positioning = None
+        seniority = resume_und.get("seniority", "mid")
+        if hasattr(seniority, "value"):
+            seniority = seniority.value
+
+        match_score = 0
+        if isinstance(gap_result, dict):
+            match_score = (
+                gap_result.get("jd_match_score_before")
+                or gap_result.get("match_score")
+                or 0
+            )
+
+        try:
+            ats_score = int(ats_result.get("score", 0))
+            composite = (
+                float(ats_score)
+                if not match_score
+                else (ats_score * 0.4) + (float(match_score) * 0.6)
+            )
+            percentile = get_percentile(composite, str(seniority))
+        except Exception as exc:
+            logging.warning(
+                "Percentile calculation failed (early exit): %s", exc
+            )
+
+        try:
+            positioning = get_positioning_statement(
+                seniority=str(seniority),
+                ats_score=int(ats_result.get("score", 0)),
+                jd_match_score=int(match_score or 0),
+                sections_changed=0,
+                ats_breakdown=ats_result.get("breakdown", {}),
+                ats_issues=ats_result.get("ats_issues", []),
+                expected_signals=resume_und.get("resume_health", {}).get(
+                    "expected_signals", []
+                ),
+                percentile=percentile,
+            )
+        except Exception as exc:
+            logging.warning(
+                "Career positioning failed (early exit): %s", exc
+            )
+
+        return percentile, positioning
+
     def run_full_evaluation(
         self,
         resume_text: str,
@@ -798,14 +907,18 @@ class Orchestrator:
                 progress_cb({"step": 2, "label": "Analysis complete", "pct": 100})
             if sse_step_cb:
                 sse_step_cb(3, "Insights ready")
+            gate_gap = self._build_role_fit_gate_gap(role_fit_precheck, jd_intel)
+            early_percentile, early_positioning = self._compute_deterministic_insights(
+                ats_result, resume_und, gate_gap
+            )
             early_result = {
                 "ats": ats_result,
                 "resume": resume_und,
-                "gap": None,
+                "gap": gate_gap,
                 "rewrites": None,
                 "sim": None,
-                "percentile": None,
-                "positioning": None,
+                "percentile": early_percentile,
+                "positioning": early_positioning,
                 "jd_intelligence": jd_intel,
                 "patches": [],
                 "validation": None,

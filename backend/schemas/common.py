@@ -16,6 +16,9 @@ class Seniority(str, Enum):
     MID = "mid"         # 3–5 years
     SENIOR = "senior"   # 6–10 years
     STAFF = "staff"     # 11+ years OR explicit Staff/Principal/Director title
+    EM = "em"
+    SENIOR_EM = "senior_em"
+    DIRECTOR = "director"
 
 
 class CompanyType(str, Enum):

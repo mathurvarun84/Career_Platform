@@ -5,7 +5,7 @@ _benchmarks_cache: dict | None = None
 
 _BENCHMARKS_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "benchmarks.json")
 
-VALID_SENIORITY = {"junior", "mid", "senior", "staff"}
+VALID_SENIORITY = {"junior", "mid", "senior", "staff", "em", "senior_em", "director"}
 
 
 def load_benchmarks() -> dict:

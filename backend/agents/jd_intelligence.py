@@ -86,19 +86,29 @@ WRONG (treating domain exposure as must_have):
 """
 
 _IC_SENIORITY = frozenset({"junior", "mid", "senior", "staff"})
+_MGMT_SENIORITY = frozenset({"em", "senior_em", "director"})
 _LEADERSHIP_LEVELS = frozenset({"manager", "director", "vp", "c-suite"})
 
 
 def _guard_seniority_fields(parsed: dict) -> dict:
     """Tiny fallback if the model still puts a leadership title in seniority_expected."""
     out = dict(parsed)
-    exp = str(out.get("seniority_expected") or "").lower().strip().replace("_", "-")
+    exp_raw = str(out.get("seniority_expected") or "").lower().strip()
+    exp = exp_raw.replace("_", "-")
+    exp_key = exp_raw.replace("-", "_")
     jd = str(out.get("jd_seniority_level") or "").lower().strip().replace("_", "-")
 
-    if exp in _LEADERSHIP_LEVELS:
-        if jd in ("", "unknown") or jd in _IC_SENIORITY:
+    if exp_key in _MGMT_SENIORITY:
+        pass
+    elif exp in _LEADERSHIP_LEVELS:
+        if jd in ("", "unknown") or jd in _IC_SENIORITY or jd.replace("-", "_") in _MGMT_SENIORITY:
             out["jd_seniority_level"] = exp
-        out["seniority_expected"] = "staff" if exp in ("director", "vp", "c-suite") else "senior"
+        if exp == "manager":
+            out["seniority_expected"] = "em"
+        elif exp in ("director", "vp", "c-suite"):
+            out["seniority_expected"] = "director"
+        else:
+            out["seniority_expected"] = "senior"
 
     try:
         out["min_years_required"] = int(out.get("min_years_required") or 0)
@@ -158,7 +168,10 @@ class JDIntelligenceAgent(BaseAgent):
             "- 'owns the roadmap' → no PM, engineer owns product decisions (seniority signal)\n"
             "- 'mentor junior engineers' → staff/lead-level expectation even if title says senior\n"
             "- 'immediate joiner' → backfill role, likely urgent or attrition-driven\n"
-            "- 'work with global teams' → overlapping hours with US/EU, communication signal\n\n"
+            "- 'work with global teams' → overlapping hours with US/EU, communication signal\n"
+            "- 'manage a team of engineers' → Engineering Manager role (em), not IC senior\n"
+            "- 'drive hiring plan / headcount' → Senior EM or Director signal\n"
+            "- 'org-wide technical strategy' or 'build the engineering org' → Director-level scope\n\n"
             "Return ONLY valid JSON with these exact keys:\n"
             "- role_title (string): exact title as written in the JD\n"
             "- must_have_skills (list of strings): skills explicitly stated as REQUIRED in the JD. "
@@ -175,9 +188,16 @@ class JDIntelligenceAgent(BaseAgent):
             "  e.g. {\"signal\": \"owns roadmap\", \"implication\": \"no PM, high ownership expected\"}\n"
             "- semantic_skill_map (dict): maps each JD skill/phrase → list of resume terms a candidate might use instead — "
             "  e.g. {\"event streaming\": [\"Kafka\", \"Pulsar\", \"Kinesis\", \"message queue\"]}\n"
-            "- seniority_expected (string): MUST be exactly one of 'junior','mid','senior','staff' ONLY. "
-            "  This is the IC experience band for resume matching — never put manager/director/vp here. "
-            "  Map leadership titles to the nearest IC band: Director/VP/Principal → 'staff', EM/Tech Lead → 'senior'.\n"
+            "- seniority_expected (string): one of 'junior','mid','senior','staff','em','senior_em','director' — "
+            "  IC track: infer from technical depth and YOE expectations in the JD. "
+            "  Management track — use these signals:\n"
+            "  'em' if JD mentions managing a team of engineers, conducting 1:1s, hiring, or performance reviews. "
+            "  Title signals: 'Engineering Manager', 'EM', 'People Manager'.\n"
+            "  'senior_em' if JD expects managing multiple teams, group-level delivery, or managing other EMs. "
+            "  Title signals: 'Senior EM', 'Group Engineering Manager', 'Senior Engineering Manager'.\n"
+            "  'director' if JD describes org-level ownership, VP-equivalent scope, multi-team org, or budget ownership. "
+            "  Title signals: 'Director of Engineering', 'VP Engineering', 'Head of Engineering', 'Engineering Director'.\n"
+            "  RULE: If the JD title contains 'Manager', 'Director', 'VP', or 'Head of Engineering', always use the management track.\n"
             "- company_type (string): one of 'faang','product-unicorn','funded-startup','enterprise','service-based','unknown'\n"
             "- min_years_required (int): minimum years of experience explicitly or implicitly required. "
             "  Infer from phrases like \"10+ years\", \"minimum 8 years\", \"senior IC with 5+ years\". "

@@ -151,7 +151,7 @@ hall_checks = [
     ("Never invent companies", "Never invent companies"),
     ("Never invent degrees", "degrees"),
     ("Never invent titles", "titles"),
-    ("Never invent metrics", "Never fabricate"),
+    ("Never invent metrics", "Never invent"),
     ("Use placeholders", "[X%]"),
     ("Never invent project names", "projects"),
 ]

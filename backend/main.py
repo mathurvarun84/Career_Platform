@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -9,6 +10,7 @@ import tempfile
 import time
 import uuid
 import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 import queue
 import threading
@@ -21,14 +23,30 @@ from pydantic import BaseModel, Field
 
 from backend.auth import get_current_user_id
 from backend.agents.jd_fetcher import JDFetcherAgent
+from backend.agents.interview_agent import InterviewAgent
 from backend.db import get_db
+from backend.interview_persistence import (
+    cache_model_answer,
+    complete_interview_session,
+    get_interview_session_row,
+    insert_interview_session,
+    list_completed_interview_sessions,
+    sync_interview_session_progress,
+)
 from backend.limit_checker import check_upload_limit, get_upload_usage, reset_user_limit
+from backend.corpus_persistence import record_patch_decisions, save_corpus_run
 from backend.persistence import save_analysis
 from engine.resume_builder import build_final_docx
 from validator.rewriter_validator import assert_structural_completeness
 from orchestrator import Orchestrator
 from parser import parse_resume
 from backend.schemas.jd_fetch_schema import FetchJDRequest, FetchJDResponse
+from backend.schemas.interview_schema import (
+    InterviewQuestionsRequest,
+    InterviewQuestionsResponse,
+    StartInterviewRequest,
+    StartInterviewResponse,
+)
 from backend.api.routes.coaching import configure_coaching_routes, router as coaching_router
 
 
@@ -36,6 +54,22 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Resume Intelligence Platform V2")
 job_store: Dict[str, Dict[str, Any]] = {}
+
+# ── Interview session store (in-memory; keyed by session_id) ─────────────────
+# Schema per entry:
+#   session_id:        str
+#   company:           str
+#   seniority:         str
+#   question_mode:     str   (behavioral | scenario | mixed)
+#   questions:         list[dict]   (InterviewQuestion[])
+#   answers:           list[dict]   (AnswerTurn[])
+#   feedback:          list[dict]   (PerQuestionFeedback[])
+#   compressed_turns:  list[str]    (grows after each evaluation — Day 3)
+#   active_follow_ups: dict[str, dict]  (question_id → last FollowUpQuestion returned)
+#   created_at:        str          (ISO timestamp)
+_interview_sessions: Dict[str, Dict[str, Any]] = {}
+
+_interview_agent = InterviewAgent()
 
 # Persist completed jobs so download still works after uvicorn reload / process restart.
 _JOB_CACHE_DIR = Path(__file__).resolve().parent / ".job_cache"
@@ -276,6 +310,7 @@ def _analyze_event_stream(
     job_id = str(uuid.uuid4())
 
     def worker() -> None:
+        pipeline_started = time.perf_counter()
         try:
             job_store[job_id] = {
                 "status": "running",
@@ -283,6 +318,8 @@ def _analyze_event_stream(
                 "result": None,
                 "error": None,
                 "resume_text": "",
+                "jd_text": jd_text,
+                "user_id": user_id,
             }
             q.put(
                 {
@@ -375,13 +412,19 @@ def _analyze_event_stream(
                     }
                 )
 
+            def partial_result_cb(chunk: dict) -> None:
+                """Stream incremental analysis slices for the loading-screen live feed."""
+                payload = {"event": "partial", **chunk}
+                job_store[job_id]["progress"].append(payload)
+                q.put({"action": "yield", "data": payload})
+
             orch = Orchestrator(user_id=user_id)
             result = orch.run_full_evaluation(
                 resume_text=resume_text,
                 jd_text=jd_text,
                 run_sim=run_sim,
                 progress_cb=lambda _e: None,
-                partial_result_cb=None,
+                partial_result_cb=partial_result_cb,
                 cached_stage_data=cached_stage_data,
                 stage_cache_cb=stage_cache_cb,
                 sse_step_cb=sse_step_cb,
@@ -390,6 +433,26 @@ def _analyze_event_stream(
             merged["job_id"] = job_id
             # Coaching APIs key off job_store; expose same id as session_id for the UI.
             merged["session_id"] = job_id
+            elapsed_ms = int((time.perf_counter() - pipeline_started) * 1000)
+            try:
+                corpus_ids = save_corpus_run(
+                    user_id=user_id,
+                    run_id=job_id,
+                    resume_text=resume_text,
+                    file_name=file_name,
+                    resume_und=result.get("resume") or {},
+                    jd_text=jd_text,
+                    jd_source="pasted",
+                    target_company=None,
+                    final_result=merged,
+                    elapsed_ms=elapsed_ms,
+                )
+                merged["run_id"] = corpus_ids.get("run_id") or job_id
+                merged["resume_id"] = corpus_ids.get("resume_id")
+                merged["jd_id"] = corpus_ids.get("jd_id")
+            except Exception as exc:
+                logger.warning("save_corpus_run failed (non-blocking): %s", exc)
+                merged["run_id"] = job_id
             job_store[job_id]["result"] = merged
             job_store[job_id]["status"] = "complete"
 
@@ -828,6 +891,19 @@ async def apply_patches(req: ApplyPatchesRequest):
         extra={"applied": applied, "rejected": rejected, "results": results},
     )
 
+    try:
+        result_payload = job.get("result") or {}
+        record_patch_decisions(
+            run_id=result_payload.get("run_id") or req.job_id,
+            user_id=job.get("user_id") or "",
+            gap_result=result_payload.get("gap"),
+            patches=patches_raw,
+            applied_ids=applied,
+            rejected_ids=rejected,
+        )
+    except Exception as exc:
+        logger.warning("record_patch_decisions failed (non-blocking): %s", exc)
+
     return {
         "applied": applied,
         "rejected": rejected,
@@ -873,3 +949,603 @@ async def rollback_patch(req: RollbackRequest):
 
     return {"resume_text": updated_text, "score": score}
 
+
+# ── Interview endpoints ───────────────────────────────────────────────────────
+
+@app.post("/api/interview/questions", response_model=InterviewQuestionsResponse)
+async def generate_interview_questions(request: InterviewQuestionsRequest):
+    """
+    Standalone question generation (Day 2). Does not create a session.
+
+    Body: { resume_text, company, seniority, question_mode? }
+    Returns: { questions: InterviewQuestion[] }
+    """
+    company_key = request.company.lower().strip().replace(" ", "_")
+    result = _interview_agent.generate_questions({
+        "resume_text": request.resume_text,
+        "company": company_key,
+        "seniority": request.seniority,
+        "question_mode": request.question_mode,
+    })
+    return InterviewQuestionsResponse(questions=result["questions"])
+
+
+@app.post("/api/interview/session/start", response_model=StartInterviewResponse)
+async def start_interview_session(
+    request: StartInterviewRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Start a new mock interview session.
+
+    Calls InterviewAgent.generate_questions() with the candidate's resume and
+    target company. Returns 3 questions + a session_id for subsequent /answer calls.
+
+    Body:
+      resume_text:    str      — candidate's resume (plain text)
+      company:        str      — company key (e.g. "amazon") or display name
+      seniority:      str      — junior | mid | senior | staff | em
+      question_mode:  str      — behavioral | scenario | mixed (default: mixed)
+
+    Returns:
+      { session_id: str, questions: InterviewQuestion[] }
+    """
+    session_id = str(uuid.uuid4())
+    company_key = request.company.lower().strip().replace(" ", "_")
+
+    result = _interview_agent.generate_questions({
+        "resume_text": request.resume_text,
+        "company": company_key,
+        "seniority": request.seniority,
+        "question_mode": request.question_mode,
+    })
+
+    _interview_sessions[session_id] = {
+        "session_id":       session_id,
+        "user_id":          user_id,
+        "company":          company_key,
+        "seniority":        request.seniority,
+        "question_mode":    request.question_mode,
+        "questions":        result["questions"],
+        "answers":          [],
+        "feedback":         [],
+        "compressed_turns": [],
+        "active_follow_ups": {},
+        "created_at":       datetime.now(timezone.utc).isoformat(),
+    }
+
+    insert_interview_session(
+        session_id=session_id,
+        user_id=user_id,
+        company=company_key,
+        seniority=request.seniority,
+        question_mode=request.question_mode,
+        questions=result["questions"],
+    )
+
+    return StartInterviewResponse(
+        session_id=session_id,
+        questions=result["questions"],
+    )
+
+
+# ── Interview Day 3 — request schemas ────────────────────────────────────────
+
+class SubmitAnswerRequest(BaseModel):
+    """Body for the /answer and /answer/stream endpoints."""
+
+    question_id: str
+    answer_text: str
+    is_follow_up: bool = False
+    follow_up_id: str | None = None
+
+
+class FollowUpRequest(BaseModel):
+    """Body for the /follow-up probe endpoint."""
+
+    question_id: str
+    answer_text: str
+    follow_up_count: int = 0
+
+
+# ── Interview helper functions ────────────────────────────────────────────────
+
+def _get_question(session: dict, question_id: str) -> dict | None:
+    """Look up a question by id from the session's question list."""
+    for q in session.get("questions", []):
+        if q.get("id") == question_id:
+            return q
+    return None
+
+
+def _get_question_index(session: dict, question_id: str) -> int:
+    """Return the 1-indexed position of a question in the session (1 if not found)."""
+    for i, q in enumerate(session.get("questions", []), start=1):
+        if q.get("id") == question_id:
+            return i
+    return 1
+
+
+def _sync_session_to_db(session_id: str) -> None:
+    """Write current in-memory answers + feedback to Supabase."""
+    session = _interview_sessions.get(session_id)
+    if not session:
+        return
+    sync_interview_session_progress(
+        session_id,
+        answers=session.get("answers", []),
+        feedback=session.get("feedback", []),
+    )
+
+
+def _resolve_interview_session(session_id: str) -> dict | None:
+    """Load session from memory, falling back to Supabase."""
+    session = _interview_sessions.get(session_id)
+    if session:
+        return session
+
+    row = get_interview_session_row(session_id)
+    if not row:
+        return None
+
+    session = {
+        "session_id": row["session_id"],
+        "user_id": row.get("user_id"),
+        "company": row.get("company", ""),
+        "seniority": row.get("seniority", "senior"),
+        "question_mode": row.get("question_mode", "mixed"),
+        "questions": row.get("questions") or [],
+        "answers": row.get("answers") or [],
+        "feedback": row.get("feedback") or [],
+        "compressed_turns": [],
+        "active_follow_ups": {},
+        "summary": row.get("summary"),
+        "model_answers": row.get("model_answers") or {},
+        "created_at": row.get("created_at"),
+    }
+    _interview_sessions[session_id] = session
+    return session
+
+
+def _feedback_for_question(session: dict, question_id: str) -> dict | None:
+    """Return the most recent feedback entry for a question."""
+    matches = [
+        fb
+        for fb in session.get("feedback", [])
+        if fb.get("question_id") == question_id
+    ]
+    return matches[-1] if matches else None
+
+
+def _answer_for_question(session: dict, question_id: str) -> dict | None:
+    """Return the main answer turn for a question."""
+    for turn in session.get("answers", []):
+        if turn.get("question_id") == question_id:
+            return turn
+    return None
+
+
+def _persist_answer(
+    session_id: str,
+    request: SubmitAnswerRequest,
+    feedback: dict,
+    follow_up_question: dict | None = None,
+) -> dict:
+    """
+    Persists answer, feedback, and compressed turn to session store.
+    Called from both /answer and /answer/stream after evaluation completes.
+
+    Returns the stored feedback dict (includes question_id).
+    """
+    session = _interview_sessions.get(session_id)
+    if not session or not feedback:
+        return feedback
+
+    stored_feedback = {**feedback, "question_id": request.question_id}
+    session["feedback"].append(stored_feedback)
+
+    if request.is_follow_up:
+        follow_up_entry = {
+            "question": follow_up_question or {
+                "id": request.follow_up_id or str(uuid.uuid4()),
+                "text": "",
+                "trigger_reason": "follow_up",
+            },
+            "answer_text": request.answer_text,
+        }
+        for turn in session["answers"]:
+            if turn.get("question_id") == request.question_id:
+                turn.setdefault("follow_ups", []).append(follow_up_entry)
+                break
+    else:
+        session["answers"].append({
+            "question_id": request.question_id,
+            "answer_text": request.answer_text,
+            "follow_ups": [],
+        })
+
+    q_index = _get_question_index(session, request.question_id)
+    compressed = InterviewAgent.compress_turn(
+        q_index, request.answer_text, stored_feedback
+    )
+    session["compressed_turns"].append(compressed)
+    _sync_session_to_db(session_id)
+    return stored_feedback
+
+
+def _session_complete(session: dict) -> bool:
+    """True when all main questions have an AnswerTurn with answer_text."""
+    answered_ids = {
+        turn.get("question_id")
+        for turn in session.get("answers", [])
+        if turn.get("answer_text")
+    }
+    question_ids = [q.get("id") for q in session.get("questions", [])]
+    return all(qid in answered_ids for qid in question_ids)
+
+
+def _follow_up_count(session: dict, question_id: str) -> int:
+    """Count follow-up answers already stored for a question (max 2 cap)."""
+    for turn in session.get("answers", []):
+        if turn.get("question_id") == question_id:
+            return len(turn.get("follow_ups", []))
+    return 0
+
+
+# ── POST /api/interview/evaluate — non-streaming (kept for retry + summary) ──
+
+@app.post("/api/interview/evaluate")
+async def evaluate_answer(session_id: str, request: SubmitAnswerRequest):
+    """
+    Non-streaming evaluation endpoint. Used by the retry flow (Day 6) and
+    the session summary endpoint (Day 4).
+
+    Body: { question_id, answer_text, is_follow_up, follow_up_id? }
+
+    Returns PerQuestionFeedback dict.  Persists feedback + compressed turn
+    into the session store.
+    """
+    session = _interview_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    question = _get_question(session, request.question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found in session")
+
+    compressed_turns = session.get("compressed_turns", [])
+
+    feedback = _interview_agent.evaluate_answer({
+        "question": question,
+        "answer_text": request.answer_text,
+        "compressed_turns": compressed_turns,
+        "seniority": session["seniority"],
+    })
+
+    stored_feedback = _persist_answer(session_id, request, feedback)
+    return stored_feedback
+
+
+# ── POST /api/interview/follow-up ─────────────────────────────────────────────
+
+@app.post("/api/interview/follow-up")
+async def generate_follow_up(session_id: str, request: FollowUpRequest):
+    """
+    Generate a follow-up probe question when the original answer is incomplete.
+
+    Body: { question_id, answer_text, follow_up_count }
+
+    Returns { follow_up: FollowUpQuestion | null }
+    """
+    session = _interview_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    question = _get_question(session, request.question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found in session")
+
+    follow_up = _interview_agent.generate_follow_up({
+        "question": question,
+        "answer_text": request.answer_text,
+        "follow_up_count": request.follow_up_count,
+    })
+
+    return {"follow_up": follow_up}
+
+
+# ── POST /api/interview/session/{id}/answer — non-streaming (retry + tests) ──
+
+@app.post("/api/interview/session/{session_id}/answer")
+async def submit_answer(session_id: str, request: SubmitAnswerRequest):
+    """
+    Evaluates an answer (non-streaming). Persists feedback and compressed turn.
+    Generates follow-up probe if warranted.
+
+    Returns:
+    {
+      feedback:         PerQuestionFeedback,
+      follow_up:        FollowUpQuestion | null,
+      session_complete: bool
+    }
+    """
+    session = _interview_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    question = _get_question(session, request.question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found in session")
+
+    feedback = _interview_agent.evaluate_answer({
+        "question": question,
+        "answer_text": request.answer_text,
+        "compressed_turns": session["compressed_turns"],
+        "seniority": session["seniority"],
+    })
+
+    follow_up_question = None
+    if request.is_follow_up and request.follow_up_id:
+        follow_up_question = session.get("active_follow_ups", {}).get(request.question_id)
+
+    stored_feedback = _persist_answer(
+        session_id,
+        request,
+        feedback,
+        follow_up_question=follow_up_question,
+    )
+
+    follow_up = None
+    if not request.is_follow_up:
+        follow_up = _interview_agent.generate_follow_up({
+            "question": question,
+            "answer_text": request.answer_text,
+            "follow_up_count": _follow_up_count(session, request.question_id),
+        })
+        if follow_up:
+            session.setdefault("active_follow_ups", {})[request.question_id] = follow_up
+
+    return {
+        "feedback": stored_feedback,
+        "follow_up": follow_up,
+        "session_complete": _session_complete(session),
+    }
+
+
+# ── POST /api/interview/session/{id}/summary ──────────────────────────────────
+
+@app.post("/api/interview/session/{session_id}/summary")
+async def get_summary(
+    session_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Generates the post-session summary. Call once, after session_complete=true.
+
+    Returns: SessionSummary dict
+    """
+    session = _resolve_interview_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.get("user_id") and session["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this session")
+
+    if not _session_complete(session):
+        raise HTTPException(
+            status_code=400,
+            detail="Session not complete — answer all questions before requesting summary",
+        )
+
+    summary = _interview_agent.generate_summary({
+        "questions": session["questions"],
+        "answers": session["answers"],
+        "all_feedback": session["feedback"],
+        "compressed_turns": session["compressed_turns"],
+        "seniority": session["seniority"],
+        "company": session["company"],
+    })
+
+    complete_interview_session(session_id, summary)
+    session["summary"] = summary
+
+    return summary
+
+
+@app.get("/api/interview/sessions")
+async def list_interview_sessions(
+    user_id: str = Depends(get_current_user_id),
+    limit: int = 10,
+):
+    """
+    Return the N most recent completed sessions for the authenticated user.
+    Only sessions with a non-null summary are included.
+    """
+    rows = list_completed_interview_sessions(user_id, limit=limit)
+    sessions = []
+    for row in rows:
+        summary = row.get("summary") or {}
+        if not isinstance(summary, dict):
+            continue
+        sessions.append(
+            {
+                "session_id": row["session_id"],
+                "company": row.get("company", ""),
+                "seniority": row.get("seniority", ""),
+                "created_at": row.get("created_at"),
+                "top_strength": summary.get("top_strength", ""),
+                "top_gap": summary.get("top_gap", ""),
+                "recommended_next_dimension": summary.get(
+                    "recommended_next_dimension", "growth_mindset"
+                ),
+                "dimension_scorecard": summary.get("dimension_scorecard", []),
+                "anti_pattern_report": summary.get("anti_pattern_report", []),
+            }
+        )
+    return {"sessions": sessions}
+
+
+@app.post("/api/interview/session/{session_id}/model-answer/{question_id}")
+async def get_model_answer(
+    session_id: str,
+    question_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    """
+    Lazy-load a model answer for one question. Cached in Supabase model_answers jsonb.
+    """
+    session = _resolve_interview_session(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.get("user_id") and session["user_id"] != user_id:
+        raise HTTPException(status_code=403, detail="Not authorized for this session")
+
+    cached = (session.get("model_answers") or {}).get(question_id)
+    if cached:
+        return cached
+
+    question = _get_question(session, question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found")
+
+    answer_turn = _answer_for_question(session, question_id)
+    if not answer_turn:
+        raise HTTPException(status_code=400, detail="Question not yet answered")
+
+    answer_text = str(answer_turn.get("answer_text", ""))
+    if len(answer_text.split()) < 50:
+        return {"text": None, "what_changed": None, "skipped": True}
+
+    feedback = _feedback_for_question(session, question_id)
+    if not feedback:
+        raise HTTPException(status_code=400, detail="Feedback not available yet")
+
+    result = _interview_agent.generate_model_answer({
+        "question": question,
+        "answer_text": answer_text,
+        "feedback": feedback,
+        "seniority": session["seniority"],
+        "company": session["company"],
+    })
+
+    cache_model_answer(session_id, question_id, result)
+    session.setdefault("model_answers", {})[question_id] = result
+
+    return result
+
+
+# ── POST /api/interview/session/{id}/answer/stream — primary evaluation ───────
+
+@app.post("/api/interview/session/{session_id}/answer/stream")
+async def submit_answer_stream(session_id: str, request: SubmitAnswerRequest):
+    """
+    Primary session evaluation endpoint — streaming.
+
+    Body: { question_id, answer_text, is_follow_up, follow_up_id? }
+
+    Emits structured SSE chunks. Chunk types (in order):
+      verdict → best_line → level_signal → presence → dimension → missing (if not strong)
+      → ap_fired × N → coaching_close → done
+      error on failure.
+
+    The non-streaming /evaluate endpoint is kept for the retry flow.
+    """
+    session = _interview_sessions.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    question = _get_question(session, request.question_id)
+    if not question:
+        raise HTTPException(status_code=404, detail="Question not found in session")
+
+    compressed_turns = session.get("compressed_turns", [])
+
+    async def event_stream():
+        collected_chunks: list[dict] = []
+        try:
+            async for chunk in _interview_agent.evaluate_answer_stream({
+                "question": question,
+                "answer_text": request.answer_text,
+                "compressed_turns": compressed_turns,
+                "seniority": session["seniority"],
+            }):
+                yield f"data: {json.dumps(chunk)}\n\n"
+                await asyncio.sleep(0.05)
+                collected_chunks.append(chunk)
+
+                if chunk["type"] == "done":
+                    feedback = _reconstruct_feedback(collected_chunks)
+                    follow_up_question = None
+                    if request.is_follow_up and request.follow_up_id:
+                        follow_up_question = session.get("active_follow_ups", {}).get(
+                            request.question_id
+                        )
+                    stored = _persist_answer(
+                        session_id,
+                        request,
+                        feedback,
+                        follow_up_question=follow_up_question,
+                    )
+                    if stored and not request.is_follow_up:
+                        probe = _interview_agent.generate_follow_up({
+                            "question": question,
+                            "answer_text": request.answer_text,
+                            "follow_up_count": _follow_up_count(
+                                session, request.question_id
+                            ),
+                        })
+                        if probe:
+                            session.setdefault("active_follow_ups", {})[
+                                request.question_id
+                            ] = probe
+
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'content': str(exc)})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+def _reconstruct_feedback(chunks: list[dict]) -> dict | None:
+    """
+    Reconstruct a PerQuestionFeedback dict from the ordered SSE chunks emitted
+    by evaluate_answer_stream.  Returns None if any required chunk is missing.
+    """
+    feedback: dict = {}
+    anti_patterns: list[dict] = []
+
+    for chunk in chunks:
+        t = chunk.get("type")
+        c = chunk.get("content")
+        if t == "verdict":
+            feedback["overall_verdict"] = c
+        elif t == "best_line":
+            feedback["best_line"] = c
+        elif t == "level_signal":
+            feedback["level_signal"] = c
+        elif t == "presence" and isinstance(c, dict):
+            feedback["executive_presence"] = c.get("executive_presence", "not_assessable")
+            feedback["authenticity_note"] = c.get("authenticity_note", "")
+        elif t == "dimension":
+            feedback["dimension_score"] = c
+        elif t == "ap_fired":
+            anti_patterns.append(c)
+        elif t == "coaching_close":
+            feedback["coaching_close"] = c
+
+    required = ("overall_verdict", "best_line", "dimension_score", "level_signal")
+    if not all(k in feedback for k in required):
+        return None
+
+    feedback["anti_patterns_fired"] = anti_patterns
+    feedback.setdefault("executive_presence", "not_assessable")
+    feedback.setdefault("authenticity_note", "")
+    feedback.setdefault("coaching_close", "")
+    return feedback

@@ -7,6 +7,7 @@ import TabNav from "./components/layout/TabNav";
 import ActionableFixes from "./components/ActionableFixes";
 import GapCloser from "./components/GapCloser";
 import ProgressTracking from "./components/ProgressTracking";
+import MockInterview from "./components/MockInterview";
 import RecruiterSimulation from "./components/RecruiterSimulation";
 import AuthModal from "./components/auth/AuthModal";
 import RequireAuth from "./components/auth/RequireAuth";
@@ -222,6 +223,25 @@ function AppShell() {
               totalPatchesApplied={totalPatches}
               totalCoachingAnswers={totalCoaching}
             />
+          </div>
+          <div
+            role="tabpanel"
+            id="panel-mock_interview"
+            aria-labelledby="tab-mock_interview"
+            className={activeTab === "mock_interview" ? "tab-enter" : undefined}
+            style={{
+              display: activeTab === "mock_interview" ? "block" : "none",
+            }}
+          >
+            <div
+              style={{
+                maxWidth: "960px",
+                margin: "0 auto",
+                padding: "40px 32px 48px",
+              }}
+            >
+              <MockInterview />
+            </div>
           </div>
           <div
             role="tabpanel"

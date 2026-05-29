@@ -1,0 +1,901 @@
+{
+    "_meta": {
+      "version": "2.0.0",
+      "description": "Two-tier question bank. 'generic' contains universally-asked behavioral questions — high volume, usable for any company, the foundation of most real interview loops. 'company_specific' contains questions with a genuine company-specific frame — only included where the company's public framework or documented interview guides confirm this framing is actually used. Generic questions are injected first; company-specific questions supplement when available. Update quarterly.",
+      "usage": "LLM picks from generic pool for any company. Company-specific pool layers on top when the company key matches. Fallback path: serve bank questions directly when LLM call fails (marked source='bank').",
+      "schema_per_question": {
+        "question": "The interview question text",
+        "question_type": "behavioral | scenario",
+        "dimension": "One of the 7 BehavioralDimension values",
+        "what_they_evaluate": "What a strong answer must demonstrate — the evaluator lens",
+        "strong_answer_signals": ["3-5 concrete signals that distinguish strong from developing"],
+        "risky_anti_patterns": ["anti-pattern keys most likely for this question"],
+        "seniority_modifier": "How the bar shifts at staff/EM level"
+      }
+    },
+  
+    "generic": {
+      "ownership": [
+        {
+          "question": "Tell me about a time you took ownership of something that wasn't your responsibility.",
+          "question_type": "behavioral",
+          "dimension": "ownership",
+          "what_they_evaluate": "Did you act without being asked? Did you own the full outcome — including the failure path — not just the effort? The probe is: did you draw an artificial line around your role, or step past it?",
+          "strong_answer_signals": [
+            "Volunteered without being assigned — no one asked them to step in",
+            "Took end-to-end accountability including the failure case",
+            "Named a specific outcome they drove, not just an effort they made",
+            "Did not deflect credit or blame onto teammates",
+            "Used 'I' not 'we' for the key decisions"
+          ],
+          "risky_anti_patterns": ["we_default", "escalation_default"],
+          "seniority_modifier": "Staff+/EM: 'outside your responsibility' should be org-level or system-level — not a single service or feature."
+        },
+        {
+          "question": "Tell me about a time you took on something significant outside your area of responsibility.",
+          "question_type": "behavioral",
+          "dimension": "ownership",
+          "what_they_evaluate": "Scope of initiative and willingness to own outcomes beyond the job description. Interviewers look for candidates who saw a gap and filled it rather than waiting for direction.",
+          "strong_answer_signals": [
+            "Named the gap they identified and why nobody else was filling it",
+            "Described a concrete outcome they personally drove",
+            "Showed awareness of the risk they accepted by stepping in",
+            "Did not position themselves as a hero — acknowledged team context",
+            "Described what happened after: did they hand it off or keep owning it?"
+          ],
+          "risky_anti_patterns": ["we_default", "vague_quantification"],
+          "seniority_modifier": "Senior+: the scope should be a cross-team problem or system-level gap."
+        },
+        {
+          "question": "Tell me about a production incident you owned from detection to resolution. What did you change afterward?",
+          "question_type": "behavioral",
+          "dimension": "ownership",
+          "what_they_evaluate": "Full ownership through a failure cycle: detection, diagnosis, fix, and systemic improvement. The 'what changed afterward' is as important as the fix — it distinguishes owners from firefighters.",
+          "strong_answer_signals": [
+            "Named the system, the user impact, and the SLA breach",
+            "Personal accountability in diagnosis — 'I' not 'we'",
+            "Post-incident drove a concrete process or system change",
+            "Quantified the improvement after the change",
+            "Showed learning, not just competence"
+          ],
+          "risky_anti_patterns": ["we_default", "vague_quantification"],
+          "seniority_modifier": "Senior+: should describe driving the post-mortem and getting the fix prioritised against competing roadmap pressure."
+        },
+        {
+          "question": "Describe a situation where you went above and beyond for a customer or user.",
+          "question_type": "behavioral",
+          "dimension": "ownership",
+          "what_they_evaluate": "Customer-first instinct — did you see a user problem and act on it beyond what was required? Interviewers probe for genuine empathy vs. checkbox completion.",
+          "strong_answer_signals": [
+            "Named the specific user need that motivated the extra effort",
+            "Described an action that had a cost to them personally (time, scope, convenience)",
+            "Outcome was user-facing and measurable",
+            "Did not expect credit for going beyond the brief",
+            "Showed the instinct was repeatable, not a one-off"
+          ],
+          "risky_anti_patterns": ["we_default", "vague_quantification"],
+          "seniority_modifier": "Staff+: 'above and beyond' should affect multiple users or a user segment — not a single customer interaction."
+        },
+        {
+          "question": "Tell me about a time you had to make a decision with incomplete information and tight deadlines.",
+          "question_type": "behavioral",
+          "dimension": "ownership",
+          "what_they_evaluate": "Bias for action combined with sound judgment — did you move fast and make a defensible call, or did you freeze waiting for perfect information? The probe is: what was your process for deciding 'enough data'?",
+          "strong_answer_signals": [
+            "Named the specific uncertainty and why waiting wasn't viable",
+            "Described a deliberate framework for the decision",
+            "Named the risk they accepted and why it was acceptable",
+            "Monitored the outcome and updated their approach",
+            "Acknowledged what they would have done differently with hindsight"
+          ],
+          "risky_anti_patterns": ["escalation_default", "hypothesis_without_proof"],
+          "seniority_modifier": "Staff+: decision should have architectural or org-level consequences, not just feature scope."
+        }
+      ],
+  
+      "impact_and_scale": [
+        {
+          "question": "Tell me about the project where you had the largest measurable impact. Walk me through the numbers.",
+          "question_type": "behavioral",
+          "dimension": "impact_and_scale",
+          "what_they_evaluate": "Can the candidate trace a direct line from their specific action to a business or technical metric? Vague adjectives are a red flag. Results should appear early, not in the last sentence.",
+          "strong_answer_signals": [
+            "Led with the metric, not the technology",
+            "Named the baseline before the change and the outcome after",
+            "Explained how they measured — what the instrumentation was",
+            "Named the team or business impact, not just the technical metric",
+            "Acknowledged constraints or trade-offs they navigated"
+          ],
+          "risky_anti_patterns": ["vague_quantification", "hypothesis_without_proof", "impact_buried"],
+          "seniority_modifier": "Staff+/EM: impact should be business-level — revenue, retention, org throughput — not just system-level metrics."
+        },
+        {
+          "question": "Tell me about a time you significantly improved the performance or reliability of a system.",
+          "question_type": "behavioral",
+          "dimension": "impact_and_scale",
+          "what_they_evaluate": "Technical depth combined with impact measurement. Interviewers probe for candidates who understood root causes, not just applied surface fixes — and who measured the outcome rigorously.",
+          "strong_answer_signals": [
+            "Named the system and the specific metric that was degraded",
+            "Described the root cause, not just the symptom",
+            "Named the architectural or code change that fixed it",
+            "Before/after numbers on the specific metric",
+            "Described what they added to prevent recurrence"
+          ],
+          "risky_anti_patterns": ["vague_quantification", "hypothesis_without_proof"],
+          "seniority_modifier": "Staff+: improvement should affect multiple services or a platform — not a single endpoint or query."
+        },
+        {
+          "question": "Tell me about a time you delivered a project that had a significant positive impact on the business.",
+          "question_type": "behavioral",
+          "dimension": "impact_and_scale",
+          "what_they_evaluate": "Business-level impact awareness — did the candidate connect their technical delivery to a business outcome? Interviewers probe for candidates who tracked the downstream effect, not just the delivery milestone.",
+          "strong_answer_signals": [
+            "Named a specific business metric that moved as a result",
+            "Showed they understood why this metric mattered to the business",
+            "Described the causal chain from their work to the outcome",
+            "Acknowledged what else contributed to the outcome (not claiming sole credit)",
+            "Named how they tracked the metric over time after launch"
+          ],
+          "risky_anti_patterns": ["vague_quantification", "impact_buried", "hypothesis_without_proof"],
+          "seniority_modifier": "Staff+/EM: the metric should be at a product or business unit level — not a team-level delivery."
+        },
+        {
+          "question": "Tell me about a time you had to prioritise between competing high-impact projects. How did you decide?",
+          "question_type": "behavioral",
+          "dimension": "impact_and_scale",
+          "what_they_evaluate": "Prioritisation judgment — did the candidate have a principled framework, or did they just follow whoever shouted loudest? Interviewers probe for candidates who can articulate what impact means in their context.",
+          "strong_answer_signals": [
+            "Named the competing projects and their trade-offs explicitly",
+            "Used a framework or data to make the call — not just intuition",
+            "Communicated the trade-off to stakeholders who were disappointed",
+            "Measured whether the chosen project delivered the expected impact",
+            "Named what they sacrificed and whether they were right in hindsight"
+          ],
+          "risky_anti_patterns": ["vague_quantification", "escalation_default"],
+          "seniority_modifier": "Staff+/EM: prioritisation should be at a roadmap or org level — not between two tasks."
+        }
+      ],
+  
+      "influence_without_authority": [
+        {
+          "question": "Tell me about a time you influenced a decision or change without having direct authority.",
+          "question_type": "behavioral",
+          "dimension": "influence_without_authority",
+          "what_they_evaluate": "Did the candidate build genuine alignment or just compliance? Interviewers probe: was the other team convinced, or just cornered? The change should have stuck after the candidate moved on.",
+          "strong_answer_signals": [
+            "Named the stakeholders and their initial positions",
+            "Used data, demos, or working prototypes to build alignment",
+            "Described someone who resisted and how they handled it",
+            "The decision stuck — it wasn't reversed once they moved on",
+            "Named what they learned about influencing in distributed environments"
+          ],
+          "risky_anti_patterns": ["we_default", "escalation_default"],
+          "seniority_modifier": "Staff+: influence should span org boundaries — not just within a single team or product area."
+        },
+        {
+          "question": "Describe a time you drove alignment across multiple teams or stakeholders with conflicting priorities.",
+          "question_type": "behavioral",
+          "dimension": "influence_without_authority",
+          "what_they_evaluate": "Cross-team influence through persuasion and evidence. Interviewers look for candidates who understood each team's context and interests, not just their own position.",
+          "strong_answer_signals": [
+            "Named each stakeholder and their specific concern",
+            "Found a solution that addressed at least some of each party's concerns",
+            "Did not rely on a manager to break the tie",
+            "Named the moment alignment was reached and how they knew",
+            "Described the outcome for each stakeholder"
+          ],
+          "risky_anti_patterns": ["we_default", "escalation_default"],
+          "seniority_modifier": "EM: alignment should be at a VP or director level — not just peer teams."
+        },
+        {
+          "question": "Tell me about a time you mentored or grew someone on your team. What was the outcome?",
+          "question_type": "behavioral",
+          "dimension": "influence_without_authority",
+          "what_they_evaluate": "Investment in others' growth — specifically, did the candidate treat mentoring as a priority, not an afterthought? Interviewers probe for concrete development outcomes, not just 'I was available.'",
+          "strong_answer_signals": [
+            "Named the specific person and the gap they were helping address",
+            "Described a deliberate development plan or approach",
+            "Named a concrete milestone in the person's growth",
+            "Showed they adjusted their approach when the first method didn't work",
+            "The person's growth had a measurable team impact"
+          ],
+          "risky_anti_patterns": ["we_default", "vague_quantification"],
+          "seniority_modifier": "EM: mentoring story should involve a promotion cycle or role transition — not just skill development."
+        },
+        {
+          "question": "Tell me about a time you had to get buy-in for a technical decision from non-technical stakeholders.",
+          "question_type": "behavioral",
+          "dimension": "influence_without_authority",
+          "what_they_evaluate": "Communication and translation ability — did the candidate make the technical case in business terms? Interviewers probe for candidates who adjusted their communication style without losing the core argument.",
+          "strong_answer_signals": [
+            "Named the non-technical stakeholder and their specific concern",
+            "Translated the technical argument into business risk or opportunity language",
+            "Named the specific analogy or framing that worked",
+            "Got a decision made — not just a 'we'll look into it'",
+            "Followed up to confirm the decision was being executed"
+          ],
+          "risky_anti_patterns": ["we_default", "escalation_default"],
+          "seniority_modifier": "Staff+/EM: stakeholder should be VP-level or above, and the technical decision should have strategic implications."
+        }
+      ],
+  
+      "problem_solving": [
+        {
+          "question": "Tell me about the most challenging technical problem you've solved. How did you approach it?",
+          "question_type": "behavioral",
+          "dimension": "problem_solving",
+          "what_they_evaluate": "Structured problem decomposition and intellectual honesty. Interviewers probe: did you frame the right problem before solving it? Did you consider multiple approaches and explain why you chose one?",
+          "strong_answer_signals": [
+            "Started by describing the problem framing, not the solution",
+            "Named at least two approaches they considered",
+            "Articulated the trade-offs precisely",
+            "Used data or experimentation to validate the approach",
+            "Named what they would do differently with hindsight"
+          ],
+          "risky_anti_patterns": ["vague_quantification", "hypothesis_without_proof"],
+          "seniority_modifier": "Staff+: problem should have system-wide or cross-team implications — not scoped to a single service."
+        },
+        {
+          "question": "Tell me about a time you had to make a high-stakes decision with incomplete data.",
+          "question_type": "behavioral",
+          "dimension": "problem_solving",
+          "what_they_evaluate": "Judgment under uncertainty — did the candidate have a principled process for deciding with incomplete information? Interviewers probe for structured risk assessment, not gut-call heroics.",
+          "strong_answer_signals": [
+            "Named the specific uncertainty and why waiting for more data wasn't viable",
+            "Described a deliberate framework for the decision",
+            "Named the risk they accepted and why it was acceptable",
+            "Monitored the outcome and updated their approach when new data arrived",
+            "Did not claim perfect information retroactively"
+          ],
+          "risky_anti_patterns": ["escalation_default", "hypothesis_without_proof"],
+          "seniority_modifier": "Staff+/EM: decision should have architectural or org-level consequences — not a feature trade-off."
+        },
+        {
+          "question": "Describe a time you had to break down a highly ambiguous problem. What was your process?",
+          "question_type": "behavioral",
+          "dimension": "problem_solving",
+          "what_they_evaluate": "Problem framing ability — did the candidate define the problem correctly before solving it? Interviewers look for candidates who question assumptions and clarify constraints before building.",
+          "strong_answer_signals": [
+            "Described how they clarified or framed the problem, not just the solution",
+            "Named the assumptions they validated before building",
+            "Broke the problem into components with clear dependencies",
+            "Used customer or data signal to validate the framing",
+            "Named what they were uncertain about and how they managed that uncertainty"
+          ],
+          "risky_anti_patterns": ["we_default", "vague_quantification"],
+          "seniority_modifier": "Staff+: ambiguity should be at a system or org level — unclear requirements on a new architectural direction, not feature ambiguity."
+        },
+        {
+          "question": "Tell me about a time you built or redesigned a system to make it significantly simpler.",
+          "question_type": "behavioral",
+          "dimension": "problem_solving",
+          "what_they_evaluate": "Simplification instinct — did the candidate actively remove complexity rather than add to it? Interviewers probe for the ability to question existing design decisions and make a principled case for simplification.",
+          "strong_answer_signals": [
+            "Named the specific complexity they eliminated and why it existed in the first place",
+            "Described a deliberate decision to remove something — not just refactor",
+            "Named the trade-off they accepted to achieve simplicity",
+            "Measured the outcome: fewer errors, faster onboarding, lower cost",
+            "Got team or org adoption for the simpler design"
+          ],
+          "risky_anti_patterns": ["vague_quantification", "we_default"],
+          "seniority_modifier": "Staff+: simplification should be architectural — eliminating a category of problem, not just cleaning up code."
+        },
+        {
+          "question": "Tell me about a time you made a wrong technical decision. How did you identify it and what did you do?",
+          "question_type": "behavioral",
+          "dimension": "problem_solving",
+          "what_they_evaluate": "Intellectual honesty and course-correction ability. Interviewers specifically probe for self-awareness: was the wrong decision genuinely acknowledged, or softened? Did the candidate change course quickly when evidence emerged?",
+          "strong_answer_signals": [
+            "Named the decision clearly — no softening language",
+            "Explained why it seemed right at the time",
+            "Named the evidence that revealed the error",
+            "Described the course correction they drove",
+            "Named what they changed about their decision-making process afterward"
+          ],
+          "risky_anti_patterns": ["we_default"],
+          "seniority_modifier": "Staff+: the wrong decision should have had architectural or strategic consequences."
+        }
+      ],
+  
+      "collaboration": [
+        {
+          "question": "Tell me about a time you worked with a team or person whose working style was very different from yours.",
+          "question_type": "behavioral",
+          "dimension": "collaboration",
+          "what_they_evaluate": "Adaptability and empathy — did the candidate meet the other person where they were, or expect them to conform? Interviewers probe for concrete behavioral adaptation, not just 'we communicated better.'",
+          "strong_answer_signals": [
+            "Named the specific style difference and why it created friction",
+            "Named a concrete adaptation they made",
+            "Outcome was a successful collaboration, not just coexistence",
+            "Showed curiosity about the other person's approach",
+            "Did not frame the other person as the problem"
+          ],
+          "risky_anti_patterns": ["we_default", "escalation_default"],
+          "seniority_modifier": "EM: collaboration story should involve cross-functional or cross-team scope — not just a peer relationship."
+        },
+        {
+          "question": "Tell me about a time you contributed to your team's success beyond your individual deliverables.",
+          "question_type": "behavioral",
+          "dimension": "collaboration",
+          "what_they_evaluate": "Team-first behavior — did the candidate invest in team outcomes at a cost to their personal output? Interviewers probe for specific investment, not vague 'I helped the team.'",
+          "strong_answer_signals": [
+            "Named a specific teammate or team problem",
+            "Invested time in a way that had a cost to their own output",
+            "Team outcome improved in a measurable way",
+            "No expectation of credit — described it as natural",
+            "Showed this is a pattern, not a one-off"
+          ],
+          "risky_anti_patterns": ["we_default"],
+          "seniority_modifier": "Staff+/EM: contribution should be structural — improving how the team works, not just helping one person."
+        },
+        {
+          "question": "Describe a time you had to deliver difficult feedback to a colleague. How did you handle it?",
+          "question_type": "behavioral",
+          "dimension": "collaboration",
+          "what_they_evaluate": "Directness and care — did the candidate give real feedback at the right time, or watered-down feedback that was easier to deliver? Interviewers probe for impact: did the feedback land and lead to change?",
+          "strong_answer_signals": [
+            "Delivered the feedback directly and specifically",
+            "Chose the right time and setting deliberately",
+            "The feedback was about something consequential, not trivial",
+            "The recipient heard it — even if they initially resisted",
+            "Outcome: the person changed, or the relationship was stronger"
+          ],
+          "risky_anti_patterns": ["escalation_default", "we_default"],
+          "seniority_modifier": "EM: feedback should include examples of performance conversations or promotion decisions."
+        },
+        {
+          "question": "Tell me about a time you had to work under pressure with a cross-functional team to meet a deadline.",
+          "question_type": "behavioral",
+          "dimension": "collaboration",
+          "what_they_evaluate": "Collaboration under stress — did the candidate maintain team cohesion when things got hard, or did they retreat to individual execution? Interviewers probe for specific behaviors that held the team together.",
+          "strong_answer_signals": [
+            "Named the specific pressure and how it affected team dynamics",
+            "Named a concrete action they took to stabilise or focus the team",
+            "Showed they absorbed some of the pressure rather than distributing it",
+            "Named the outcome and the team's state after the crunch",
+            "Reflected on what they would do differently to prevent the crunch"
+          ],
+          "risky_anti_patterns": ["we_default", "escalation_default"],
+          "seniority_modifier": "Staff+/EM: pressure scenario should involve cross-team dependencies, not just a single team sprint."
+        }
+      ],
+  
+      "growth_mindset": [
+        {
+          "question": "Tell me about a time you received difficult feedback and how you responded.",
+          "question_type": "behavioral",
+          "dimension": "growth_mindset",
+          "what_they_evaluate": "The ability to receive hard feedback without defensiveness AND take a specific action in response. Interviewers probe for behavioral change as evidence, not just acknowledgement.",
+          "strong_answer_signals": [
+            "Named the specific feedback — did not genericise or soften it",
+            "Acknowledged an initial defensive reaction honestly, then described moving past it",
+            "Took a specific, measurable action in response",
+            "Described how their behavior or output changed",
+            "Did not position themselves as perfect from the start"
+          ],
+          "risky_anti_patterns": ["we_default"],
+          "seniority_modifier": "Staff+/EM: feedback should be about leadership or influence, not technical skill."
+        },
+        {
+          "question": "Tell me about a time you failed at something. What did you learn and what did you change?",
+          "question_type": "behavioral",
+          "dimension": "growth_mindset",
+          "what_they_evaluate": "Ownership of failure and genuine learning. Interviewers specifically flag candidates who externalise blame, claim they 'almost' succeeded, or describe trivial failures. Strong answers are direct about the mistake and specific about the change.",
+          "strong_answer_signals": [
+            "Named the failure clearly — no softening language",
+            "Took personal ownership — named their decision that contributed",
+            "Did not share blame across teammates",
+            "Described a concrete behavioral change they made afterward",
+            "Showed the change stuck — there's evidence of the new behavior later"
+          ],
+          "risky_anti_patterns": ["we_default"],
+          "seniority_modifier": "Staff+/EM: failure should have had team or product-level consequences, not just personal impact."
+        },
+        {
+          "question": "Tell me about a time you changed your mind about something important based on new information.",
+          "question_type": "behavioral",
+          "dimension": "growth_mindset",
+          "what_they_evaluate": "Intellectual honesty — did the candidate genuinely update a belief when evidence warranted it? Interviewers probe for the original conviction, the contradicting evidence, and the visible update. A 'preference change' doesn't count.",
+          "strong_answer_signals": [
+            "Named the original strong opinion and why they held it",
+            "Named the evidence that challenged it",
+            "Described the specific moment they updated their view",
+            "The change was non-trivial — not a minor preference shift",
+            "Communicated the update to their team openly"
+          ],
+          "risky_anti_patterns": ["we_default"],
+          "seniority_modifier": "Staff+: the opinion change should have architectural or roadmap consequences."
+        },
+        {
+          "question": "Tell me about a time you proactively sought out an opportunity to learn something outside your comfort zone.",
+          "question_type": "behavioral",
+          "dimension": "growth_mindset",
+          "what_they_evaluate": "Initiative in learning — did the candidate actively expand their domain, or only learn when forced to? Interviewers probe for learning that was self-initiated and had a practical outcome.",
+          "strong_answer_signals": [
+            "Named the specific skill or domain they chose to pursue, and why",
+            "Described the concrete steps they took — not just 'I read about it'",
+            "Applied the learning to a real work problem",
+            "Named the outcome: what became possible that wasn't before",
+            "Showed this is a repeating pattern, not a one-off"
+          ],
+          "risky_anti_patterns": ["vague_quantification"],
+          "seniority_modifier": "Staff+: the learning should have influenced their team's or org's direction — not just their personal capability."
+        },
+        {
+          "question": "Describe a situation where you had to quickly adapt to a major change or unexpected challenge.",
+          "question_type": "behavioral",
+          "dimension": "growth_mindset",
+          "what_they_evaluate": "Adaptability under change — did the candidate stabilise themselves and their team quickly, or did they resist the change? Interviewers probe for the specific adaptation they made and the outcome.",
+          "strong_answer_signals": [
+            "Named the specific change and its immediate impact on their work",
+            "Described a concrete adaptation — changed plan, approach, or team structure",
+            "Did not spend the answer on the problem — focused on the response",
+            "Showed they helped teammates adapt too, not just themselves",
+            "Named the outcome: what succeeded despite the change"
+          ],
+          "risky_anti_patterns": ["we_default", "escalation_default"],
+          "seniority_modifier": "Staff+/EM: change should be an org-level shift — reorg, strategy pivot, market change — not a project-level disruption."
+        }
+      ],
+  
+      "conflict_resolution": [
+        {
+          "question": "Tell me about a time you strongly disagreed with a decision made by your manager or a senior stakeholder.",
+          "question_type": "behavioral",
+          "dimension": "conflict_resolution",
+          "what_they_evaluate": "Intellectual courage + eventual commitment. Did the candidate push back with data? AND did they execute fully after the decision was made? Undermining post-decision is a hard fail at most companies.",
+          "strong_answer_signals": [
+            "Raised the disagreement directly with the decision-maker",
+            "Framed the pushback with data or a principled argument",
+            "Described the moment they accepted the outcome and why",
+            "Executed fully on the decision once made",
+            "Named what they learned from the outcome"
+          ],
+          "risky_anti_patterns": ["escalation_default", "we_default"],
+          "seniority_modifier": "Staff+/EM: disagreement should be on architectural direction or org priorities — not feature scope."
+        },
+        {
+          "question": "Tell me about a time you had a conflict with a peer or teammate. How did you resolve it?",
+          "question_type": "behavioral",
+          "dimension": "conflict_resolution",
+          "what_they_evaluate": "Direct conflict engagement — did the candidate address the conflict with the person, or route around them? Interviewers probe for principled resolution: what each party gave up, relationship intact afterward.",
+          "strong_answer_signals": [
+            "Engaged directly with the person, not their manager or HR",
+            "Named the specific disagreement and their own role in it",
+            "Described what they gave up in the resolution",
+            "Did not need management to mediate",
+            "Relationship was intact or stronger afterward"
+          ],
+          "risky_anti_patterns": ["escalation_default", "we_default"],
+          "seniority_modifier": "EM: conflict should be at a team level or between teams — not a two-person interpersonal issue."
+        },
+        {
+          "question": "Tell me about a time you identified something broken in your team or org and drove a change to fix it.",
+          "question_type": "behavioral",
+          "dimension": "conflict_resolution",
+          "what_they_evaluate": "Proactive conflict with the status quo — did the candidate see dysfunction and act, or wait for permission? Interviewers probe for initiative combined with the ability to build buy-in for the change.",
+          "strong_answer_signals": [
+            "Named the specific dysfunction — not vague 'processes weren't great'",
+            "Took action without being asked",
+            "The change was adopted by the team or org, not just proposed",
+            "Named the before/after state clearly",
+            "Described how they handled resistance from people who liked the status quo"
+          ],
+          "risky_anti_patterns": ["we_default", "escalation_default"],
+          "seniority_modifier": "Staff+: the broken thing should be org-level or cross-team — not their immediate team's process."
+        },
+        {
+          "question": "Describe a time you had to push back on a request from a stakeholder. What happened?",
+          "question_type": "behavioral",
+          "dimension": "conflict_resolution",
+          "what_they_evaluate": "Principled pushback — did the candidate have a structured argument, or was it just resistance? Interviewers probe for intellectual courage: the willingness to say 'no' with data and accept the consequences.",
+          "strong_answer_signals": [
+            "Named the specific request and why they believed it was wrong",
+            "Built a structured argument — data, principles, or user impact",
+            "Delivered the pushback directly to the stakeholder",
+            "Either changed the direction or explicitly committed after being convinced",
+            "Did not just raise the concern and walk away"
+          ],
+          "risky_anti_patterns": ["escalation_default", "we_default"],
+          "seniority_modifier": "Staff+/EM: pushback should be on strategic direction or architectural approach — not implementation detail."
+        },
+        {
+          "question": "Tell me about a time when you had to navigate a disagreement between two teams or stakeholders.",
+          "question_type": "behavioral",
+          "dimension": "conflict_resolution",
+          "what_they_evaluate": "Mediation and principled facilitation — did the candidate facilitate a real resolution, or just create a temporary ceasefire? Interviewers probe for candidates who helped both parties get to a principled outcome.",
+          "strong_answer_signals": [
+            "Named each side's position and the legitimate interest behind it",
+            "Found a path that addressed the core concern of each side",
+            "Did not just split the difference — found a principled resolution",
+            "Both sides committed to the outcome",
+            "Resolution held — it wasn't relitigated after the meeting"
+          ],
+          "risky_anti_patterns": ["escalation_default"],
+          "seniority_modifier": "Staff+/EM: disagreement should be at a VP level or between product verticals."
+        }
+      ],
+  
+      "scenario_problem_solving": [
+        {
+          "question": "Imagine you inherit a system with no documentation, frequent production incidents, and an unhappy team. What do you do first?",
+          "question_type": "scenario",
+          "dimension": "problem_solving",
+          "what_they_evaluate": "Triage judgment and structured thinking under a messy, realistic constraint. Interviewers probe: do you stabilise first or understand first? Do you involve the team or try to fix things solo?",
+          "strong_answer_signals": [
+            "First move is to understand scope: what's actually broken vs. what's perceived",
+            "Balances short-term stabilisation (reduce incident rate) with long-term understanding",
+            "Involves the team early — doesn't treat this as a solo rescue mission",
+            "Names a specific first week and first month plan, not just principles",
+            "Acknowledges uncertainty: 'I'd want to learn X before committing to Y'"
+          ],
+          "risky_anti_patterns": ["escalation_default", "we_default"],
+          "seniority_modifier": "Staff+/EM: first move should include stakeholder communication and team morale — not just technical triage."
+        },
+        {
+          "question": "Suppose you notice that a key business metric has been declining for 3 weeks but nobody else has flagged it. What do you do?",
+          "question_type": "scenario",
+          "dimension": "problem_solving",
+          "what_they_evaluate": "Ownership instinct + structured investigation. Interviewers probe: do you investigate before escalating? Do you communicate at the right level of confidence? Do you own the follow-through?",
+          "strong_answer_signals": [
+            "Investigates root cause before escalating — doesn't just forward the metric",
+            "Names what data they'd gather and in what order",
+            "Escalates at the right level of confidence — not prematurely, not too late",
+            "Names who needs to know and how they'd communicate it",
+            "Owns the follow-through — doesn't hand off and forget"
+          ],
+          "risky_anti_patterns": ["escalation_default", "hypothesis_without_proof"],
+          "seniority_modifier": "Staff+/EM: response should include proactive communication to leadership and a plan for preventing recurrence."
+        },
+        {
+          "question": "Imagine your team is asked to deliver a major feature in half the time you believe is possible. What do you do?",
+          "question_type": "scenario",
+          "dimension": "problem_solving",
+          "what_they_evaluate": "Scope negotiation and creative constraint navigation. Interviewers probe: does the candidate push back with data, find a middle ground through scope reduction, or just commit and hope?",
+          "strong_answer_signals": [
+            "First move is to understand the why behind the deadline — is it fixed or negotiable?",
+            "Proposes a scope reduction that delivers the core value in the constrained timeline",
+            "Quantifies the risk explicitly — what breaks if we cut scope vs. if we miss the date",
+            "Does not commit to an unachievable timeline without flagging the risk",
+            "Involves the team in the trade-off conversation"
+          ],
+          "risky_anti_patterns": ["escalation_default", "we_default"],
+          "seniority_modifier": "Staff+/EM: should include managing stakeholder expectations and the consequences of the trade-off for downstream teams."
+        }
+      ]
+    },
+  
+    "company_specific": {
+      "amazon": {
+        "ownership": [
+          {
+            "question": "Tell me about a time you strongly disagreed with your manager or a peer on something important to the business. What did you do?",
+            "question_type": "behavioral",
+            "dimension": "conflict_resolution",
+            "company_value_ref": "Amazon LP: Have Backbone; Disagree and Commit",
+            "what_they_evaluate": "Amazon's 'Disagree and Commit' is tested very directly. The question appears in almost every Amazon loop. Bar-raisers specifically probe both halves equally: did you raise the disagreement with data? AND did you execute fully after the decision? The second half trips most candidates.",
+            "strong_answer_signals": [
+              "Raised the disagreement directly with the decision-maker — not sideways",
+              "Framed the pushback with a specific data point or principled argument",
+              "Named the moment they accepted the outcome and the reason",
+              "Executed fully — no passive resistance or 'I told you so' later",
+              "Named the outcome: were they right or wrong? Equally valuable either way."
+            ],
+            "risky_anti_patterns": ["escalation_default", "we_default"],
+            "seniority_modifier": "For SDE II+: the disagreement should be on technical design or product direction — not implementation preference.",
+            "reported_frequency": "very_high"
+          },
+          {
+            "question": "Tell me about a time you took on something significant outside your area of responsibility.",
+            "question_type": "behavioral",
+            "dimension": "ownership",
+            "company_value_ref": "Amazon LP: Ownership",
+            "what_they_evaluate": "Amazon interviewers explicitly probe for candidates who act like owners of the whole company, not just their ticket queue. The 'outside your area' framing is confirmed in multiple Glassdoor reports as a direct Ownership LP question.",
+            "strong_answer_signals": [
+              "Saw a gap no one else was filling and stepped in without being asked",
+              "Named the risk they accepted by stepping outside their lane",
+              "Drove the outcome — didn't just flag the problem",
+              "Used 'I' not 'we' for the key actions",
+              "Outcome benefited the customer or the business, not just their team"
+            ],
+            "risky_anti_patterns": ["we_default", "escalation_default"],
+            "seniority_modifier": "Senior+: the 'outside area' should be an org-level problem — not just a neighbouring team's service.",
+            "reported_frequency": "high"
+          },
+          {
+            "question": "Tell me about a time you went above and beyond for a customer.",
+            "question_type": "behavioral",
+            "dimension": "ownership",
+            "company_value_ref": "Amazon LP: Customer Obsession",
+            "what_they_evaluate": "Customer Obsession is Amazon's first and most frequently probed LP. Every interviewer in a loop is typically assigned at least one Customer Obsession question. The probe is: did you start with the customer, or did the customer appear as an afterthought in your story?",
+            "strong_answer_signals": [
+              "Identified a customer need that wasn't in the requirements",
+              "Took an action that had a personal cost (time, scope, comfort)",
+              "Outcome was directly felt by the customer — not just an internal metric",
+              "Did not expect credit for going beyond the brief",
+              "Showed the instinct is repeatable"
+            ],
+            "risky_anti_patterns": ["vague_quantification", "we_default"],
+            "seniority_modifier": "SDE II+: 'customer' can be internal (other service teams) — but must be specific and impact must be measurable.",
+            "reported_frequency": "very_high"
+          }
+        ],
+        "problem_solving": [
+          {
+            "question": "Tell me about a time you had to make a difficult decision quickly without time to consider all options.",
+            "question_type": "behavioral",
+            "dimension": "problem_solving",
+            "company_value_ref": "Amazon LP: Bias for Action",
+            "what_they_evaluate": "Bias for Action is about speed with judgment — not recklessness. Amazon reports this as one of the most frequently asked LP questions. They probe: did you have a structured process for deciding 'enough data'? Or did you just move and hope?",
+            "strong_answer_signals": [
+              "Named why waiting was more costly than acting with incomplete data",
+              "Described the minimal data set they needed before deciding",
+              "Named the risk they accepted and how they managed it",
+              "Outcome was positive — or if not, they course-corrected quickly",
+              "Showed the same logic applies in future decisions"
+            ],
+            "risky_anti_patterns": ["escalation_default", "hypothesis_without_proof"],
+            "seniority_modifier": "SDE II+: the speed-vs-correctness trade-off should involve system design or architectural consequence.",
+            "reported_frequency": "high"
+          },
+          {
+            "question": "Tell me about a time you invented or simplified a process or product.",
+            "question_type": "behavioral",
+            "dimension": "problem_solving",
+            "company_value_ref": "Amazon LP: Invent and Simplify",
+            "what_they_evaluate": "Invent and Simplify is frequently probed in Amazon loops. The 'Simplify' half is as important as 'Invent' — Amazon specifically wants to see that the candidate questioned whether the existing complexity was necessary before adding more.",
+            "strong_answer_signals": [
+              "Named the specific complexity they eliminated or the new idea they introduced",
+              "Showed why the existing approach was insufficient",
+              "Drove adoption — the simplified/invented approach was actually used",
+              "Named the measurable outcome: fewer steps, lower cost, faster cycle",
+              "Showed the instinct came from first-principles thinking, not just imitation"
+            ],
+            "risky_anti_patterns": ["we_default", "vague_quantification"],
+            "seniority_modifier": "Senior+: invention/simplification should be at a system or platform level — not a single script or feature.",
+            "reported_frequency": "high"
+          }
+        ],
+        "growth_mindset": [
+          {
+            "question": "Tell me about a time you failed publicly or in a high-visibility way. What did you do?",
+            "question_type": "behavioral",
+            "dimension": "growth_mindset",
+            "company_value_ref": "Amazon LP: Are Vocally Self-Critical",
+            "what_they_evaluate": "Amazon's 'Vocally Self-Critical' LP is tested through failure stories. Bar-raisers specifically look for candidates who name their failure clearly (no softening), take personal ownership, and show a concrete behavioral change. Externalising blame is a hard fail.",
+            "strong_answer_signals": [
+              "Named the failure directly — no 'the project had challenges' language",
+              "Took specific personal ownership — named their decision that contributed",
+              "Did not share blame across teammates",
+              "Described a concrete change they made afterward",
+              "The change is evident in a subsequent story they can tell"
+            ],
+            "risky_anti_patterns": ["we_default"],
+            "seniority_modifier": "SDE II+: failure should have had team-level or customer-visible consequences.",
+            "reported_frequency": "medium"
+          }
+        ]
+      },
+  
+      "google": {
+        "problem_solving": [
+          {
+            "question": "Tell me about a time you solved a problem nobody had solved before in your team or org.",
+            "question_type": "behavioral",
+            "dimension": "problem_solving",
+            "company_value_ref": "Google GCA: General Cognitive Ability",
+            "what_they_evaluate": "Google's GCA evaluation looks for learning agility on novel problems. The 'nobody had solved before' framing is reported across multiple Google interview guides. Interviewers are not looking for the correct answer — they probe how you decompose novelty.",
+            "strong_answer_signals": [
+              "Described the problem space before the solution — showed correct framing",
+              "Named at least two approaches considered and explained the choice",
+              "Used data or experimentation to validate, not just intuition",
+              "Communicated the reasoning clearly to their team",
+              "Named what they would do differently"
+            ],
+            "risky_anti_patterns": ["vague_quantification", "hypothesis_without_proof"],
+            "seniority_modifier": "L5+: problem should have been org-level or cross-functional — not a single system decision.",
+            "reported_frequency": "high"
+          }
+        ],
+        "influence_without_authority": [
+          {
+            "question": "Describe a situation where you had to influence others without formal authority.",
+            "question_type": "behavioral",
+            "dimension": "influence_without_authority",
+            "company_value_ref": "Google GCA: Leadership (Emergent)",
+            "what_they_evaluate": "Google calls this 'emergent leadership' — stepping up when the situation calls for it. This is one of the most reported Google behavioral questions verbatim. They probe: did you build genuine conviction in others, or just compliance through persistence?",
+            "strong_answer_signals": [
+              "Named the stakeholders and their initial positions",
+              "Built alignment through data, demos, or working prototypes",
+              "Described a specific person who resisted and how they handled it",
+              "The decision stuck — wasn't reversed once they moved on",
+              "Named what they learned about influencing in distributed environments"
+            ],
+            "risky_anti_patterns": ["we_default", "escalation_default"],
+            "seniority_modifier": "L5+: influence should span org boundaries — not just within a single team.",
+            "reported_frequency": "very_high"
+          }
+        ],
+        "growth_mindset": [
+          {
+            "question": "Give an example of when you took a calculated risk that paid off.",
+            "question_type": "behavioral",
+            "dimension": "growth_mindset",
+            "company_value_ref": "Google Googleyness: Challenging the Status Quo",
+            "what_they_evaluate": "Google's Googleyness includes willingness to 'challenge the status quo' — this question is confirmed across multiple Google behavioral prep guides as a direct Googleyness probe. They want to see intellectual courage, not just risk tolerance.",
+            "strong_answer_signals": [
+              "Named the conventional option and why they chose not to take it",
+              "Named the specific risk they accepted and how they sized it",
+              "Showed a deliberate decision process, not a gut call",
+              "The risk paid off in a measurable way",
+              "Named what they would have done if it hadn't paid off"
+            ],
+            "risky_anti_patterns": ["hypothesis_without_proof", "vague_quantification"],
+            "seniority_modifier": "L5+: risk should be architectural or strategic — not a technology choice.",
+            "reported_frequency": "medium"
+          }
+        ]
+      },
+  
+      "meta": {
+        "impact_and_scale": [
+          {
+            "question": "Tell me about a project that failed or did not meet expectations. What was your specific role in the failure?",
+            "question_type": "behavioral",
+            "dimension": "growth_mindset",
+            "company_value_ref": "Meta Values: Be Direct and Respect Your Colleagues",
+            "what_they_evaluate": "Meta's Jedi round specifically probes for self-awareness in failure. The 'your specific role' framing is verbatim from multiple Meta interview reports. They flag candidates who externalise blame or describe a failure where they were actually just a bystander.",
+            "strong_answer_signals": [
+              "Named the failure clearly without softening language",
+              "Named their specific decision that contributed to the failure",
+              "Did not distribute blame across teammates",
+              "Described a concrete behavioral change afterward",
+              "Showed the change is now part of how they operate"
+            ],
+            "risky_anti_patterns": ["we_default"],
+            "seniority_modifier": "E5+: failure should have had product or team-level consequences.",
+            "reported_frequency": "high"
+          },
+          {
+            "question": "Tell me about a time you made a high-stakes decision without manager approval.",
+            "question_type": "behavioral",
+            "dimension": "ownership",
+            "company_value_ref": "Meta Values: Move Fast + Be Bold",
+            "what_they_evaluate": "Meta specifically probes for autonomous decision-making with good judgment. The 'without manager approval' framing appears in multiple Meta Jedi round reports. They want to see that you can assess reversibility and act — without being reckless.",
+            "strong_answer_signals": [
+              "Named why manager approval wasn't available or necessary",
+              "Assessed the reversibility of the decision explicitly",
+              "Took the action and monitored the outcome closely",
+              "Communicated the decision to stakeholders after the fact",
+              "Would make the same call again — or named specifically what they'd change"
+            ],
+            "risky_anti_patterns": ["escalation_default"],
+            "seniority_modifier": "E5+: decision should have product or system-level consequence — not just team-level.",
+            "reported_frequency": "medium"
+          }
+        ]
+      },
+  
+      "stripe": {
+        "problem_solving": [
+          {
+            "question": "Describe a situation where you pushed back on a product or business decision because you identified a flaw in the reasoning.",
+            "question_type": "behavioral",
+            "dimension": "conflict_resolution",
+            "company_value_ref": "Stripe Operating Principles: Intellectual Courage",
+            "what_they_evaluate": "Stripe's 'Leveler' (bar-raiser equivalent) specifically looks for intellectual courage and analytical rigor. This question is confirmed in Stripe's behavioral prep guides. They probe: did you build a structured argument, or just express a preference? And did you make the case in writing?",
+            "strong_answer_signals": [
+              "Named the specific flaw in the reasoning — not just a different preference",
+              "Built a structured argument with data or first-principles analysis",
+              "Made the case in writing where possible (Stripe writing culture)",
+              "Either changed the direction or explicitly committed after being convinced",
+              "Did not raise the concern and walk away"
+            ],
+            "risky_anti_patterns": ["escalation_default", "vague_quantification"],
+            "seniority_modifier": "Senior+: pushback should be on architecture or product strategy, not implementation.",
+            "reported_frequency": "high"
+          },
+          {
+            "question": "Walk me through a complex technical decision you made. How did you evaluate the alternatives?",
+            "question_type": "behavioral",
+            "dimension": "problem_solving",
+            "company_value_ref": "Stripe Operating Principles: Rigorous Thinking",
+            "what_they_evaluate": "Stripe's behavioral rounds feel like technical interviews — this is one of the most reported Stripe questions. They specifically probe the reasoning process, not the conclusion. Vague reasoning is as much a red flag as a wrong answer.",
+            "strong_answer_signals": [
+              "Named 2-3 alternatives genuinely considered — not strawmen",
+              "Articulated trade-offs precisely",
+              "Named an assumption they validated before committing",
+              "Documented and communicated the decision clearly",
+              "Named what they were uncertain about"
+            ],
+            "risky_anti_patterns": ["vague_quantification", "hypothesis_without_proof"],
+            "seniority_modifier": "Senior+: decision should have system-wide or cross-team implications.",
+            "reported_frequency": "very_high"
+          }
+        ]
+      },
+  
+      "atlassian": {
+        "collaboration": [
+          {
+            "question": "Tell me about a time you had a significant disagreement with a stakeholder about the right thing to build.",
+            "question_type": "behavioral",
+            "dimension": "conflict_resolution",
+            "company_value_ref": "Atlassian Values: Open Company, No Bullshit",
+            "what_they_evaluate": "Atlassian's values interview explicitly tests 'Open Company, No Bullshit' through disagreement stories. This question is confirmed across multiple Glassdoor Atlassian reports. They probe: did you engage directly with the stakeholder, or route around them?",
+            "strong_answer_signals": [
+              "Engaged directly with the stakeholder — did not go around them",
+              "Framed the disagreement around user or business impact, not preference",
+              "Named what each party gave up in the resolution",
+              "Did not need management to mediate",
+              "Relationship intact or stronger afterward"
+            ],
+            "risky_anti_patterns": ["escalation_default", "we_default"],
+            "seniority_modifier": "Staff+/EM: conflict should be between teams or between product and engineering — not individual contributors.",
+            "reported_frequency": "high"
+          },
+          {
+            "question": "Tell me about a time you identified a process or practice in your team that was broken and drove a change to fix it.",
+            "question_type": "behavioral",
+            "dimension": "ownership",
+            "company_value_ref": "Atlassian Values: Be the Change You Seek",
+            "what_they_evaluate": "'Be the Change You Seek' is one of Atlassian's most distinctly-tested values. This question appears verbatim in Atlassian behavioral prep materials. They want people who see dysfunction and act without waiting for permission.",
+            "strong_answer_signals": [
+              "Named the specific dysfunction — not 'processes were inefficient'",
+              "Acted without being asked — no manager mandate",
+              "The change was adopted by the team, not just proposed",
+              "Named the before/after state clearly",
+              "Described how they handled resistance from those comfortable with the status quo"
+            ],
+            "risky_anti_patterns": ["we_default", "escalation_default"],
+            "seniority_modifier": "Staff+: the broken thing should be org-level or cross-team — not just their immediate team's process.",
+            "reported_frequency": "high"
+          }
+        ]
+      },
+  
+      "flipkart": {
+        "ownership": [
+          {
+            "question": "Tell me about a project you owned end-to-end — from design to production. What did you monitor after launch?",
+            "question_type": "behavioral",
+            "dimension": "ownership",
+            "company_value_ref": "Flipkart Engineering: End-to-End Ownership",
+            "what_they_evaluate": "Flipkart's HM round is confirmed to focus heavily on end-to-end ownership. The 'what did you monitor after launch' probe is specifically reported in Flipkart interview experiences. They want candidates who treated the system as genuinely theirs post-launch, not just during build.",
+            "strong_answer_signals": [
+              "Named the full lifecycle: design → build → deploy → monitor → improve",
+              "Described a specific production issue they caught and fixed post-launch",
+              "Named the metrics they tracked and why those metrics specifically",
+              "Did not hand off to another team after shipping",
+              "Named a user-facing outcome that validated the launch"
+            ],
+            "risky_anti_patterns": ["we_default", "scope_collapse"],
+            "seniority_modifier": "SDE2+: ownership should span a system or domain — not a single feature.",
+            "reported_frequency": "very_high"
+          }
+        ]
+      },
+  
+      "microsoft": {
+        "growth_mindset": [
+          {
+            "question": "Tell me about a time you fundamentally changed how you thought about a problem after working on it.",
+            "question_type": "behavioral",
+            "dimension": "growth_mindset",
+            "company_value_ref": "Microsoft Culture: Growth Mindset (Carol Dweck)",
+            "what_they_evaluate": "Microsoft's growth mindset framework, introduced by Satya Nadella, is actively probed in every Microsoft loop. The key distinction probed: a genuine shift in mental model (growth mindset) vs. learning a new fact or skill (fixed mindset reframed). Interviewers are trained on this distinction.",
+            "strong_answer_signals": [
+              "Named a belief or mental model they held — not just a piece of knowledge",
+              "Named the experience that challenged the belief",
+              "Described the updated mental model — not just 'I learned X'",
+              "Applied the updated model to a new problem",
+              "Was honest that the original model wasn't serving them well"
+            ],
+            "risky_anti_patterns": ["we_default"],
+            "seniority_modifier": "Principal+: mindset shift should be about leadership or technical direction, not just technical skill.",
+            "reported_frequency": "very_high"
+          }
+        ]
+      }
+    }
+  }

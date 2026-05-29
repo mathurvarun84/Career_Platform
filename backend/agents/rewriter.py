@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from .base_agent import BaseAgent
 from backend.schemas.agent4_schema import RewriterInput
-from backend.schemas.common import SectionText
+from backend.schemas.common import SectionText, SubEntry
 
 
 COMPANY_HEADER_START = "##COMPANY##"
@@ -979,25 +979,59 @@ class RewriterAgent(BaseAgent):
                 results[i] = fut.result()
         return results
 
+    def _resolve_entry_verbatim(
+        self,
+        entry: SubEntry,
+        section_text: SectionText | None,
+        resume_text: str,
+    ) -> str:
+        """Resolve verbatim anchor for a sub_entry; backfill from resume when A1 omitted text."""
+        verbatim = (entry.verbatim_text or "").strip()
+        if verbatim:
+            return verbatim
+        if section_text:
+            resolved = self._resolve_sub_text(section_text, entry.label).strip()
+            if resolved:
+                return resolved
+        if resume_text.strip():
+            from validator.experience_audit import detect_ground_truth_entries
+            from validator.resume_understanding_validator import _labels_overlap
+
+            for block in detect_ground_truth_entries(resume_text):
+                if _labels_overlap(entry.label, str(block.get("label", "") or "")):
+                    return str(block.get("text", "") or "").strip()
+        return ""
+
     def _append_stitched_sub_entry(
         self,
         section: str,
         entry_rw: SectionRewrite,
         *,
         entry_label: str,
+        verbatim_fallback: str = "",
         stitched_b: list[str],
         stitched_a: list[str],
         stitched_t: list[str],
     ) -> None:
         """Append one sub-entry rewrite (or verbatim) into the three style lists."""
+        fallback = (verbatim_fallback or "").strip()
+
+        def _style_text(primary: str) -> str:
+            text = (primary or "").strip()
+            return text if text else fallback
+
+        balanced = _style_text(entry_rw.balanced)
+        aggressive = _style_text(entry_rw.aggressive)
+        top = _style_text(entry_rw.top_1_percent)
+
         if section == "experience":
-            stitched_b.append(_ensure_experience_markers(entry_rw.balanced, entry_label))
-            stitched_a.append(_ensure_experience_markers(entry_rw.aggressive, entry_label))
-            stitched_t.append(_ensure_experience_markers(entry_rw.top_1_percent, entry_label))
+            stitched_b.append(_ensure_experience_markers(balanced, entry_label))
+            stitched_a.append(_ensure_experience_markers(aggressive, entry_label))
+            stitched_t.append(_ensure_experience_markers(top, entry_label))
         else:
-            stitched_b.append(entry_rw.balanced)
-            stitched_a.append(entry_rw.aggressive)
-            stitched_t.append(entry_rw.top_1_percent)
+            stitched_b.append(balanced)
+            stitched_a.append(aggressive)
+            stitched_t.append(top)
 
     def _rewrite_with_sub_changes(
         self,
@@ -1085,6 +1119,7 @@ class RewriterAgent(BaseAgent):
                     section,
                     entry_rw,
                     entry_label=str(sub.get("sub_label", "") or ""),
+                    verbatim_fallback=original_text,
                     stitched_b=stitched_b,
                     stitched_a=stitched_a,
                     stitched_t=stitched_t,
@@ -1109,18 +1144,15 @@ class RewriterAgent(BaseAgent):
             else:
                 still_unmatched.append(sub)
 
-        # Pass 2: fuzzy label match for remaining
+        # Pass 2: strict employer-aware label match (never match on role title alone)
+        from validator.resume_understanding_validator import _labels_overlap
+
         for sub in still_unmatched:
-            sub_label = sub.get("sub_label", "").lower()
-            words = [w for w in sub_label.split() if len(w) > 3]
+            sub_label = str(sub.get("sub_label", "") or "")
             for i, entry in enumerate(section_text.sub_entries):
                 if i in sub_change_map:
                     continue
-                entry_label = entry.label.lower()
-                if sub_label in entry_label or entry_label in sub_label:
-                    sub_change_map[i] = sub
-                    break
-                if words and any(w in entry_label for w in words):
+                if _labels_overlap(sub_label, entry.label):
                     sub_change_map[i] = sub
                     break
 
@@ -1147,19 +1179,34 @@ class RewriterAgent(BaseAgent):
         stitched_b, stitched_a, stitched_t = [], [], []
 
         for i, entry in enumerate(section_text.sub_entries):
-            verbatim = entry.verbatim_text.strip()
+            verbatim = self._resolve_entry_verbatim(entry, section_text, resume_text)
             if not verbatim:
                 logging.warning(
-                    "RewriterAgent: sub_entry[%d] for '%s' has empty verbatim_text — skipping",
+                    "RewriterAgent: sub_entry[%d] '%s' has no verbatim anchor — "
+                    "using label stub (entry preserved)",
                     i,
-                    section,
+                    entry.label[:60],
                 )
-                continue
+                verbatim = entry.label.strip() or f"[{section} entry {i + 1}]"
 
             sub = sub_change_map.get(i)
 
             # No matching sub_change OR needs_change=False → verbatim copy
             if sub is None or not sub.get("needs_change", True):
+                text = verbatim
+                if section == "experience":
+                    text = _ensure_experience_markers(text, entry.label)
+                stitched_b.append(text)
+                stitched_a.append(text)
+                stitched_t.append(text)
+                continue
+
+            if i not in rewrite_results:
+                logging.warning(
+                    "RewriterAgent: no LLM result for sub_entry[%d] '%s' — verbatim fallback",
+                    i,
+                    entry.label[:60],
+                )
                 text = verbatim
                 if section == "experience":
                     text = _ensure_experience_markers(text, entry.label)
@@ -1179,6 +1226,7 @@ class RewriterAgent(BaseAgent):
                 section,
                 entry_rw,
                 entry_label=entry.label,
+                verbatim_fallback=verbatim,
                 stitched_b=stitched_b,
                 stitched_a=stitched_a,
                 stitched_t=stitched_t,
