@@ -483,6 +483,40 @@ def classify_section_gaps(gaps: list[dict], resume_text: str = "") -> list[dict]
     return classified
 
 
+def reclassify_gaps_for_resume_only(gaps: list[dict]) -> list[dict]:
+    """
+    In resume-only mode, A4 rewrites address metric/improvement gaps.
+
+    Heuristic evidence classification (quantified, impact, etc.) should render
+    as structural patches, not coaching cards.
+    """
+    reclassified: list[dict] = []
+    for gap in gaps:
+        updated = dict(gap)
+        if (
+            updated.get("gap_type") == GapType.EVIDENCE.value
+            and (updated.get("rewrite_instruction") or "").strip()
+        ):
+            updated = _apply_gap_type_metadata(updated, GapType.STRUCTURAL.value)
+
+        sub_changes = gap.get("sub_changes") or []
+        if sub_changes:
+            new_subs: list[dict] = []
+            for sub in sub_changes:
+                sub_copy = dict(sub)
+                if (
+                    sub_copy.get("gap_type") == GapType.EVIDENCE.value
+                    and (sub_copy.get("rewrite_instruction") or "").strip()
+                ):
+                    sub_copy = _apply_gap_type_metadata(
+                        sub_copy, GapType.STRUCTURAL.value
+                    )
+                new_subs.append(sub_copy)
+            updated["sub_changes"] = new_subs
+        reclassified.append(updated)
+    return reclassified
+
+
 _GAP_TYPE_ORDER: dict[str, int] = {
     GapType.EVIDENCE.value: 0,
     GapType.STRUCTURAL.value: 1,

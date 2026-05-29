@@ -105,22 +105,27 @@ alter table public.job_descriptions enable row level security;
 alter table public.analysis_runs enable row level security;
 alter table public.patches enable row level security;
 
-create policy if not exists "users see own resumes"
+-- PostgreSQL does not support CREATE POLICY IF NOT EXISTS — drop first for idempotent re-runs.
+drop policy if exists "users see own resumes" on public.resumes;
+create policy "users see own resumes"
   on public.resumes
   for select
   using (auth.uid() = user_id);
 
-create policy if not exists "users see own jds"
+drop policy if exists "users see own jds" on public.job_descriptions;
+create policy "users see own jds"
   on public.job_descriptions
   for select
   using (auth.uid() = user_id);
 
-create policy if not exists "users see own runs"
+drop policy if exists "users see own runs" on public.analysis_runs;
+create policy "users see own runs"
   on public.analysis_runs
   for select
   using (auth.uid() = user_id);
 
-create policy if not exists "users see own patches"
+drop policy if exists "users see own patches" on public.patches;
+create policy "users see own patches"
   on public.patches
   for select
   using (auth.uid() = user_id);

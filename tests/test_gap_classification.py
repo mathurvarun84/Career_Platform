@@ -1,6 +1,11 @@
 """Tests for deterministic coach gap classification (zero LLM)."""
 
-from backend.agents.gap_analyzer import classify_gap, classify_section_gaps, priority_fixes_from_gaps
+from backend.agents.gap_analyzer import (
+    classify_gap,
+    classify_section_gaps,
+    priority_fixes_from_gaps,
+    reclassify_gaps_for_resume_only,
+)
 
 
 def test_classify_surface_missing_keyword():
@@ -71,6 +76,26 @@ def test_classify_evidence_quantified_impact_and_architecture():
     result = classify_gap(gap, "")
     assert result["gap_type"] == "evidence"
     assert result["requires_user_input"] is True
+
+
+def test_reclassify_resume_only_promotes_metric_gaps_to_structural():
+    classified = classify_section_gaps(
+        [
+            {
+                "section": "experience",
+                "gap_reason": "Oracle bullets lack quantified impact metrics",
+                "rewrite_instruction": "Add QPS and user scale to bullets",
+                "missing_keywords": [],
+                "needs_change": True,
+                "sub_changes": [],
+            }
+        ],
+        "",
+    )
+    assert classified[0]["gap_type"] == "evidence"
+    promoted = reclassify_gaps_for_resume_only(classified)
+    assert promoted[0]["gap_type"] == "structural"
+    assert promoted[0]["requires_user_input"] is False
 
 
 def test_classify_trusts_llm_evidence_over_surface_heuristic():

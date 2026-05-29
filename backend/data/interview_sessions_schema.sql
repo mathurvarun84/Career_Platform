@@ -21,8 +21,10 @@ create index if not exists interview_sessions_user_created_idx
 
 alter table public.interview_sessions enable row level security;
 
--- Service role (backend) bypasses RLS; optional user-scoped policy for direct client reads:
-create policy if not exists "Users read own interview sessions"
+-- Service role (backend) bypasses RLS; optional user-scoped policy for direct client reads.
+-- PostgreSQL does not support CREATE POLICY IF NOT EXISTS — drop first for idempotent re-runs.
+drop policy if exists "Users read own interview sessions" on public.interview_sessions;
+create policy "Users read own interview sessions"
   on public.interview_sessions
   for select
   using (auth.uid() = user_id);

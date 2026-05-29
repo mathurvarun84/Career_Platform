@@ -492,6 +492,9 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
           if (!activeSession) {
             return {};
           }
+          if (activeSession.current_question_index !== questionIndex) {
+            return {};
+          }
           const partial = activeSession.partialFeedback ?? {};
 
           switch (chunk.type) {
@@ -596,8 +599,14 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
             return { interviewLoading: false, _cancelStream: null };
           }
 
+          const stillOnQuestion =
+            activeSession.current_question_index === questionIndex;
+
           const followUp = meta?.followUp ?? null;
           if (followUp && !isFollowUp) {
+            if (!stillOnQuestion) {
+              return { interviewLoading: false, _cancelStream: null };
+            }
             return {
               interviewLoading: false,
               _cancelStream: null,
@@ -635,12 +644,27 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
             anti_patterns_fired: partial.anti_patterns_fired ?? [],
           };
 
+          const feedback = [...activeSession.feedback];
+          feedback[questionIndex] = full;
+
+          if (!stillOnQuestion) {
+            return {
+              interviewLoading: false,
+              _cancelStream: null,
+              interviewSession: {
+                ...activeSession,
+                feedback,
+                partialFeedback: null,
+              },
+            };
+          }
+
           return {
             interviewLoading: false,
             _cancelStream: null,
             interviewSession: {
               ...activeSession,
-              feedback: [...activeSession.feedback, full],
+              feedback,
               partialFeedback: null,
               active_follow_up: null,
               state: "feedback_shown",
@@ -656,22 +680,34 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
 
     set({ _cancelStream: cancel });
   },
-  advanceQuestion: () =>
+  advanceQuestion: () => {
+    const cancel = useResumeStore.getState()._cancelStream;
+    if (cancel) {
+      cancel();
+    }
     set((current) => {
       if (!current.interviewSession) {
-        return {};
+        return { _cancelStream: null, interviewLoading: false };
+      }
+      const nextIndex = current.interviewSession.current_question_index + 1;
+      if (nextIndex >= current.interviewSession.questions.length) {
+        return { _cancelStream: null, interviewLoading: false };
       }
       return {
+        _cancelStream: null,
+        interviewLoading: false,
+        interviewError: null,
         interviewSession: {
           ...current.interviewSession,
-          current_question_index:
-            current.interviewSession.current_question_index + 1,
+          current_question_index: nextIndex,
           current_follow_up_count: 0,
           active_follow_up: null,
+          partialFeedback: null,
           state: "in_progress",
         },
       };
-    }),
+    });
+  },
   setInterviewLoading: (interviewLoading) => set({ interviewLoading }),
   setInterviewError: (interviewError) => set({ interviewError }),
   setInterviewSummary: (summary) =>

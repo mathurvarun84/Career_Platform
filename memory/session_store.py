@@ -11,6 +11,7 @@ import json
 import os
 import pathlib
 import datetime
+import hashlib
 import logging
 import uuid
 
@@ -19,6 +20,9 @@ BASE_DIR = pathlib.Path("resume_platform/memory")
 USERS_DIR = BASE_DIR / "users"
 
 logger = logging.getLogger(__name__)
+
+MAX_LEDGER_SIGNALS = 50
+MAX_RESUME_FINGERPRINTS = 20
 
 # ---------------------------------------------------------------------------
 # Helper: ensure file system structure exists
@@ -44,6 +48,7 @@ def _scaffold(user_id: str) -> dict:
         "runs": [],
         "style_decisions": {"accepted": [], "rejected": []},
         "agent_data": {},  # Keyed by run_id.agent_name → stores individual agent outputs
+        "resume_fingerprints": {},  # resume_fp → question ledger for mock interviews
     }
 
 # -------------------------------------------------------------------------------------------------
@@ -75,6 +80,8 @@ def load_session(user_id: str) -> dict:
     # Add agent_data if missing (backward compatibility)
     if "agent_data" not in data:
         data["agent_data"] = {}
+    if "resume_fingerprints" not in data:
+        data["resume_fingerprints"] = {}
     return data
 
 # -------------------------------------------------------------------------------------------------
@@ -201,3 +208,104 @@ def get_full_run_result(user_id: str, run_id: str) -> dict | None:
     session = load_session(user_id)
     key = f"{run_id}.full_result"
     return session.get("agent_data", {}).get(key)
+
+
+# -------------------------------------------------------------------------------------------------
+# Mock interview question ledger — per resume fingerprint
+# -------------------------------------------------------------------------------------------------
+
+def compute_resume_fingerprint(resume_text: str) -> str:
+    """Deterministic sha256 of the first 500 normalized chars of resume text."""
+    prefix = (resume_text or "")[:500].strip().lower()
+    return hashlib.sha256(prefix.encode("utf-8")).hexdigest()
+
+
+def _empty_ledger_entry() -> dict:
+    return {
+        "asked_dimensions": [],
+        "asked_signals": [],
+        "asked_question_ids": [],
+        "last_session_at": None,
+    }
+
+
+def load_question_ledger(user_id: str, resume_fingerprint: str) -> dict:
+    """Return prior asked dimensions/signals for this user + resume fingerprint."""
+    session = load_session(user_id)
+    fp_data = session.get("resume_fingerprints", {}).get(resume_fingerprint, {})
+    return {
+        "asked_dimensions": list(fp_data.get("asked_dimensions") or []),
+        "asked_signals": list(fp_data.get("asked_signals") or []),
+        "asked_question_ids": list(fp_data.get("asked_question_ids") or []),
+        "last_session_at": fp_data.get("last_session_at"),
+    }
+
+
+def extract_signal_phrase(why_this_question: str) -> str:
+    """Pull a short resume-signal phrase from why_this_question for dedup."""
+    text = (why_this_question or "").strip()
+    if not text:
+        return ""
+    for sep in (".", ";", "—", " - ", " because ", " since "):
+        idx = text.lower().find(sep)
+        if idx > 0:
+            text = text[:idx].strip()
+            break
+    return text[:120]
+
+
+def update_question_ledger(
+    user_id: str,
+    resume_fingerprint: str,
+    completed_questions: list[dict],
+) -> None:
+    """Append dimensions/signals from a completed mock interview session."""
+    if not resume_fingerprint or not completed_questions:
+        return
+
+    session = load_session(user_id)
+    fingerprints = session.setdefault("resume_fingerprints", {})
+    ledger = fingerprints.setdefault(resume_fingerprint, _empty_ledger_entry())
+
+    asked_dims = list(ledger.get("asked_dimensions") or [])
+    asked_signals = list(ledger.get("asked_signals") or [])
+    asked_ids = list(ledger.get("asked_question_ids") or [])
+
+    dim_set = {d.lower() for d in asked_dims}
+    signal_set = {s.lower() for s in asked_signals}
+    id_set = set(asked_ids)
+
+    for q in completed_questions:
+        dim = (q.get("dimension") or "").strip()
+        if dim and dim.lower() not in dim_set:
+            asked_dims.append(dim)
+            dim_set.add(dim.lower())
+
+        signal = extract_signal_phrase(q.get("why_this_question", ""))
+        if signal and signal.lower() not in signal_set:
+            asked_signals.append(signal)
+            signal_set.add(signal.lower())
+
+        qid = q.get("id")
+        if qid and qid not in id_set:
+            asked_ids.append(qid)
+            id_set.add(qid)
+
+    ledger["asked_dimensions"] = asked_dims
+    ledger["asked_signals"] = asked_signals[-MAX_LEDGER_SIGNALS:]
+    ledger["asked_question_ids"] = asked_ids
+    ledger["last_session_at"] = datetime.datetime.utcnow().isoformat()
+    fingerprints[resume_fingerprint] = ledger
+
+    if len(fingerprints) > MAX_RESUME_FINGERPRINTS:
+        ranked = sorted(
+            fingerprints.items(),
+            key=lambda item: item[1].get("last_session_at") or "",
+            reverse=True,
+        )
+        session["resume_fingerprints"] = dict(ranked[:MAX_RESUME_FINGERPRINTS])
+
+    try:
+        save_session(user_id, session)
+    except Exception as exc:
+        logger.warning("update_question_ledger failed for %s: %s", user_id, exc)

@@ -456,6 +456,207 @@ function QuestionCard({
   );
 }
 
+function SpinnerIcon({
+  size = 16,
+  color = "#6366f1",
+}: {
+  size?: number;
+  color?: string;
+}) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      style={{ animation: "spin 1s linear infinite", flexShrink: 0 }}
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6" fill="none" stroke="#e5e7eb" strokeWidth="2" />
+      <path
+        d="M8 2a6 6 0 0 1 6 6"
+        fill="none"
+        stroke={color}
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function GeneratingQuestionsPanel({
+  company,
+  seniority,
+  questionMode,
+}: {
+  company: string;
+  seniority: string;
+  questionMode: QuestionMode;
+}) {
+  const modeLabel =
+    questionMode === "mixed"
+      ? "mixed behavioral & scenario"
+      : questionMode;
+  const companyLabel = formatCompanyLabel(company);
+  const seniorityLabel = SENIORITY_LABELS[seniority] ?? seniority;
+  const companyHint = getHint(company);
+
+  const steps = [
+    "Reading your resume and experience signals",
+    companyHint || `Aligning to ${companyLabel}'s interview rubric`,
+    `Calibrating for ${seniorityLabel} level expectations`,
+    `Crafting 3 ${modeLabel} questions`,
+  ];
+
+  const [stepIndex, setStepIndex] = useState(0);
+
+  useEffect(() => {
+    setStepIndex(0);
+    const id = window.setInterval(() => {
+      setStepIndex((current) => Math.min(current + 1, steps.length - 1));
+    }, 2400);
+    return () => window.clearInterval(id);
+  }, [company, seniority, questionMode, steps.length]);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      aria-busy="true"
+      style={{
+        border: "1.5px solid #c7d2fe",
+        background: "linear-gradient(180deg, #eef2ff 0%, #ffffff 42%)",
+        borderRadius: 14,
+        padding: "22px 20px",
+        marginBottom: 22,
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "flex-start",
+          gap: 12,
+          marginBottom: 18,
+        }}
+      >
+        <SpinnerIcon size={20} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div
+            style={{
+              fontSize: 15,
+              fontWeight: 700,
+              color: "#312e81",
+              marginBottom: 4,
+            }}
+          >
+            Generating your interview
+          </div>
+          <div
+            key={stepIndex}
+            style={{
+              fontSize: 13,
+              color: "#4338ca",
+              lineHeight: 1.5,
+              animation: "slideUp 0.35s ease-out",
+            }}
+          >
+            {steps[stepIndex]}
+          </div>
+        </div>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 6,
+          marginBottom: 20,
+        }}
+      >
+        {steps.map((step, index) => (
+          <div
+            key={step}
+            style={{
+              flex: 1,
+              height: 4,
+              borderRadius: 999,
+              background:
+                index <= stepIndex ? "#6366f1" : "#e5e7eb",
+              transition: "background 0.35s ease",
+            }}
+          />
+        ))}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {[1, 2, 3].map((n) => (
+          <div
+            key={n}
+            style={{
+              background: "#ffffff",
+              border: "1.5px solid #e5e7eb",
+              borderRadius: 12,
+              padding: "14px 16px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                marginBottom: 10,
+              }}
+            >
+              {[72, 48].map((w) => (
+                <div
+                  key={w}
+                  style={{
+                    width: w,
+                    height: 10,
+                    borderRadius: 999,
+                    background: "#f3f4f6",
+                    animation: "pulse 1.4s ease-in-out infinite",
+                    animationDelay: `${n * 0.08}s`,
+                  }}
+                />
+              ))}
+            </div>
+            <div
+              style={{
+                width: n === 2 ? "88%" : "96%",
+                height: 12,
+                borderRadius: 6,
+                background: "#f3f4f6",
+                animation: "pulse 1.4s ease-in-out infinite",
+                animationDelay: `${n * 0.12}s`,
+                marginBottom: 8,
+              }}
+            />
+            <div
+              style={{
+                width: n === 3 ? "62%" : "74%",
+                height: 12,
+                borderRadius: 6,
+                background: "#f3f4f6",
+                animation: "pulse 1.4s ease-in-out infinite",
+                animationDelay: `${n * 0.16}s`,
+              }}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div
+        style={{
+          fontSize: 12,
+          color: "#6b7280",
+          textAlign: "center",
+          marginTop: 14,
+        }}
+      >
+        Usually takes 10–20 seconds · please keep this tab open
+      </div>
+    </div>
+  );
+}
+
 function EvaluatingState() {
   return (
     <div
@@ -475,21 +676,7 @@ function EvaluatingState() {
           marginBottom: 20,
         }}
       >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 16 16"
-          style={{ animation: "spin 1s linear infinite" }}
-        >
-          <circle cx="8" cy="8" r="6" fill="none" stroke="#e5e7eb" strokeWidth="2" />
-          <path
-            d="M8 2a6 6 0 0 1 6 6"
-            fill="none"
-            stroke="#6366f1"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        </svg>
+        <SpinnerIcon />
         <span style={{ fontSize: 13, color: "#6b7280", fontStyle: "italic" }}>
           Evaluating your answer...
         </span>
@@ -1076,6 +1263,14 @@ function FollowUpCard({
   );
 }
 
+const getFeedbackForQuestion = (
+  session: InterviewSession,
+  questionId: string,
+  questionIndex: number
+): PerQuestionFeedback | undefined =>
+  session.feedback.find((entry) => entry.question_id === questionId) ??
+  session.feedback[questionIndex];
+
 function InSessionView({ session }: { session: InterviewSession }) {
   const interviewLoading = useResumeStore((s) => s.interviewLoading);
   const interviewError = useResumeStore((s) => s.interviewError);
@@ -1085,8 +1280,23 @@ function InSessionView({ session }: { session: InterviewSession }) {
   const advanceQuestion = useResumeStore((s) => s.advanceQuestion);
   const setSessionState = useResumeStore((s) => s.setSessionState);
   const [lastSubmittedAnswer, setLastSubmittedAnswer] = useState<string>("");
+  const currentQuestionRef = useRef<HTMLDivElement>(null);
+  const prevQuestionIndexRef = useRef(session.current_question_index);
 
   const currentIndex = session.current_question_index;
+
+  useEffect(() => {
+    if (prevQuestionIndexRef.current === currentIndex) {
+      return;
+    }
+    prevQuestionIndexRef.current = currentIndex;
+    window.requestAnimationFrame(() => {
+      currentQuestionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, [currentIndex]);
 
   const currentQuestionId = session.questions[currentIndex]?.id;
   const currentTurn = session.answers.find(
@@ -1149,7 +1359,7 @@ function InSessionView({ session }: { session: InterviewSession }) {
 
         const isCompleted = i < currentIndex;
         const isCurrent = i === currentIndex;
-        const completedFeedback = session.feedback[i];
+        const completedFeedback = getFeedbackForQuestion(session, question.id, i);
         const showPartial =
           isCurrent &&
           session.state === "evaluating" &&
@@ -1186,10 +1396,19 @@ function InSessionView({ session }: { session: InterviewSession }) {
         const answerTextForQuestion = turnForQuestion?.answer_text ?? "";
 
         return (
-          <div key={question.id}>
+          <div
+            key={question.id}
+            ref={isCurrent ? currentQuestionRef : undefined}
+            style={
+              isCurrent && session.state === "in_progress"
+                ? { animation: "slideUp 0.35s ease-out" }
+                : undefined
+            }
+          >
             <QuestionCard question={question} isCompleted={isCompleted} />
             {showAnswerArea ? (
               <AnswerArea
+                key={question.id}
                 onSubmit={handleSubmitAnswer}
                 isEvaluating={interviewLoading}
               />
@@ -2187,6 +2406,14 @@ function PreSessionScreen() {
           Your answers are stored to help track your improvement over time.
         </div>
 
+        {loading ? (
+          <GeneratingQuestionsPanel
+            company={resolvedCompany}
+            seniority={seniority}
+            questionMode={questionMode}
+          />
+        ) : (
+          <>
         <div style={{ marginBottom: 22 }}>
           <div
             style={{
@@ -2310,26 +2537,30 @@ function PreSessionScreen() {
             style={{ gridColumn: "1 / -1" }}
           />
         </div>
+          </>
+        )}
 
-        <div style={{ marginTop: 24 }}>
+        <div style={{ marginTop: loading ? 0 : 24 }}>
           <button
             type="button"
             disabled={!canStart || loading}
+            aria-busy={loading}
             onClick={() => void handleStartSession()}
             style={{
               width: "100%",
               padding: "14px 0",
               fontSize: 15,
               fontWeight: 700,
-              background: canStart && !loading ? "#6366f1" : "#f3f4f6",
-              color: canStart && !loading ? "#ffffff" : "#9ca3af",
+              background: canStart || loading ? "#6366f1" : "#f3f4f6",
+              color: canStart || loading ? "#ffffff" : "#9ca3af",
               border: "none",
               borderRadius: 12,
-              cursor: canStart && !loading ? "pointer" : "not-allowed",
+              cursor: loading ? "wait" : canStart ? "pointer" : "not-allowed",
               boxShadow:
-                canStart && !loading ? "0 4px 0 #4338ca" : "0 4px 0 #e5e7eb",
+                canStart || loading ? "0 4px 0 #4338ca" : "0 4px 0 #e5e7eb",
               transform: "translateY(0)",
-              transition: "transform 0.1s",
+              transition: "transform 0.1s, opacity 0.15s",
+              opacity: loading ? 0.95 : 1,
             }}
             onMouseDown={(e) => {
               if (canStart && !loading) {
@@ -2342,7 +2573,21 @@ function PreSessionScreen() {
               }
             }}
           >
-            {loading ? "Generating your questions..." : "Start session"}
+            {loading ? (
+              <span
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                }}
+              >
+                <SpinnerIcon size={18} color="#ffffff" />
+                Generating your questions...
+              </span>
+            ) : (
+              "Start session"
+            )}
           </button>
           <div
             style={{
@@ -2352,9 +2597,11 @@ function PreSessionScreen() {
               marginTop: 8,
             }}
           >
-            {canStart
-              ? "3 questions · immediate feedback · ~12 minutes"
-              : "Select a company to begin"}
+            {loading
+              ? "Tailoring questions to your resume and target company"
+              : canStart
+                ? "3 questions · immediate feedback · ~12 minutes"
+                : "Select a company to begin"}
           </div>
         </div>
       </div>

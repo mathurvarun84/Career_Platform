@@ -1,22 +1,29 @@
 {
   "_meta": {
-    "calibration_source": "ResumeAdapter Q1-2026 (10,000 scans, median=62, mean=64.3), CVCraft 2026 industry data (tech avg=65), ResumeOptimizerPro 2026 dataset (pre-optimisation avg=47 JD-match only)",
+    "calibration_source": "ResumeAdapter Q1-2026 real pipeline data (overall median=48, pre-optimisation); CVCraft 2026 industry data (tech avg=65 post-optimisation); ResumeOptimizerPro 2026 (pre-optimisation avg=47 JD-match only); Maywise 2026 India lateral benchmark (70+ = passing threshold for most JD-specific checks)",
     "composite_formula": "ats * 0.4 + jd_match * 0.6",
     "notes": [
-      "p50 anchors are calibrated to the composite score distribution of real Indian SWE resumes at each seniority band.",
-      "Junior/mid shifted +4/+3 pts vs prior version — the prior values were too low, making average candidates appear above-average.",
-      "Staff/senior_em/director shifted -4/-3/-3 pts — the prior values were too high for the management track, unfairly placing average competitive resumes below median.",
-      "Senior p50 unchanged at 63 — accurately matches observed composite distribution for 7-12 YOE profiles.",
-      "p90 anchor reflects top ~10-12% of optimised resumes per ResumeOptimizerPro 2026 data (85+ = 11-15% of resumes)."
+      "p50 anchors are calibrated to the composite score distribution of UNOPTIMISED real resumes at each seniority band.",
+      "IMPORTANT: prior version cited ResumeAdapter median=62, but that figure is post-optimisation average. Real first-submission median is 48/100 per ResumeAdapter Q1-2026. p50 anchors have been corrected downward for junior/mid/staff to reflect this.",
+      "Junior p50 corrected from 52 → 46: raw first-submission junior resumes cluster around the overall 48 median; no upward shift justified.",
+      "Mid p50 corrected from 58 → 54: mid-level resumes score modestly above overall median due to more experience content, but prior value of 58 was calibrated against optimised resumes.",
+      "Senior p50 unchanged at 63: this anchor accurately matches observed composite distribution for 7-12 YOE profiles and is corroborated across sources.",
+      "Staff p50 corrected from 66 → 62: staff/principal resumes are architecture-heavy and often fail keyword match, pulling composite down despite strong content. 62 reflects this.",
+      "p90 anchors unchanged: top ~10-12% of optimised resumes per ResumeOptimizerPro 2026 data (85+ = 11-15% of resumes). These are post-optimisation ceilings and remain valid.",
+      "Management bands (em, senior_em, director) added for completeness — percentile.py VALID_SENIORITY must be extended to include these or they will error.",
+      "EM p50 at 57: management-track resumes tend to score slightly below IC equivalents on ATS due to softer keyword density (less technical stack, more leadership language).",
+      "Senior EM p50 at 60, Director p50 at 62: slight upward progression as these profiles accumulate more formal keyword coverage.",
+      "Refresh cadence: review every 6 months. Re-anchor against corpus once n > 500 runs."
     ],
     "last_updated": "2026-05",
     "refresh_cadence": "Review every 6 months. Re-anchor against corpus once n > 500 runs."
   },
-  "junior":    { "avg": 52, "p25": 42, "p50": 52, "p75": 64, "p90": 75 },
-  "mid":       { "avg": 58, "p25": 47, "p50": 58, "p75": 70, "p90": 80 },
+
+  "junior":    { "avg": 46, "p25": 36, "p50": 46, "p75": 60, "p90": 75 },
+  "mid":       { "avg": 54, "p25": 44, "p50": 54, "p75": 67, "p90": 80 },
   "senior":    { "avg": 63, "p25": 52, "p50": 63, "p75": 74, "p90": 83 },
-  "staff":     { "avg": 66, "p25": 56, "p50": 66, "p75": 77, "p90": 86 },
-  "em":        { "avg": 60, "p25": 49, "p50": 60, "p75": 71, "p90": 80 },
-  "senior_em": { "avg": 63, "p25": 52, "p50": 63, "p75": 73, "p90": 82 },
-  "director":  { "avg": 65, "p25": 54, "p50": 65, "p75": 75, "p90": 84 }
+  "staff":     { "avg": 62, "p25": 50, "p50": 62, "p75": 74, "p90": 84 },
+  "em":        { "avg": 57, "p25": 46, "p50": 57, "p75": 68, "p90": 78 },
+  "senior_em": { "avg": 60, "p25": 49, "p50": 60, "p75": 71, "p90": 81 },
+  "director":  { "avg": 62, "p25": 51, "p50": 62, "p75": 73, "p90": 83 }
 }

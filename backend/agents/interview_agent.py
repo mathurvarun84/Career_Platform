@@ -10,9 +10,11 @@ Provider: Anthropic
 """
 
 import json
+import random
 from pathlib import Path
 from uuid import uuid4
 
+from backend.utils.question_bank_retriever import retrieve_templates
 from .base_agent import BaseAgent
 
 
@@ -543,51 +545,57 @@ _SENIORITY_SCOPE_HINTS = {
 QUESTION_GEN_SYSTEM = """\
 You are a behavioural interview question designer for a career coaching platform.
 
-You generate exactly 3 interview questions for a specific candidate at a specific company.
+You receive:
+1. A candidate's resume signals (or raw resume text)
+2. A company target and seniority level
+3. BANK EXAMPLES — high-quality question templates from a curated bank
+4. Three target dimension slots with required question_type per slot
+
+Your job: Produce PERSONALIZED versions of the bank questions that reference
+the candidate's ACTUAL resume signals. Do NOT copy bank questions verbatim.
+Do NOT invent new question structures — adapt the bank's framing to this person's story.
 
 RULES — follow every rule or the output is unusable:
 1. Exactly 3 questions. No more, no less.
-2. Each question targets a DIFFERENT dimension. Never repeat a dimension.
-   Valid dimensions: ownership, impact_and_scale, influence_without_authority,
-   problem_solving, collaboration, growth_mindset, conflict_resolution
-3. Each question must be grounded in a specific resume signal from the candidate.
-   The why_this_question field must name the signal being probed.
-4. Questions must feel natural and conversational — not like a textbook exercise.
-5. risky_anti_patterns: pick 1-3 keys ONLY from this list (do not invent new keys):
-   we_default            — hides behind "we", obscures individual contribution
-   vague_quantification  — fake/missing numbers; adjectives instead of metrics
-   story_recycling       — same story reused across multiple questions
-   impact_buried         — leads with activity, buries result at the end
-   hypothesis_without_proof — states assumptions as fact, no validation shown
-   escalation_default    — resolves by going to manager rather than directly
-   scope_collapse        — staff/EM candidate describes junior-scoped work
-   no_reflection         — story ends at event; no learning or behavioral change stated
-   credit_deflection     — minimises own agency ("my manager suggested", "lucky timing")
-   recency_bias          — can only cite recent examples; no evidence of sustained behavior
-6. scope_collapse: only include for seniority=staff or seniority=em
-7. Respect the question_type in the prompt:
-   behavioral → "Tell me about a time when..."
-   scenario   → "Imagine you are..." or "Suppose you..."
-8. company_value_ref: format as "{Framework Name}: {Value Name}"
-   e.g. "Amazon LP: Ownership" or "Google Googleyness: Leadership"
-9. answer_risk_note: use ONLY when you spot a candidate-specific risk that none of
-   the 10 keys above can capture — e.g. "candidate's only experience is at a 3-person
-   startup; may lack scale reference" or "all projects are solo; no collaborative
-   signal to draw on". Max 120 characters. Set to null when the taxonomy covers it.
+2. Each question must use the dimension assigned to its slot (see TARGET DIMENSION SLOTS).
+   Never repeat a dimension across the 3 questions.
+3. Each question must reference a specific project, role, or signal from THIS resume.
+   The why_this_question field must name the resume signal being probed.
+4. Match the question_type specified for each dimension slot (behavioral or scenario).
+5. Apply the seniority_modifier from the bank when seniority is staff or em.
+6. Keep the structural framing from the bank (what it tests) — change the surface framing
+   (the "when you..." reference) to match the resume.
+7. Questions must feel natural and conversational — not like a textbook exercise.
+8. risky_anti_patterns: pick 1-3 keys ONLY from this list (do not invent new keys):
+   we_default, vague_quantification, story_recycling, impact_buried,
+   hypothesis_without_proof, escalation_default, scope_collapse,
+   no_reflection, credit_deflection, recency_bias, rehearsed_script
+9. scope_collapse: only include for seniority=staff or seniority=em
+10. company_value_ref: format as "{Framework Name}: {Value Name}"
+11. answer_risk_note: use ONLY for candidate-specific risks the taxonomy cannot capture.
+    Max 120 characters. Set to null when the taxonomy covers it.
+
+Example of correct personalization:
+  Bank template: "Tell me about a time you took ownership of something that wasn't your responsibility."
+  Resume signal: Led AI tool adoption across 200 engineers at Flipkart
+  Personalized: "At Flipkart, you drove AI tooling adoption across your engineering org.
+                 Tell me about a moment in that initiative when the responsibility was technically
+                 outside your scope — and why you owned it anyway."
 
 OUTPUT — return ONLY this JSON. No markdown. No preamble. No trailing text.
 {
   "questions": [
     {
       "id": "q1",
-      "text": "the actual interview question — conversational, specific to this candidate",
-      "question_type": "behavioral",
+      "text": "the personalized question text",
+      "question_type": "behavioral or scenario",
       "dimension": "one of the 7 valid dimensions",
-      "why_this_question": "which resume signal is being probed and why this dimension matters for this company",
+      "why_this_question": "which resume signal is being probed and why this dimension matters",
       "expected_signals": ["3-5 specific signals a Strong answer would contain"],
-      "risky_anti_patterns": ["1-3 keys from the 10-key list above"],
+      "risky_anti_patterns": ["1-3 keys from the list above"],
       "answer_risk_note": null,
-      "company_value_ref": "Framework Name: Value Name"
+      "company_value_ref": "Framework Name: Value Name",
+      "source": "bank_personalized"
     }
   ]
 }
@@ -622,27 +630,24 @@ class InterviewAgent(BaseAgent):
 
     def generate_questions(self, input_dict: dict) -> dict:
         """
-        Generate exactly 3 behavioural interview questions.
+        Generate exactly 3 behavioural interview questions via bank retrieval + LLM personalization.
 
         Input keys:
-          resume_signals: dict   — ResumeUnderstandingAgent output (or resume_text: str)
-          company:        str    — key into company_values.json (e.g. "amazon")
-          seniority:      str    — junior | mid | senior | staff | em
-          question_mode:  str    — behavioral | scenario | mixed
-                                   mixed → 2 behavioral + 1 scenario (scenario is Q3)
+          resume_signals / resume_text
+          company, seniority, question_mode
+          excluded_dimensions: list[str]  — from question ledger (optional)
+          question_ledger: dict           — prior asked signals (optional)
+          seed: int                         — deterministic tests only
 
         Output:
-          { "questions": [ InterviewQuestion dict × 3 ] }
-          Each question targets a DIFFERENT dimension.
-          question_type resolved: behavioral questions use "Tell me about a time..."
-          scenario questions use "Imagine you are..." framing.
-
-        Raises:
-          ValueError: if LLM returns < 3 questions or duplicate dimensions.
+          { "questions": [...], "dimensions_used": [str × 3] }
         """
         company_key = input_dict.get("company", "").lower().strip()
         seniority = input_dict.get("seniority", "senior").lower().strip()
         question_mode = input_dict.get("question_mode", "mixed").lower().strip()
+        ledger = input_dict.get("question_ledger") or {}
+        seed = input_dict.get("seed")
+        rng = random.Random(seed)
 
         company_data = _COMPANY_VALUES.get(company_key)
         if not company_data:
@@ -654,32 +659,71 @@ class InterviewAgent(BaseAgent):
                 "em_focus_dimensions": ["influence_without_authority", "collaboration", "impact_and_scale"],
             }
 
-        focus_key = "em_focus_dimensions" if seniority == "em" else "ic_focus_dimensions"
-        focus_dimensions = company_data.get(focus_key, ["ownership", "problem_solving", "impact_and_scale"])
+        excluded = list(input_dict.get("excluded_dimensions") or [])
+        excluded_set = {d.lower() for d in excluded if isinstance(d, str)}
+        available = [d for d in _VALID_DIMENSIONS if d.lower() not in excluded_set]
+        if len(available) < 3:
+            available = sorted(_VALID_DIMENSIONS)
+
+        target_dims = rng.sample(available, 3)
+
+        if question_mode == "behavioral":
+            type_map = {d: "behavioral" for d in target_dims}
+        elif question_mode == "scenario":
+            type_map = {d: "scenario" for d in target_dims}
+        else:
+            type_map = {
+                target_dims[0]: "behavioral",
+                target_dims[1]: "behavioral",
+                target_dims[2]: "scenario",
+            }
+
+        retrieved = retrieve_templates(
+            target_dimensions=target_dims,
+            company=company_key,
+            type_by_dimension=type_map,
+            candidates_per_slot=2,
+            seed=seed,
+        )
+
+        examples_block = self._build_examples_block(retrieved, type_map, seniority)
 
         prompt = self._build_question_gen_prompt(
             input_dict=input_dict,
             company_data=company_data,
-            focus_dimensions=focus_dimensions,
+            target_dimensions=target_dims,
+            type_map=type_map,
             seniority=seniority,
             question_mode=question_mode,
+            examples_block=examples_block,
+            question_ledger=ledger,
         )
+
+        excluded_dimensions = excluded_set
 
         try:
             raw = self._call_llm(QUESTION_GEN_SYSTEM, prompt)
-            result = self._parse_and_validate_questions(raw, question_mode)
+            result = self._parse_and_validate_questions(
+                raw,
+                question_mode,
+                question_ledger=ledger,
+                target_dimensions=target_dims,
+            )
             for q in result["questions"]:
-                q["source"] = "generated"
+                q["source"] = q.get("source") or "bank_personalized"
+            result["dimensions_used"] = target_dims
             return result
 
         except (ValueError, RuntimeError):
             fallback = self._get_fallback_questions(
                 company_key=company_key,
-                focus_dimensions=focus_dimensions,
+                focus_dimensions=target_dims,
                 question_mode=question_mode,
                 seniority=seniority,
+                excluded_dimensions=excluded_dimensions,
             )
             if fallback:
+                fallback["dimensions_used"] = target_dims
                 return fallback
             raise
 
@@ -742,6 +786,7 @@ class InterviewAgent(BaseAgent):
         focus_dimensions: list[str],
         question_mode: str,
         seniority: str,
+        excluded_dimensions: set[str] | None = None,
     ) -> dict | None:
         """
         Returns up to 3 questions from the question bank as a fallback.
@@ -753,13 +798,47 @@ class InterviewAgent(BaseAgent):
 
         questions = []
         dims_used = set()
+        excluded = excluded_dimensions or set()
 
         for dim in focus_dimensions:
             if len(questions) >= 3:
                 break
+            if dim.lower() in excluded or dim in dims_used:
+                continue
             company_bank = _QUESTION_BANK.get(company_key, {})
             dim_qs = company_bank.get(dim, [])
             if dim_qs and dim not in dims_used:
+                q = dict(dim_qs[0])
+                q["id"] = f"bank_{company_key}_{dim}"
+                q["source"] = "bank"
+                q["text"] = q.pop("question", q.get("text", ""))
+                if question_mode == "behavioral":
+                    q["question_type"] = "behavioral"
+                elif question_mode == "scenario":
+                    q["question_type"] = "scenario"
+                else:
+                    q["question_type"] = "scenario" if len(questions) == 2 else "behavioral"
+                q.setdefault(
+                    "why_this_question",
+                    f"From question bank — targeting {dim} for {company_key}",
+                )
+                q.setdefault("expected_signals", q.get("strong_answer_signals", [])[:4])
+                q.setdefault("risky_anti_patterns", [])
+                q.setdefault("answer_risk_note", None)
+                q.setdefault("company_value_ref", "")
+                questions.append(q)
+                dims_used.add(dim)
+
+        if len(questions) < 3:
+            for dim in _VALID_DIMENSIONS:
+                if len(questions) >= 3:
+                    break
+                if dim in dims_used or dim.lower() in excluded:
+                    continue
+                company_bank = _QUESTION_BANK.get(company_key, {})
+                dim_qs = company_bank.get(dim, [])
+                if not dim_qs:
+                    continue
                 q = dict(dim_qs[0])
                 q["id"] = f"bank_{company_key}_{dim}"
                 q["source"] = "bank"
@@ -786,13 +865,94 @@ class InterviewAgent(BaseAgent):
 
         return {"questions": questions[:3]}
 
+    @staticmethod
+    def _build_examples_block(
+        retrieved: dict[str, list[dict]],
+        type_map: dict[str, str],
+        seniority: str,
+    ) -> str:
+        """Format retrieved bank templates for the personalization prompt."""
+        if not retrieved:
+            return (
+                "BANK EXAMPLES: (no templates retrieved — use standard behavioral "
+                "framing for each target dimension)\n"
+            )
+
+        lines = [
+            "BANK EXAMPLES — personalize these structures; do NOT copy verbatim:",
+        ]
+        for dim, templates in retrieved.items():
+            lines.append(f"\n--- Dimension: {dim.upper()} ---")
+            lines.append(f"Target question_type: {type_map.get(dim, 'behavioral')}")
+            for i, template in enumerate(templates, 1):
+                lines.append(f"\nTemplate {i}:")
+                lines.append(f'  question: "{template.get("question", "")}"')
+                lines.append(
+                    f'  what_they_evaluate: "{template.get("what_they_evaluate", "")}"'
+                )
+                signals = template.get("strong_answer_signals", [])
+                lines.append(f"  strong_answer_signals: {signals}")
+                anti = template.get("risky_anti_patterns", [])
+                lines.append(f"  risky_anti_patterns: {anti}")
+                if seniority in ("staff", "em") and template.get("seniority_modifier"):
+                    lines.append(
+                        f'  seniority_modifier: "{template["seniority_modifier"]}"'
+                    )
+                if template.get("company_value_ref"):
+                    lines.append(
+                        f'  company_value_ref: "{template["company_value_ref"]}"'
+                    )
+        return "\n".join(lines)
+
+    @staticmethod
+    def _build_exclusion_block(question_ledger: dict | None) -> str:
+        """Format prior-session constraints for the question generation prompt."""
+        if not question_ledger:
+            return ""
+
+        asked_dimensions = [
+            d for d in (question_ledger.get("asked_dimensions") or []) if d
+        ]
+        asked_signals = [
+            s for s in (question_ledger.get("asked_signals") or []) if s
+        ]
+        if not asked_dimensions and not asked_signals:
+            return ""
+
+        lines = [
+            "HARD CONSTRAINTS — NEVER VIOLATE:",
+        ]
+        if asked_dimensions:
+            lines.append(
+                "- Do NOT generate questions targeting these dimensions "
+                f"(already covered in prior sessions): {asked_dimensions}"
+            )
+        if asked_signals:
+            lines.append(
+                "- Do NOT reference these resume signals "
+                f"(already asked about): {asked_signals}"
+            )
+        lines.append(
+            "- Generate questions that probe DIFFERENT stories and dimensions "
+            "from the candidate's resume."
+        )
+        if len(asked_dimensions) >= len(_VALID_DIMENSIONS):
+            lines.append(
+                "- All dimensions were covered before; reuse a dimension only if "
+                "you probe a clearly different resume story."
+            )
+        return "\n".join(lines)
+
     def _build_question_gen_prompt(
         self,
         input_dict: dict,
         company_data: dict,
-        focus_dimensions: list,
+        target_dimensions: list,
+        type_map: dict[str, str],
         seniority: str,
         question_mode: str,
+        examples_block: str,
+        question_ledger: dict | None = None,
     ) -> str:
         resume_signals = input_dict.get("resume_signals") or {}
         resume_text = input_dict.get("resume_text", "")
@@ -812,7 +972,7 @@ class InterviewAgent(BaseAgent):
         values_block = (
             f"TARGET COMPANY: {company_data['display_name']}\n"
             f"BEHAVIOURAL FRAMEWORK: {company_data['framework']}\n"
-            f"FOCUS DIMENSIONS FOR THIS SENIORITY ({seniority}): {', '.join(focus_dimensions)}\n"
+            f"TARGET DIMENSION SLOTS: {', '.join(target_dimensions)}\n"
             f"COMPANY VALUES:\n"
         )
         for v in company_data.get("values", []):
@@ -840,11 +1000,15 @@ class InterviewAgent(BaseAgent):
 
         seniority_note = _SENIORITY_EXPECTATIONS.get(seniority, _SENIORITY_EXPECTATIONS["senior"])
 
-        bank_examples = self._get_bank_examples(
-            company_key=input_dict.get("company", "").lower().strip(),
-            target_dimensions=focus_dimensions,
-            question_mode=question_mode,
-        )
+        slot_lines = []
+        for idx, dim in enumerate(target_dimensions, start=1):
+            slot_lines.append(
+                f"  Q{idx}: dimension={dim}, question_type={type_map.get(dim, 'behavioral')}"
+            )
+        slot_block = "DIMENSION SLOT ASSIGNMENTS:\n" + "\n".join(slot_lines)
+
+        exclusion_block = self._build_exclusion_block(question_ledger)
+        exclusion_section = f"\n{exclusion_block}\n" if exclusion_block else ""
 
         return f"""{resume_block}
 
@@ -854,14 +1018,58 @@ SENIORITY EXPECTATION: {seniority_note}
 
 {mode_instruction}
 
-{bank_examples}Generate exactly 3 questions. Each must target a DIFFERENT dimension.
-Prioritise these dimensions first (but use any 3 from the 7 valid dimensions if better fit):
-{', '.join(focus_dimensions)}
+{slot_block}
+{exclusion_section}
+{examples_block}
 
+Generate exactly 3 questions — one per TARGET DIMENSION SLOT above.
 Each question MUST be grounded in a specific signal from the candidate's resume.
 The why_this_question field must name the resume signal being probed."""
 
-    def _parse_and_validate_questions(self, raw: str, question_mode: str) -> dict:
+    def _validate_ledger_constraints(
+        self,
+        questions: list[dict],
+        question_ledger: dict | None,
+    ) -> None:
+        """Raise ValueError if generated questions violate ledger exclusions."""
+        if not question_ledger:
+            return
+
+        excluded_dims = {
+            d.lower()
+            for d in (question_ledger.get("asked_dimensions") or [])
+            if isinstance(d, str)
+        }
+        excluded_signals = {
+            s.lower()
+            for s in (question_ledger.get("asked_signals") or [])
+            if isinstance(s, str)
+        }
+        if not excluded_dims and not excluded_signals:
+            return
+
+        for q in questions:
+            dim = (q.get("dimension") or "").lower()
+            if dim in excluded_dims:
+                raise ValueError(
+                    f"generate_questions: dimension '{dim}' was already covered "
+                    "in a prior session"
+                )
+
+            why = (q.get("why_this_question") or "").lower()
+            for signal in excluded_signals:
+                if signal and signal in why:
+                    raise ValueError(
+                        "generate_questions: question reuses an excluded resume signal"
+                    )
+
+    def _parse_and_validate_questions(
+        self,
+        raw: str,
+        question_mode: str,
+        question_ledger: dict | None = None,
+        target_dimensions: list[str] | None = None,
+    ) -> dict:
         """Parse LLM response, validate structure, assign IDs and question_type."""
         data = self._parse_json(raw)
 
@@ -886,6 +1094,17 @@ The why_this_question field must name the resume signal being probed."""
         for d in dimensions_used:
             if d not in _VALID_DIMENSIONS:
                 raise ValueError(f"generate_questions: invalid dimension '{d}'")
+
+        if target_dimensions:
+            expected = {d.lower() for d in target_dimensions}
+            actual = {d.lower() for d in dimensions_used if d}
+            if actual != expected:
+                raise ValueError(
+                    f"generate_questions: expected dimensions {sorted(expected)}, "
+                    f"got {sorted(actual)}"
+                )
+
+        self._validate_ledger_constraints(questions, question_ledger)
 
         for q in questions:
             # Strip any invented anti-pattern keys; keep only valid taxonomy keys.

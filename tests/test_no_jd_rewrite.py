@@ -238,28 +238,60 @@ def test_improvement_areas_route_to_summary():
     assert summary_gap["needs_change"] is True
 
 
+def test_weakness_location_preserved_in_gap_reason():
+    """Full weakness (location → fix) must survive to gap_reason; rewriter gets fix half only."""
+    from orchestrator import Orchestrator
+    orch = Orchestrator()
+    weakness = (
+        "Smart Viz X bullets 3-5 lack quantified impact → add revenue growth figures"
+    )
+    resume_und = {
+        "has_summary": True,
+        "improvement_areas": [],
+        "weaknesses": [weakness],
+    }
+    result = orch._build_no_jd_gaps(resume_und, {})
+
+    exp_gap = next(
+        (g for g in result["section_gaps"] if g["section"] == "experience"), None
+    )
+    assert exp_gap is not None
+    assert "→" in exp_gap["gap_reason"]
+    assert "Smart Viz X" in exp_gap["gap_reason"]
+    assert exp_gap["rewrite_instruction"] == "add revenue growth figures"
+
+
 def test_no_jd_actionable_fixes_tab_has_content():
     """
-    Frontend smoke test: verify that the gap_result shape produced by
-    _build_no_jd_gaps contains what ActionableFixes.tsx needs to render.
-    priority_fixes must be a list and section_gaps must have needs_change items.
+    Frontend smoke test: verify classified no-JD gap_result for the Fixes tab.
+    priority_fixes must be structured objects (not stripped by overview dedupe).
     """
     from orchestrator import Orchestrator
     orch = Orchestrator()
     resume_sections = _make_resume_sections(A1_OUTPUT_NO_SUMMARY)
-    result = orch._build_no_jd_gaps(A1_OUTPUT_NO_SUMMARY, resume_sections)
+    built = orch._build_no_jd_gaps(A1_OUTPUT_NO_SUMMARY, resume_sections)
+    overview_strings = (
+        list(A1_OUTPUT_NO_SUMMARY.get("improvement_areas") or [])
+        + list(A1_OUTPUT_NO_SUMMARY.get("weaknesses") or [])
+    )
+    result = orch._apply_gap_classification(
+        built,
+        "",
+        structured_priority_fixes=True,
+        overview_strings=overview_strings,
+    )
 
-    # priority_fixes must exist and be non-empty
     priority_fixes = result.get("priority_fixes", [])
     assert len(priority_fixes) > 0, "priority_fixes must be non-empty for Fixes tab"
 
-    # priority_fixes must be plain strings (for normalizePriorityFixes to handle)
     for fix in priority_fixes:
-        assert isinstance(fix, str), (
-            f"No-JD priority_fixes must be plain strings, got: {type(fix)} — {fix!r}"
+        assert isinstance(fix, dict), (
+            f"No-JD priority_fixes must be structured dicts, got: {type(fix)} — {fix!r}"
         )
+        assert fix.get("gap_type") in ("structural", "surface", "evidence"), fix
+        if fix.get("gap_type") == "evidence":
+            assert fix.get("coaching_question"), fix
 
-    # section_gaps must have at least one needs_change=True item
     needs_change_gaps = [
         g for g in result["section_gaps"] if g.get("needs_change")
     ]
@@ -267,7 +299,6 @@ def test_no_jd_actionable_fixes_tab_has_content():
         "section_gaps must have at least one needs_change=True for fix cards to render"
     )
 
-    # Each needs_change gap must have gap_reason and rewrite_instruction
     for gap in needs_change_gaps:
         assert gap.get("gap_reason"), (
             f"gap_reason missing on section '{gap['section']}'"
@@ -275,6 +306,26 @@ def test_no_jd_actionable_fixes_tab_has_content():
         assert gap.get("rewrite_instruction"), (
             f"rewrite_instruction missing on section '{gap['section']}'"
         )
+
+
+def test_resume_only_keeps_priority_fixes_when_overlapping_overview():
+    """Overview dedupe must not empty priority_fixes in resume-only mode."""
+    from orchestrator import Orchestrator
+    orch = Orchestrator()
+    resume_sections = _make_resume_sections(A1_OUTPUT_NO_SUMMARY)
+    built = orch._build_no_jd_gaps(A1_OUTPUT_NO_SUMMARY, resume_sections)
+    overview_strings = (
+        list(A1_OUTPUT_NO_SUMMARY.get("improvement_areas") or [])
+        + list(A1_OUTPUT_NO_SUMMARY.get("weaknesses") or [])
+    )
+    result = orch._apply_gap_classification(
+        built,
+        "",
+        structured_priority_fixes=True,
+        overview_strings=overview_strings,
+    )
+    assert result.get("resume_only_mode") is True
+    assert len(result.get("priority_fixes") or []) >= 1
 
 # ── Integration test: full no-JD pipeline ─────────────────────────────────
 

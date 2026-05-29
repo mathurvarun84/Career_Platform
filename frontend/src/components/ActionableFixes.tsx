@@ -15,7 +15,61 @@ import { getCoachingSessionId } from "../utils/coachingSession";
 import { getFixModeBaseline } from "../utils/modeScores";
 import { useResumeStore } from "../store/useResumeStore";
 import { isActionableFix } from "../utils/actionableFixes";
+import {
+  buildFixLocationKey,
+  deriveExampleHint,
+  extractCompanyTokenFromLabel,
+  isNoChangeReplacement,
+  isUsableAfterText,
+  mergeFixLists,
+  resolveSubChangeGapReason,
+  structuralCardHasNoData,
+  subEntryLabelMatches,
+} from "../utils/fixesCardLogic";
+import { fixesMissingFromOverview } from "../utils/overviewFixes";
 import { isEvidenceGap } from "../utils/roleFitEvidence";
+
+const MAX_COACHING_CARDS = 2;
+
+/** Pull one employer block from a section-level balanced rewrite using sub_label. */
+const extractSubEntryFromRewrite = (
+  rewriteText: string,
+  subLabel: string
+): string => {
+  const companyToken = extractCompanyTokenFromLabel(subLabel);
+  if (!companyToken || companyToken.length < 2) {
+    return "";
+  }
+  const lines = rewriteText.split("\n");
+  let startIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].toLowerCase().includes(companyToken)) {
+      startIdx = i;
+      break;
+    }
+  }
+  if (startIdx < 0) {
+    return "";
+  }
+  const block: string[] = [];
+  for (let i = startIdx; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (i > startIdx && block.length >= 2 && trimmed === "") {
+      break;
+    }
+    if (i > startIdx && block.length >= 2) {
+      const looksLikeNextRole =
+        /^[A-Z][A-Z0-9\s&|./-]{3,}/.test(trimmed) &&
+        !trimmed.startsWith("•") &&
+        !lines[i].toLowerCase().includes(companyToken);
+      if (looksLikeNextRole) {
+        break;
+      }
+    }
+    block.push(lines[i]);
+  }
+  return block.join("\n").trim();
+};
 import type {
   CareerMemoryEntry,
   GapType,
@@ -63,8 +117,10 @@ const resolvePatchForFix = (
     return undefined;
   }
   if (fix.sub_label) {
-    const subMatches = inSection.filter((patch) =>
-      labelsMatch(fix.sub_label ?? "", patch.sub_entry_label ?? "")
+    const subMatches = inSection.filter(
+      (patch) =>
+        labelsMatch(fix.sub_label ?? "", patch.sub_entry_label ?? "") &&
+        isUsableAfterText(patch.replacement_text ?? "")
     );
     if (subMatches.length) {
       return (
@@ -77,7 +133,12 @@ const resolvePatchForFix = (
   }
   const sectionWide = inSection.filter((patch) => !patch.sub_entry_label?.trim());
   const pool = sectionWide.length ? sectionWide : inSection;
-  return pool.find((patch) => patch.original_text?.trim()) ?? pool[0];
+  return (
+    pool.find(
+      (patch) =>
+        patch.original_text?.trim() && isUsableAfterText(patch.replacement_text ?? "")
+    ) ?? pool.find((patch) => patch.original_text?.trim()) ?? pool[0]
+  );
 };
 
 interface ActionableFixesProps {
@@ -144,41 +205,7 @@ const inferGapTypeFromText = (text: string): GapType => {
 
 /** One card per section + sub_entry — not per gap_reason or missing keyword. */
 const fixLocationKey = (fix: PriorityFix): string =>
-  `${inferSectionKey(fix.section)}|${(fix.sub_label ?? "").toLowerCase().trim() || "__section__"}`;
-
-const mergePriorityFix = (existing: PriorityFix, incoming: PriorityFix): PriorityFix => {
-  const mergedKeywords = Array.from(
-    new Set([...(existing.missing_keywords ?? []), ...(incoming.missing_keywords ?? [])])
-  );
-  const typeOrder: Record<GapType, number> = { evidence: 0, structural: 1, surface: 2 };
-  const existingType = existing.gap_type ?? "structural";
-  const incomingType = incoming.gap_type ?? "structural";
-  const preferIncoming = typeOrder[incomingType] < typeOrder[existingType];
-  return {
-    ...existing,
-    ...(preferIncoming ? incoming : {}),
-    gap_reason: existing.gap_reason,
-    missing_keywords: mergedKeywords,
-    auto_apply: preferIncoming ? incoming.auto_apply : existing.auto_apply,
-  };
-};
-
-const mergeFixLists = (...lists: PriorityFix[][]): PriorityFix[] => {
-  const mergedMap = new Map<string, PriorityFix>();
-  const order: string[] = [];
-  for (const list of lists) {
-    for (const fix of list) {
-      const key = fixLocationKey(fix);
-      if (!mergedMap.has(key)) {
-        mergedMap.set(key, fix);
-        order.push(key);
-        continue;
-      }
-      mergedMap.set(key, mergePriorityFix(mergedMap.get(key)!, fix));
-    }
-  }
-  return order.map((key) => mergedMap.get(key)!);
-};
+  buildFixLocationKey(inferSectionKey(fix.section), fix.sub_label);
 
 const atsIssuesToFixes = (atsIssues: string[], existingFixes: PriorityFix[]): PriorityFix[] => {
   const existingReasons = new Set(
@@ -209,7 +236,8 @@ const fixesFromPatches = (patches: ResumePatch[] | undefined): PriorityFix[] => 
       (patch) =>
         patch.op === "replace_text" &&
         Boolean(patch.original_text?.trim()) &&
-        Boolean(patch.replacement_text?.trim())
+        Boolean(patch.replacement_text?.trim()) &&
+        !isNoChangeReplacement(patch.replacement_text)
     )
     .map((patch) => {
       const context = `${patch.issue_detected} ${patch.fix_rationale} ${patch.original_text}`;
@@ -290,23 +318,130 @@ const fixesFromSectionGaps = (
     coaching_hint?: string[];
     auto_apply?: boolean;
     sub_label?: string | null;
+    sub_changes?: Array<{
+      sub_label?: string;
+      gap_reason?: string;
+      rewrite_instruction?: string;
+      missing_keywords?: string[];
+      needs_change?: boolean;
+      gap_type?: GapType;
+      requires_user_input?: boolean;
+      coaching_question?: string | null;
+      coaching_hint?: string[];
+      auto_apply?: boolean;
+    }>;
   }>
-): PriorityFix[] =>
-  sectionGaps
-    .map((g) => ({
-      section: g.section,
-      gap_reason: g.gap_reason,
-      rewrite_instruction: g.rewrite_instruction,
-      missing_keywords: g.missing_keywords ?? [],
+): PriorityFix[] => {
+  const fixes: PriorityFix[] = [];
+  for (const gap of sectionGaps) {
+    if (!gap.needs_change) {
+      continue;
+    }
+    const subs = gap.sub_changes ?? [];
+    if (subs.length) {
+      for (const sub of subs) {
+        if (sub.needs_change === false) {
+          continue;
+        }
+        fixes.push({
+          section: gap.section,
+          gap_reason: resolveSubChangeGapReason(sub, gap.gap_reason),
+          rewrite_instruction:
+            sub.rewrite_instruction ?? gap.rewrite_instruction,
+          missing_keywords: sub.missing_keywords ?? gap.missing_keywords ?? [],
+          needs_change: true,
+          gap_type: sub.gap_type ?? gap.gap_type ?? "structural",
+          requires_user_input: sub.requires_user_input,
+          coaching_question: sub.coaching_question,
+          coaching_hint: sub.coaching_hint,
+          auto_apply: sub.auto_apply,
+          sub_label: sub.sub_label ?? null,
+        });
+      }
+      continue;
+    }
+    fixes.push({
+      section: gap.section,
+      gap_reason: gap.gap_reason,
+      rewrite_instruction: gap.rewrite_instruction,
+      missing_keywords: gap.missing_keywords ?? [],
       needs_change: true,
-      gap_type: g.gap_type ?? "structural",
-      requires_user_input: g.requires_user_input,
-      coaching_question: g.coaching_question,
-      coaching_hint: g.coaching_hint,
-      auto_apply: g.auto_apply,
-      sub_label: g.sub_label,
-    }))
-    .filter(isActionableFix);
+      gap_type: gap.gap_type ?? "structural",
+      requires_user_input: gap.requires_user_input,
+      coaching_question: gap.coaching_question,
+      coaching_hint: gap.coaching_hint,
+      auto_apply: gap.auto_apply,
+      sub_label: gap.sub_label ?? null,
+    });
+  }
+  return fixes.filter(isActionableFix);
+};
+
+function InfoOnlyCard({ fix }: { fix: PriorityFix }): ReactElement {
+  // gap_reason: "Smart Viz X bullets lack impact → add revenue growth figures"
+  const [wherePart, whatPart] = fix.gap_reason.includes("→")
+    ? fix.gap_reason.split("→", 2).map((s) => s.trim())
+    : [null, fix.gap_reason.trim()];
+
+  const exampleHint = deriveExampleHint(fix.gap_reason);
+  const scopeLabel = fix.sub_label || wherePart;
+
+  return (
+    <div
+      style={{
+        border: "1.5px solid #e5e7eb",
+        borderRadius: "16px",
+        padding: "20px 24px",
+        marginBottom: "12px",
+        background: "#fafafa",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: "#111827" }}>
+            {toTitleCase(inferSectionKey(fix.section))}
+            {scopeLabel ? ` · ${scopeLabel}` : ""}
+          </div>
+        </div>
+        <div
+          style={{
+            fontSize: "11px",
+            fontWeight: 600,
+            color: "#9ca3af",
+            background: "#f3f4f6",
+            borderRadius: "999px",
+            padding: "3px 10px",
+            whiteSpace: "nowrap",
+          }}
+        >
+          Manual edit
+        </div>
+      </div>
+
+      <div style={{ fontSize: "13px", color: "#374151", marginTop: "8px", lineHeight: 1.6 }}>
+        {whatPart}
+      </div>
+
+      {exampleHint ? (
+        <div
+          style={{
+            marginTop: "10px",
+            padding: "10px 14px",
+            background: "#eff6ff",
+            borderRadius: "10px",
+            border: "1px solid #bfdbfe",
+            fontSize: "12px",
+            color: "#1e40af",
+            lineHeight: 1.6,
+          }}
+        >
+          <span style={{ fontWeight: 600 }}>e.g. </span>
+          {exampleHint}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 function renderCard(
   fix: PriorityFix,
@@ -321,26 +456,26 @@ function renderCard(
     return <SurfacePatchCard key={fixKey} fix={fix} fixKey={fixKey} handlers={handlers} />;
   }
   if (gapType === "structural") {
+    const afterText = handlers.getAfterText(fix);
     const patchDiff = handlers.getPatchDiff(fix);
-    const afterText = handlers.getAfterText(fix).trim();
-    if (!patchDiff && !afterText) {
-      const coachingFix: PriorityFix = {
-        ...fix,
-        gap_type: "evidence",
-        requires_user_input: true,
-        coaching_question: fix.coaching_question ?? fix.gap_reason,
-      };
-      return (
-        <EvidenceCoachingCard
-          key={fixKey}
-          fix={coachingFix}
-          fixKey={fixKey}
-          sessionId={sessionId}
-          onDone={onCoachingDone}
-          onMemoryCreated={onMemoryCreated}
-        />
-      );
+    const hasNoData = structuralCardHasNoData(afterText, patchDiff);
+
+    if (hasNoData) {
+      if (isEvidenceGap(fix)) {
+        return (
+          <EvidenceCoachingCard
+            key={fixKey}
+            fix={fix}
+            fixKey={fixKey}
+            sessionId={sessionId}
+            onDone={onCoachingDone}
+            onMemoryCreated={onMemoryCreated}
+          />
+        );
+      }
+      return <InfoOnlyCard key={fixKey} fix={fix} />;
     }
+
     return (
       <StructuralPatchCard key={fixKey} fix={fix} fixKey={fixKey} handlers={handlers} />
     );
@@ -427,19 +562,37 @@ export default function ActionableFixes({
 
     const gapAnalyzerFixes = hasStructured ? fromPriority : fromSections;
 
-    let list = mergeFixLists(gapAnalyzerFixes, fromPatches);
+    let list = mergeFixLists(fixLocationKey, gapAnalyzerFixes, fromPatches);
 
     const atsDriven = atsIssuesToFixes(
       analysisResult.ats.ats_issues ?? [],
       list
     ).filter(isActionableFix);
-    list = mergeFixLists(list, atsDriven);
+    list = mergeFixLists(fixLocationKey, list, atsDriven);
+
+    // Guarantee every Overview weakness/improvement_area has a Fixes tab card.
+    const overviewFixes = fixesMissingFromOverview(list, analysisResult).filter(
+      isActionableFix
+    );
+    list = mergeFixLists(fixLocationKey, list, overviewFixes);
 
     if (suppressedEvidenceGaps) {
       list = list.filter((f) => !isEvidenceGap(f));
     }
 
-    return [...list].sort((a, b) => {
+    let coachingShown = 0;
+    const capped = list.filter((f) => {
+      if (!isEvidenceGap(f)) {
+        return true;
+      }
+      if (coachingShown >= MAX_COACHING_CARDS) {
+        return false;
+      }
+      coachingShown += 1;
+      return true;
+    });
+
+    return [...capped].sort((a, b) => {
       const orderA = GAP_TYPE_ORDER[a.gap_type ?? "structural"];
       const orderB = GAP_TYPE_ORDER[b.gap_type ?? "structural"];
       return orderA - orderB;
@@ -471,15 +624,7 @@ export default function ActionableFixes({
           if (!entry.label || !subLabel) {
             return false;
           }
-          const labelLower = entry.label.toLowerCase();
-          const subLower = subLabel.toLowerCase();
-          const subCompany = subLower.split("—")[0]?.trim() ?? subLower;
-          const labelHead = labelLower.split("|")[0]?.trim() ?? labelLower;
-          return (
-            entry.label === subLabel ||
-            labelLower.includes(subCompany) ||
-            subLower.includes(labelHead)
-          );
+          return subEntryLabelMatches(entry.label, subLabel);
         });
         if (match?.verbatim_text) {
           return match.verbatim_text.trim();
@@ -504,6 +649,9 @@ export default function ActionableFixes({
       const patch = getPatchForFix(fix);
 
       if (patch?.replacement_text && patch.original_text) {
+        if (!isUsableAfterText(patch.replacement_text)) {
+          // fall through to rewrite excerpt / empty
+        } else {
         const base =
           analysisResult?.resume.resume_sections?.[key]?.full_text?.trim() ?? "";
         const idx = base.indexOf(patch.original_text);
@@ -515,17 +663,26 @@ export default function ActionableFixes({
           );
         }
         return patch.replacement_text;
+        }
       }
 
       if (
         patch?.replacement_text &&
         fix.sub_label &&
-        labelsMatch(fix.sub_label, patch.sub_entry_label ?? "")
+        labelsMatch(fix.sub_label, patch.sub_entry_label ?? "") &&
+        isUsableAfterText(patch.replacement_text)
       ) {
         return patch.replacement_text;
       }
 
       if (fix.sub_label) {
+        const rewriteBlock = analysisResult?.rewrites?.[key]?.balanced;
+        if (typeof rewriteBlock === "string" && rewriteBlock.trim()) {
+          const excerpt = extractSubEntryFromRewrite(rewriteBlock, fix.sub_label);
+          if (excerpt.trim()) {
+            return excerpt;
+          }
+        }
         return "";
       }
 
@@ -545,6 +702,9 @@ export default function ActionableFixes({
       if (patch?.original_text && patch.replacement_text) {
         const original = patch.original_text.trim();
         const replacement = patch.replacement_text.trim();
+        if (isNoChangeReplacement(replacement)) {
+          // skip unusable LLM refusal patches
+        } else {
         // Patches anchor on a bullet substring but replacement is often the full entry.
         if (replacement.startsWith(original)) {
           const delta = replacement.slice(original.length).trim();
@@ -559,6 +719,7 @@ export default function ActionableFixes({
           }
         }
         return { original, replacement };
+        }
       }
       const kw = fix.missing_keywords[0];
       if (kw) {
@@ -608,7 +769,7 @@ export default function ActionableFixes({
       style: RewriteStyle
     ): boolean => {
       const sectionText = getAfterText(fix);
-      if (!sectionText.trim()) {
+      if (!isUsableAfterText(sectionText)) {
         return false;
       }
       applySectionFix(sectionKey, style, sectionText);

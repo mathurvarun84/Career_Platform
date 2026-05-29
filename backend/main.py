@@ -39,6 +39,13 @@ from backend.persistence import save_analysis
 from engine.resume_builder import build_final_docx
 from validator.rewriter_validator import assert_structural_completeness
 from orchestrator import Orchestrator
+from backend.utils.question_ledger import (
+    get_available_dimensions,
+    get_excluded_dimensions,
+    get_ledger,
+    resume_fingerprint,
+    update_ledger,
+)
 from parser import parse_resume
 from backend.schemas.jd_fetch_schema import FetchJDRequest, FetchJDResponse
 from backend.schemas.interview_schema import (
@@ -992,12 +999,17 @@ async def start_interview_session(
     """
     session_id = str(uuid.uuid4())
     company_key = request.company.lower().strip().replace(" ", "_")
+    resume_fp = resume_fingerprint(request.resume_text)
+    question_ledger = get_ledger(user_id, resume_fp)
+    excluded_dimensions = get_excluded_dimensions(user_id, resume_fp)
 
     result = _interview_agent.generate_questions({
         "resume_text": request.resume_text,
         "company": company_key,
         "seniority": request.seniority,
         "question_mode": request.question_mode,
+        "question_ledger": question_ledger,
+        "excluded_dimensions": excluded_dimensions,
     })
 
     _interview_sessions[session_id] = {
@@ -1011,6 +1023,7 @@ async def start_interview_session(
         "feedback":         [],
         "compressed_turns": [],
         "active_follow_ups": {},
+        "resume_fingerprint": resume_fp,
         "created_at":       datetime.now(timezone.utc).isoformat(),
     }
 
@@ -1101,6 +1114,7 @@ def _resolve_interview_session(session_id: str) -> dict | None:
         "active_follow_ups": {},
         "summary": row.get("summary"),
         "model_answers": row.get("model_answers") or {},
+        "resume_fingerprint": None,
         "created_at": row.get("created_at"),
     }
     _interview_sessions[session_id] = session
@@ -1348,6 +1362,14 @@ async def get_summary(
 
     complete_interview_session(session_id, summary)
     session["summary"] = summary
+
+    resume_fp = session.get("resume_fingerprint")
+    if resume_fp and session.get("user_id"):
+        update_ledger(
+            session["user_id"],
+            resume_fp,
+            session.get("questions") or [],
+        )
 
     return summary
 

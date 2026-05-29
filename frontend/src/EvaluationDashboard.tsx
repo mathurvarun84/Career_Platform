@@ -159,7 +159,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   };
 
   // Action items construction
-  const atsActions = (analysisResult.ats.ats_issues ?? []).slice(0, 2).map((issue, i) => {
+  const atsActions = (analysisResult.ats.ats_issues ?? []).slice(0, 3).map((issue, i) => {
     const gainAmount =
       bd.impact_metrics < 12 ? 15 :
       bd.keyword_match  < 12 ? 12 :
@@ -182,23 +182,25 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
       )
     : 0;
 
-  // CONTRACT: Overview reads from resume.weaknesses (A1 resume health assessment).
-  // Fixes tab owns gap.priority_fixes. Mixing these sources causes duplicate content.
-  const gapActions = (hasJD
-    ? (analysisResult.resume?.weaknesses ?? [])
-        .slice(0, 2)
-        .map((weakness, i) => ({
-          priority: i === 0 ? ("high" as const) : ("medium" as const),
-          title: weakness.split("→")[0].trim(),
-          description: weakness,
-          gainLabel: `+${jdGainPerFix} JD match`,
-          gainType: "jd" as const,
-          linksToGap: true,
-          targetTab: "gap" as const,
-        }))
-    : []) as ActionItem[];
+  // Overview reads resume.weaknesses (A1 health assessment) — always available with or without JD.
+  // Without JD, improvement_areas acts as fallback. Fixes tab owns gap.priority_fixes.
+  const weaknessSources: string[] = [
+    ...(analysisResult.resume?.weaknesses ?? []),
+    ...(analysisResult.resume?.improvement_areas ?? []),
+  ].filter(Boolean);
+  const uniqueWeaknesses = Array.from(new Set(weaknessSources)).slice(0, 3);
 
-  const actionItems = [...atsActions, ...gapActions].slice(0, 4);
+  const gapActions = uniqueWeaknesses.map((weakness, i) => ({
+    priority: i === 0 ? ("high" as const) : ("medium" as const),
+    title: weakness.split("→")[0].trim(),
+    description: weakness,
+    gainLabel: hasJD ? `+${jdGainPerFix} JD match` : "Resume fix",
+    gainType: hasJD ? ("jd" as const) : ("ats" as const),
+    linksToGap: hasJD,
+    targetTab: (hasJD ? "gap" : "fixes") as "gap" | "fixes",
+  })) as ActionItem[];
+
+  const actionItems = [...atsActions, ...gapActions].slice(0, 6);
 
   // ─── SECTION 3: Recruiter 6-sec scan ───
   const agencyRecruiter =

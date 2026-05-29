@@ -21,6 +21,7 @@ from backend.agents.gap_analyzer import (
     GapAnalyzerAgent,
     classify_section_gaps,
     priority_fixes_from_gaps,
+    reclassify_gaps_for_resume_only,
 )
 from backend.agents.jd_intelligence import JDIntelligenceAgent
 from backend.agents.recruiter_sim import RecruiterSimulatorAgent
@@ -323,12 +324,16 @@ class Orchestrator:
         """
         section_gaps = gap_result.get("section_gaps") or gap_result.get("gaps") or []
         classified = classify_section_gaps(section_gaps, resume_text)
+        if gap_result.get("resume_only_mode"):
+            classified = reclassify_gaps_for_resume_only(classified)
         gap_result["section_gaps"] = classified
         gap_result["gaps"] = classified
         if structured_priority_fixes:
             fixes = priority_fixes_from_gaps(classified)
             if fixes:
-                if overview_strings:
+                # Resume-only: keep structured fixes for the Fixes tab (Overview already
+                # shows the same A1 strings). JD mode: dedupe so Overview vs Fixes differ.
+                if overview_strings and not gap_result.get("resume_only_mode"):
                     overview_lower = [s.lower() for s in overview_strings]
                     fixes = [
                         f for f in fixes
@@ -455,6 +460,43 @@ class Orchestrator:
                     return section
             return "experience"  # default — most improvements are experience-related
 
+        def _weakness_matches_entry(weakness: str, entry_label: str) -> bool:
+            """Match A1 weakness text to a resume sub_entry label (fuzzy)."""
+            w_lower = weakness.lower()
+            label_lower = (entry_label or "").lower()
+            company_token = (
+                entry_label.split("|")[0].split("—")[0].strip().lower()
+                if entry_label
+                else ""
+            )
+            if company_token and len(company_token) > 2 and company_token in w_lower:
+                return True
+            compact_w = re.sub(r"[^a-z0-9]", "", w_lower)
+            compact_label = re.sub(r"[^a-z0-9]", "", label_lower)
+            compact_company = re.sub(r"[^a-z0-9]", "", company_token)
+            if compact_company and len(compact_company) > 2:
+                if compact_company in compact_w or compact_w in compact_company:
+                    return True
+                if compact_label and compact_company in compact_label:
+                    return True
+            if compact_label and len(compact_label) > 2 and compact_label in compact_w:
+                return True
+            wm = re.match(
+                r"^(.+?)(?:\s+(?:em|role|bullets|bullet|lacks|lack|missing)\b)",
+                w_lower,
+            )
+            if wm and compact_company:
+                w_company_compact = re.sub(r"[^a-z0-9]", "", wm.group(1))
+                if w_company_compact and (
+                    w_company_compact in compact_company
+                    or compact_company in w_company_compact
+                ):
+                    return True
+            first_word = company_token.split()[0] if company_token else ""
+            if len(first_word) > 2 and first_word in w_lower:
+                return True
+            return False
+
         # Accumulate per-section rewrite instructions
         section_instructions: dict[str, list[str]] = {s: [] for s in canonical_sections}
 
@@ -462,9 +504,8 @@ class Orchestrator:
             section_instructions[_route_to_section(area)].append(area)
 
         for weakness in weaknesses:
-            # Extract the fix suggestion after → if present; otherwise use the full text
-            fix = weakness.split("→", 1)[-1].strip() if "→" in weakness else weakness
-            section_instructions[_route_to_section(weakness)].append(fix)
+            # Preserve full weakness — location context before → must not be lost
+            section_instructions[_route_to_section(weakness)].append(weakness)
 
         # Build section_gaps list
         section_gaps: list[dict] = []
@@ -521,23 +562,23 @@ class Orchestrator:
                         entry.verbatim_text if hasattr(entry, "verbatim_text")
                         else entry.get("verbatim_text", "")
                     )
-                    # Find weaknesses that mention this entry's company
-                    company_token = (
-                        entry_label.split("|")[0]
-                        .split("—")[0]
-                        .strip()
-                        .lower()
-                    )
                     matching = [
                         w for w in weaknesses
-                        if company_token and len(company_token) > 2
-                        and company_token in w.lower()
+                        if _weakness_matches_entry(w, entry_label)
                     ]
                     if matching:
                         fix = (
                             matching[0].split("→", 1)[-1].strip()
                             if "→" in matching[0]
                             else "Improve impact clarity and add quantified metrics."
+                        )
+                        company_token = (
+                            entry_label.split("|")[0]
+                            .split("—")[0]
+                            .strip()
+                            .lower()
+                            .replace(" ", "_")[:40]
+                            or "role"
                         )
                         sub_changes.append({
                             "sub_id": f"{company_token}_no_jd",
@@ -550,12 +591,22 @@ class Orchestrator:
                         })
 
             needs_change = bool(instructions) or bool(sub_changes)
-            rewrite_instruction = " ".join(instructions[:3]) if instructions else ""
+
+            # Display: most specific instruction (prefer full weakness with →)
+            display_reason = next(
+                (i for i in instructions if "→" in i),
+                instructions[0] if instructions else "",
+            )
+            # Rewriter: fix halves only (after →)
+            rewrite_instruction = " ".join(
+                (i.split("→", 1)[-1].strip() if "→" in i else i)
+                for i in instructions[:3]
+            ) if instructions else ""
 
             section_gaps.append({
                 "section": section,
                 "needs_change": needs_change,
-                "gap_reason": rewrite_instruction or "No change needed",
+                "gap_reason": display_reason or "No change needed",
                 "missing_keywords": [],
                 "rewrite_instruction": rewrite_instruction,
                 "original_content": original_content,
@@ -704,11 +755,13 @@ class Orchestrator:
 
         try:
             ats_score = int(ats_result.get("score", 0))
-            composite = (
-                float(ats_score)
-                if not match_score
-                else (ats_score * 0.4) + (float(match_score) * 0.6)
+            resume_only = isinstance(gap_result, dict) and gap_result.get(
+                "resume_only_mode", False
             )
+            if resume_only:
+                composite = float(ats_score)
+            else:
+                composite = (ats_score * 0.4) + (float(match_score) * 0.6)
             percentile = get_percentile(composite, str(seniority))
         except Exception as exc:
             logging.warning(
@@ -1268,7 +1321,17 @@ class Orchestrator:
                 or gap_result.get("jd_match_score_before")
                 or 0
             )
-            composite = (ats_result["score"] * 0.4) + (match_score * 0.6)
+            resume_only = (
+                not has_jd
+                or (
+                    isinstance(gap_result, dict)
+                    and gap_result.get("resume_only_mode", False)
+                )
+            )
+            if resume_only:
+                composite = float(ats_result["score"])
+            else:
+                composite = (ats_result["score"] * 0.4) + (match_score * 0.6)
             percentile = get_percentile(composite, seniority)
         except Exception as exc:
             logging.warning("Percentile calculation failed: %s. Returning null.", exc)

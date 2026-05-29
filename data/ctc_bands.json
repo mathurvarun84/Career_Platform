@@ -1,89 +1,92 @@
 {
   "_meta": {
-    "unit": "LPA (Total CTC incl. RSU/ESOP at grant value)",
+    "unit": "LPA (Total CTC incl. RSU/ESOP at grant value, annualised over 4-yr vest)",
     "last_updated": "2026-05",
     "sources": [
-      "levels.fyi India 2026",
-      "AmbitionBox annual report 2025-26",
-      "Glassdoor India 2026",
-      "Dheya Career Insights 2026",
-      "Pathvio India Tech Salary Report 2026",
-      "kaam.work India Tech Salary Report 2026 (Michael Page / nasscom composite)"
+      "levels.fyi India 2026 (Google EM ₹103–328 LPA, Flipkart EM median ₹101–111 LPA, Swiggy EM ₹86–135 LPA, Razorpay EM median ₹88 LPA)",
+      "Glassdoor India 2026 (Flipkart Director avg ₹60 LPA base / ~₹90–130 LPA total, Swiggy Director avg ₹60 LPA base)",
+      "AmbitionBox 2025-26",
+      "Instahyre India 2026 (Principal at Indian unicorn ₹80–150 LPA)",
+      "Dheya Career Insights 2026 (FAANG India SDE-3/L5 ₹45–90 LPA, Staff/L6 ₹75–160 LPA)",
+      "Quora / Blind verified data points (Flipkart Director fixed compa ₹44–56 LPA base, total ₹80–130 LPA)",
+      "kaam.work / Michael Page / nasscom composite 2026"
     ],
     "refresh_cadence": "Review every 6 months — April and October.",
     "notes": [
       "IC track (junior→staff) and Management track (em→director) are parallel ladders.",
       "Ranges are approximately P25 to P90 within company type.",
+      "All figures are ANNUAL total comp — base + RSU annualised on 4-yr vest + target bonus.",
+      "FAANG Director range (₹120–220 LPA) reflects typical India Director (L7-equivalent), NOT L8/VP which is rare and can be 3–5x higher.",
+      "Glassdoor Director figures are base-only; total comp adds ~40–60% for RSU/bonus at unicorns and FAANG.",
       "Services director/VP roles are rare and often titled 'Delivery Head' or 'Practice Head'.",
-      "Bands updated May 2026: product_unicorn and faang tiers raised 15-25% vs prior version to match observed levels.fyi India data.",
-      "EM/senior_em/director bands include management premium over IC equivalents.",
-      "RSU/ESOP vesting schedules vary; figures use grant-value at time of offer."
+      "May 2026 recalibration: prior version had faang director max at 400 LPA and staff max at 260 LPA — both removed as outliers that reflect US-benchmarked RSU windfalls, not typical India CTC offers.",
+      "EM/senior_em/director bands include management premium over IC equivalents at same YOE."
     ]
   },
 
   "ctc_bands": {
 
     "junior": {
-      "_note": "0–3 YOE",
+      "_note": "0–3 YOE | SDE-1 / Associate Engineer",
       "service":         {"min": 4,  "max": 8},
       "startup_early":   {"min": 8,  "max": 16},
       "product_mid":     {"min": 10, "max": 20},
       "product_unicorn": {"min": 15, "max": 28},
-      "faang":           {"min": 25, "max": 45}
+      "faang":           {"min": 22, "max": 40}
     },
 
     "mid": {
-      "_note": "3–7 YOE",
-      "service":         {"min": 12, "max": 22},
-      "startup_early":   {"min": 16, "max": 32},
-      "product_mid":     {"min": 20, "max": 40},
-      "product_unicorn": {"min": 30, "max": 62},
-      "faang":           {"min": 45, "max": 85}
+      "_note": "3–7 YOE | SDE-2 / Software Engineer",
+      "service":         {"min": 10, "max": 20},
+      "startup_early":   {"min": 15, "max": 28},
+      "product_mid":     {"min": 18, "max": 35},
+      "product_unicorn": {"min": 28, "max": 55},
+      "faang":           {"min": 40, "max": 75}
     },
 
     "senior": {
-      "_note": "7–12 YOE",
-      "service":         {"min": 18, "max": 32},
-      "startup_early":   {"min": 28, "max": 55},
-      "product_mid":     {"min": 35, "max": 65},
-      "product_unicorn": {"min": 50, "max": 95},
-      "faang":           {"min": 70, "max": 150}
+      "_note": "7–12 YOE | SDE-3 / Senior Engineer",
+      "service":         {"min": 16, "max": 28},
+      "startup_early":   {"min": 25, "max": 45},
+      "product_mid":     {"min": 30, "max": 55},
+      "product_unicorn": {"min": 45, "max": 80},
+      "faang":           {"min": 60, "max": 120}
     },
 
     "staff": {
-      "_note": "12+ YOE IC — Staff / Principal / Distinguished",
-      "service":         {"min": 28, "max": 50},
-      "startup_early":   {"min": 45, "max": 80},
-      "product_mid":     {"min": 60, "max": 100},
-      "product_unicorn": {"min": 80, "max": 140},
-      "faang":           {"min": 120, "max": 260}
+      "_note": "12+ YOE IC — Staff / Principal / Distinguished Engineer",
+      "service":         {"min": 22, "max": 40},
+      "startup_early":   {"min": 35, "max": 65},
+      "product_mid":     {"min": 50, "max": 85},
+      "product_unicorn": {"min": 70, "max": 130},
+      "faang":           {"min": 100, "max": 180}
     },
 
     "em": {
-      "_note": "Engineering Manager — typically 6–10 YOE, managing 5–10 ICs",
-      "service":         {"min": 25, "max": 42},
-      "startup_early":   {"min": 35, "max": 65},
-      "product_mid":     {"min": 45, "max": 80},
-      "product_unicorn": {"min": 65, "max": 110},
-      "faang":           {"min": 90, "max": 180}
+      "_note": "Engineering Manager — typically 6–10 YOE, managing 5–10 ICs. Data: Flipkart EM median ₹101–111 LPA, Swiggy EM ₹86–135 LPA, Razorpay EM median ₹88 LPA, Google EM L5 median ₹103 LPA.",
+      "service":         {"min": 18, "max": 32},
+      "startup_early":   {"min": 28, "max": 48},
+      "product_mid":     {"min": 35, "max": 60},
+      "product_unicorn": {"min": 55, "max": 95},
+      "faang":           {"min": 80, "max": 140}
     },
 
     "senior_em": {
-      "_note": "Senior EM / Group EM — 10–14 YOE, multiple teams or large org",
-      "service":         {"min": 35, "max": 60},
-      "startup_early":   {"min": 55, "max": 90},
-      "product_mid":     {"min": 70, "max": 115},
-      "product_unicorn": {"min": 95, "max": 160},
-      "faang":           {"min": 145, "max": 260}
+      "_note": "Senior EM / Group EM — 10–14 YOE, multiple teams or large org. Data: Google EM L6-L7 median ₹212 LPA, Microsoft EM median ₹138 LPA.",
+      "service":         {"min": 25, "max": 45},
+      "startup_early":   {"min": 40, "max": 65},
+      "product_mid":     {"min": 55, "max": 85},
+      "product_unicorn": {"min": 75, "max": 120},
+      "faang":           {"min": 110, "max": 175}
     },
 
     "director": {
-      "_note": "Director of Engineering / VP Eng — 14+ YOE, org-level ownership",
-      "service":         {"min": 50, "max": 90},
-      "startup_early":   {"min": 80, "max": 140},
-      "product_mid":     {"min": 100, "max": 180},
-      "product_unicorn": {"min": 140, "max": 240},
-      "faang":           {"min": 200, "max": 400}
+      "_note": "Director of Engineering / VP Eng — 14+ YOE, org-level ownership. Data: Flipkart Director Glassdoor avg ₹60 LPA base (~₹90–130 LPA total), Swiggy Director ₹60 LPA base (~₹90–120 LPA total), Amazon Director India median ₹518 LPA is L8/VP outlier — excluded.",
+      "service":         {"min": 35, "max": 60},
+      "startup_early":   {"min": 55, "max": 85},
+      "product_mid":     {"min": 70, "max": 110},
+      "product_unicorn": {"min": 90, "max": 145},
+      "faang":           {"min": 120, "max": 220}
     }
 
   },
