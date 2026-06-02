@@ -12,7 +12,7 @@ Python 3.9+ | Pydantic v2 | Typer/Rich CLI | FastAPI (web) | python-docx | pdfpl
 |---|---|---|---|
 | A1 Resume Understanding | OpenAI | gpt-4o-mini | 4000 |
 | A2 JD Intelligence | OpenAI | gpt-4o-mini | 4000 |
-| A3 Gap Analyzer | OpenAI | gpt-4o-mini | 4000 |
+| A3 Gap Analyzer | OpenAI | gpt-4o | 4000 |
 | A4 Rewriter | Anthropic | claude-haiku-4-5-20251001 | 6000 |
 | A5 Recruiter Sim | Anthropic | claude-haiku-4-5-20251001 | 4000 |
 | Orchestrator | OpenAI | gpt-4o-mini | 4000 |

@@ -40,9 +40,12 @@ CANONICAL_SECTIONS = [
 GAP_SYSTEM_PROMPT = """You are a Gap Analyzer for a resume-to-JD comparison. You receive structured resume understanding and JD intelligence, and your task is to identify and prioritize gaps in the resume relative to the JD.
 These gaps will inform targeted rewrites to improve JD fit. Focus on actionable, high-impact changes that directly address specific JD requirements.
 
+**CRITICAL INSTRUCTION: Check every gap against the FULL RESUME TEXT before outputting it. If a JD requirement is already demonstrated ANYWHERE in the resume (even with different wording), DO NOT create a gap for it.**
+
 You will receive:
 1. Structured resume understanding (experience years, skills, seniority, domains).
 2. JD intelligence (must-have/nice-to-have skills, hidden signals, company type).
+3. The FULL RESUME TEXT so you can verify every gap against real content.
 
 Your job is to produce ONE JSON object that matches this shape exactly:
 {
@@ -107,6 +110,27 @@ Rules:
   event-driven / message queue ≈ streaming; Power BI ≈ Tableau (BI tools).
   If equivalent coverage exists anywhere in the resume, set needs_change=false for that gap.
   Use the JD semantic_skill_map equivalents when provided in the input.
+- HOLISTIC JD MATCHING (critical for multi-entry sections):
+  You have access to the FULL RESUME TEXT below. Before creating a gap for any experience
+  entry, read the full resume to understand the complete picture across ALL roles.
+
+  **STRICT RULE: If this JD requirement (e.g., "team leadership", "real-time systems",
+  "quantified impact", "architecture", "cross-functional") is ALREADY demonstrated ANYWHERE
+  in the resume, do NOT create a gap for that specific entry.** Only flag a role if that
+  particular role needs to showcase the skill for context.
+
+  SEMANTIC EQUIVALENCE EXAMPLES:
+  - "real-time systems" ≈ "billions in transactions", "high-scale", "transaction-heavy"
+  - "architecture evaluation" ≈ "architected", "architectural enhancements", "system design"
+  - "team leadership" ≈ "led N engineers", "cross-functional teams", "led team"
+  - "quantified impact" ≈ any ₹/$ amount, %, "N users", "N increase", "growth", "efficiency"
+
+  APPLICATION:
+  Example 1: If resume shows "Led 32 engineers" in Flipkart, do NOT flag BT for lacking team leadership.
+  Example 2: If Microsoft role shows "billions in transactions", do NOT flag Flipkart for lacking "real-time systems".
+  Example 3: If any role shows "Generated ₹4 Cr, 30% increase", do NOT flag others for missing metrics.
+  Example 4: If the word "architected" OR "architecture" OR "system design" appears anywhere,
+             do NOT flag entries for lacking "architecture evaluation".
 - PHANTOM GAP RULE: On strong matches (candidate clearly qualified for the role),
   require HIGH confidence before setting needs_change=true. Do not flag gaps for skills
   already demonstrated under different wording. Prefer 0–3 total gaps on strong matches.
@@ -231,6 +255,25 @@ _EVIDENCE_SIGNALS = {
     "collaboration", "cross-team", "collaborated", "architectural decision",
     "system design decision", "quantified", "impact metric", "on-call", "oncall",
     "incident response", "ownership", "led the", "drove", "spearheaded",
+    # Product signals
+    "roadmap ownership", "user research", "discovery", "a/b test", "north star",
+    "product strategy", "user story", "feature adoption", "product metric",
+    "prd", "hypothesis", "okr", "go-to-market", "gtm launch",
+    # Data / Analytics signals
+    "model accuracy", "auc", "f1 score", "experiment", "lift", "significance",
+    "dashboard adoption", "business impact of", "cohort", "inference",
+    # Marketing signals
+    "roas", "cac", "cpl", "campaign roi", "demand generation",
+    "pipeline contribution", "brand awareness", "mql", "sql conversion",
+    # HR signals
+    "time-to-hire", "offer acceptance", "attrition rate", "enps",
+    "headcount supported", "hrbp", "succession planning hr",
+    # Finance signals
+    "cost savings", "budget managed", "forecast accuracy", "ebitda impact",
+    "unit economics", "fp&a ownership",
+    # Design signals
+    "usability metric", "task completion", "design system adoption",
+    "accessibility score", "conversion lift from redesign",
 }
 
 _SURFACE_SIGNALS = {
@@ -289,12 +332,187 @@ def _is_actionable_gap(gap: dict) -> bool:
     return False
 
 
-def _build_coaching_question(gap: dict) -> tuple[str, list[str]]:
+def _build_role_coaching_question(
+    role_family: str,
+    reason: str,
+    ctx,
+) -> tuple[str, list[str]]:
+    """Role-specific coaching question builder for non-engineering roles."""
+    rf = role_family.upper()
+
+    if rf == "PRODUCT":
+        if any(w in reason for w in ["metric", "outcome", "retention", "adoption", "dau", "mau"]):
+            return (
+                "What was the measurable business outcome of this feature or initiative?",
+                [
+                    "Grew D30 retention from X% to Y% over N months",
+                    "Feature drove ₹X Cr incremental GMV in first quarter",
+                    "Activation rate improved from X% to Y% post-launch",
+                    "Reduced churn by X% through targeted intervention",
+                ],
+            )
+        if any(w in reason for w in ["research", "discovery", "user", "insight"]):
+            return (
+                "What user research or discovery process did you run before building this?",
+                [
+                    "Ran N user interviews; identified top 3 unmet needs",
+                    "Analysed funnel drop-off data across X cohorts",
+                    "Conducted usability tests with N participants; task completion improved X%",
+                    "Led discovery sprint with design and engineering to validate hypothesis",
+                ],
+            )
+        if any(w in reason for w in ["roadmap", "ownership", "prioritiz", "strategy"]):
+            return (
+                "Did you own the roadmap and prioritization for this product area?",
+                [
+                    "Defined 6-month roadmap for X product area; aligned with business OKRs",
+                    "Owned backlog prioritization using RICE/ICE scoring across N features",
+                    "Set north star metric and designed experiments to move it",
+                    "Drove roadmap alignment with 3 stakeholder groups across engineering, design, and business",
+                ],
+            )
+
+    if rf == "DATA_ANALYST":
+        if any(w in reason for w in ["model", "accuracy", "ml", "prediction", "forecast"]):
+            return (
+                "What was the accuracy of the model and what business decision did it support?",
+                [
+                    "Model achieved AUC of X, reducing false positives by Y%",
+                    "Churn prediction model identified at-risk segment; retention campaign saved ₹X Cr",
+                    "Forecast accuracy improved from X% to Y%; reduced inventory waste by Z%",
+                    "Recommendation engine drove X% lift in click-through rate",
+                ],
+            )
+        if any(w in reason for w in ["dashboard", "report", "bi", "analytics"]):
+            return (
+                "How many teams or users adopted the dashboard, and what decisions did it enable?",
+                [
+                    "Dashboard used by N teams (X MAU); replaced N ad hoc reports",
+                    "Self-serve analytics tooling saved N analyst hours per week",
+                    "Report directly informed quarterly business review decision on X",
+                ],
+            )
+        if any(w in reason for w in ["a/b", "experiment", "test", "significance"]):
+            return (
+                "What was the measured lift from this experiment, and was it statistically significant?",
+                [
+                    "A/B test showed X% lift in conversion (p < 0.05, N = X users)",
+                    "Experiment ran for N days; treatment group showed Y% improvement in retention",
+                    "Multi-variate test across 3 variants; identified winning design with X% significance",
+                ],
+            )
+
+    if rf == "MARKETING":
+        if any(w in reason for w in ["roas", "cac", "cpl", "campaign", "paid", "performance"]):
+            return (
+                "What was the ROAS, CAC, or ROI of this campaign?",
+                [
+                    "Paid campaign achieved ROAS of X:1 on ₹Y budget",
+                    "Reduced CAC from ₹X to ₹Y while maintaining conversion volume",
+                    "Lead generation campaign delivered N MQLs at ₹X CPL",
+                    "Performance marketing drove ₹X pipeline contribution in Q",
+                ],
+            )
+        if any(w in reason for w in ["brand", "awareness", "content", "organic"]):
+            return (
+                "What was the measurable brand or content impact — reach, engagement, or conversion?",
+                [
+                    "Content strategy grew organic traffic by X% YoY",
+                    "Brand campaign lifted unaided awareness from X% to Y% (survey, N = X)",
+                    "Email nurture sequence achieved X% open rate, Y% conversion to demo",
+                ],
+            )
+
+    if rf == "HR":
+        if any(w in reason for w in ["hire", "recruit", "talent", "acquisition"]):
+            return (
+                "What were your time-to-hire and offer acceptance metrics?",
+                [
+                    "Reduced time-to-hire from X to Y days for technical roles",
+                    "Achieved X% offer acceptance rate across N hires in FY",
+                    "Built campus hiring program; hired N graduates at ₹X cost-per-hire",
+                ],
+            )
+        if any(w in reason for w in ["attrition", "retention", "engagement", "enps"]):
+            return (
+                "What was the before/after attrition rate or eNPS improvement?",
+                [
+                    "Voluntary attrition reduced from X% to Y% in 12 months",
+                    "eNPS improved from X to Y over 2 survey cycles",
+                    "Engagement intervention reduced regrettable attrition by X%",
+                ],
+            )
+
+    if rf == "FINANCE":
+        if any(w in reason for w in ["cost", "saving", "optimization", "reduction"]):
+            return (
+                "What was the ₹ value of cost savings and what initiative drove it?",
+                [
+                    "Cost optimisation initiative saved ₹X Cr annually through vendor renegotiation",
+                    "Working capital improvement freed ₹X Cr by reducing DSO from X to Y days",
+                    "Capex reduction of ₹X Cr by consolidating X infrastructure contracts",
+                ],
+            )
+        if any(w in reason for w in ["budget", "forecast", "fp&a", "p&l"]):
+            return (
+                "What was the budget size you managed and how accurate were your forecasts?",
+                [
+                    "Managed ₹X Cr annual opex budget across N business units",
+                    "Forecast accuracy improved to X% (from Y%) over 4 quarters",
+                    "Led annual operating plan for P&L of ₹X Cr",
+                ],
+            )
+
+    if rf == "DESIGN":
+        if any(w in reason for w in ["redesign", "conversion", "task", "usability", "ux"]):
+            return (
+                "What was the usability or conversion improvement from this redesign?",
+                [
+                    "Checkout redesign reduced abandonment from X% to Y%",
+                    "Task completion rate improved from X% to Y% post redesign (usability test, N = X)",
+                    "Onboarding flow redesign improved activation by X% in 30 days",
+                ],
+            )
+        if any(w in reason for w in ["design system", "component", "token"]):
+            return (
+                "How many teams or products adopted the design system?",
+                [
+                    "Design system adopted by N product teams; covers X% of UI surface area",
+                    "Reduced design-to-dev handoff time by X% through component library",
+                    "System covers N components; accessibility score improved to WCAG AA",
+                ],
+            )
+
+    # Fallback for unmatched non-engineering signals
+    return (
+        f"Can you share a specific example with measurable outcome related to: {reason or 'this area'}?",
+        [
+            "Describe the situation and your specific ownership",
+            "Include a quantified outcome (metric, ₹ value, or % improvement)",
+            "Note the timeframe and scale involved",
+        ],
+    )
+
+
+def _build_coaching_question(gap: dict, role_family: str = "ENGINEERING") -> tuple[str, list[str]]:
     """
     Generate a focused coaching question and hint examples for an evidence gap.
     Maps gap_reason to a targeted question. Zero LLM calls.
     """
     reason = (gap.get("gap_reason") or "").lower()
+
+    # Role-aware dispatch for non-engineering roles
+    if role_family.upper() != "ENGINEERING":
+        from backend.few_shot_prompts import get_role_context
+        try:
+            ctx = get_role_context(role_family)
+            # Check if any domain vocabulary or metric vocabulary from this role matches the gap
+            all_signals = [s.lower() for s in (ctx.domain_vocabulary or []) + (ctx.metric_vocabulary or [])]
+            if any(sig in reason for sig in all_signals):
+                return _build_role_coaching_question(role_family, reason, ctx)
+        except Exception:
+            # Fallback to engineering coaching if role context unavailable
+            pass
 
     if any(w in reason for w in ["mentor", "coach", "guidance", "develop"]):
         return (
@@ -390,10 +608,10 @@ def _normalize_gap_type(raw: Any) -> str | None:
     return None
 
 
-def _apply_gap_type_metadata(gap: dict, gap_type: str) -> dict:
+def _apply_gap_type_metadata(gap: dict, gap_type: str, role_family: str = "ENGINEERING") -> dict:
     """Attach coaching/auto_apply fields for a known gap_type without re-classifying."""
     if gap_type == GapType.EVIDENCE.value:
-        question, hints = _build_coaching_question(gap)
+        question, hints = _build_coaching_question(gap, role_family)
         return {
             **gap,
             "gap_type": gap_type,
@@ -429,7 +647,7 @@ def _apply_gap_type_metadata(gap: dict, gap_type: str) -> dict:
     }
 
 
-def classify_gap(gap: dict, resume_text: str = "") -> dict:
+def classify_gap(gap: dict, resume_text: str = "", role_family: str = "ENGINEERING") -> dict:
     """
     Classify a gap as surface / structural / evidence.
     Pure heuristic — zero LLM calls.
@@ -440,6 +658,7 @@ def classify_gap(gap: dict, resume_text: str = "") -> dict:
     Args:
         gap: Section gap dict from Agent 3 enrichment.
         resume_text: Full resume text (reserved for future heuristics).
+        role_family: Role family (ENGINEERING, PRODUCT, etc.) for role-aware coaching.
 
     Returns:
         Gap dict with gap_type, coaching fields, and auto_apply set.
@@ -448,7 +667,7 @@ def classify_gap(gap: dict, resume_text: str = "") -> dict:
 
     llm_type = _normalize_gap_type(gap.get("gap_type"))
     if llm_type:
-        return _apply_gap_type_metadata(gap, llm_type)
+        return _apply_gap_type_metadata(gap, llm_type, role_family)
 
     reason = (gap.get("gap_reason") or "").lower()
     instruction = (gap.get("rewrite_instruction") or "").lower()
@@ -456,28 +675,28 @@ def classify_gap(gap: dict, resume_text: str = "") -> dict:
     combined = reason + " " + instruction + " " + " ".join(keywords)
 
     if any(signal in combined for signal in _EVIDENCE_SIGNALS):
-        return _apply_gap_type_metadata(gap, GapType.EVIDENCE.value)
+        return _apply_gap_type_metadata(gap, GapType.EVIDENCE.value, role_family)
 
     if _is_no_change_gap(gap):
-        return _apply_gap_type_metadata(gap, GapType.SURFACE.value)
+        return _apply_gap_type_metadata(gap, GapType.SURFACE.value, role_family)
 
     if _has_surface_signal(gap) and (gap.get("needs_change") or instruction.strip()):
-        gap_with_surface = _apply_gap_type_metadata(gap, GapType.SURFACE.value)
+        gap_with_surface = _apply_gap_type_metadata(gap, GapType.SURFACE.value, role_family)
         gap_with_surface["auto_apply"] = True
         return gap_with_surface
 
-    return _apply_gap_type_metadata(gap, GapType.STRUCTURAL.value)
+    return _apply_gap_type_metadata(gap, GapType.STRUCTURAL.value, role_family)
 
 
-def classify_section_gaps(gaps: list[dict], resume_text: str = "") -> list[dict]:
+def classify_section_gaps(gaps: list[dict], resume_text: str = "", role_family: str = "ENGINEERING") -> list[dict]:
     """Run classify_gap over every section gap and its sub_changes."""
     classified = []
     for gap in gaps:
-        classified_gap = classify_gap(gap, resume_text)
+        classified_gap = classify_gap(gap, resume_text, role_family)
         sub_changes = gap.get("sub_changes") or []
         if sub_changes:
             classified_gap["sub_changes"] = [
-                classify_gap(sub, resume_text) for sub in sub_changes
+                classify_gap(sub, resume_text, role_family) for sub in sub_changes
             ]
         classified.append(classified_gap)
     return classified
@@ -1219,6 +1438,86 @@ def _keyword_covered_in_resume(keyword: str, resume_blob: str, semantic_map: dic
     return False
 
 
+def _suppress_cross_entry_duplicate_gaps(
+    section_gaps: list[dict],
+    resume_sections: dict | None = None,
+) -> list[dict]:
+    """
+    For experience section, suppress sub_changes when the same gap is already
+    addressed in a stronger/earlier entry.
+
+    Example: If BT and SmartViz both lack "team leadership clarity" but Flipkart
+    demonstrates it strongly, suppress the gap for BT and SmartViz (weaker entries).
+
+    This catches cross-entry duplication that the LLM may create despite the
+    "holistic JD matching" rule.
+    """
+    # Note: resume_sections is not actually used in this logic; it's here for symmetry
+    # with other post-LLM filters. The suppression is based on the order of sub_changes,
+    # not on their content.
+
+    filtered: list[dict] = []
+    for gap in section_gaps:
+        section = (gap.get("section") or "").lower()
+        if section != "experience":
+            filtered.append(gap)
+            continue
+
+        gap = dict(gap)
+        sub_changes = gap.get("sub_changes") or []
+        if not sub_changes:
+            filtered.append(gap)
+            continue
+
+        # Track which gap_reasons have been seen across all entries
+        # Group by gap_reason (case-insensitive, e.g., "lacks team leadership", "missing metrics")
+        gap_reason_to_entries: dict[str, list[str]] = {}
+        for sub in sub_changes:
+            if not sub.get("needs_change"):
+                continue
+            reason_raw = sub.get("gap_reason") or ""
+            reason = reason_raw.lower().strip()
+            if reason:
+                if reason not in gap_reason_to_entries:
+                    gap_reason_to_entries[reason] = []
+                gap_reason_to_entries[reason].append(sub.get("sub_label", ""))
+
+        # For each gap_reason appearing in multiple entries, keep only the first (strongest)
+        # and suppress the rest
+        suppressed_labels_for_reason: dict[str, set[str]] = {}
+        for reason, labels in gap_reason_to_entries.items():
+            if len(labels) > 1:
+                # Keep first, suppress rest
+                suppressed_labels_for_reason[reason] = set(labels[1:])
+                logging.debug(
+                    "GapAnalyzer: will suppress %d duplicates for reason '%s'",
+                    len(labels) - 1, reason[:60]
+                )
+
+        # Filter sub_changes
+        filtered_subs = []
+        for sub in sub_changes:
+            reason = (sub.get("gap_reason") or "").lower().strip()
+            sub_label = sub.get("sub_label", "")
+
+            if reason in suppressed_labels_for_reason and sub_label in suppressed_labels_for_reason[reason]:
+                logging.info(
+                    "GapAnalyzer: cross-entry duplicate gap suppressed: %s (reason: %s) — "
+                    "already addressed in another entry",
+                    sub_label, reason[:60],
+                )
+                sub["needs_change"] = False
+                sub["gap_reason"] = "No change needed — gap already addressed in another entry"
+                sub["rewrite_instruction"] = ""
+
+            filtered_subs.append(sub)
+
+        gap["sub_changes"] = filtered_subs
+        filtered.append(gap)
+
+    return filtered
+
+
 def _apply_phantom_gap_filter(
     section_gaps: list[dict],
     resume_analysis: dict,
@@ -1228,6 +1527,9 @@ def _apply_phantom_gap_filter(
     """
     On qualified matches, suppress experience gaps whose missing keywords
     are already covered by semantic equivalents in the resume.
+
+    Also suppresses gaps when a sub_change's requirement is demonstrated
+    ANYWHERE else in the resume (holistic matching).
     """
     role_fit = compute_role_fit(resume_analysis or {}, jd_analysis or {}, {"section_gaps": section_gaps})
     if role_fit.get("fitness") != "qualified":
@@ -1244,6 +1546,40 @@ def _apply_phantom_gap_filter(
             continue
 
         section = (gap.get("section") or "").lower()
+
+        # For experience section, also check sub_changes for global coverage
+        if section == "experience":
+            sub_changes = gap.get("sub_changes") or []
+            filtered_subs = []
+
+            for sub in sub_changes:
+                sub = dict(sub)
+                if not sub.get("needs_change"):
+                    filtered_subs.append(sub)
+                    continue
+
+                # Check if this sub_change's missing keywords appear anywhere in resume
+                missing = [str(k) for k in (sub.get("missing_keywords") or []) if str(k).strip()]
+                reason = (sub.get("gap_reason") or "").lower()
+
+                # If this requirement is already shown globally, suppress it for this entry
+                if missing and all(_keyword_covered_in_resume(kw, resume_blob, semantic_map) for kw in missing):
+                    logging.info(
+                        "GapAnalyzer: cross-entry gap suppressed (global coverage): %s → %s",
+                        sub.get("sub_label", "")[:40],
+                        reason[:50],
+                    )
+                    sub["needs_change"] = False
+                    sub["gap_reason"] = f"No change needed — {reason.split(':')[0]} already demonstrated in another role"
+                    sub["rewrite_instruction"] = ""
+                    sub["missing_keywords"] = []
+
+                filtered_subs.append(sub)
+
+            gap["sub_changes"] = filtered_subs
+            filtered.append(gap)
+            continue
+
         if section != "experience":
             filtered.append(gap)
             continue
@@ -1356,7 +1692,7 @@ class GapAnalyzerAgent(BaseAgent):
     """
 
     def __init__(self):
-        super().__init__(model="gpt-4o-mini", max_tokens=4000, provider="openai")
+        super().__init__(model="gpt-4o", max_tokens=4000, provider="openai")
 
     def run(self, input_dict: dict) -> dict:
         """
@@ -1401,15 +1737,20 @@ class GapAnalyzerAgent(BaseAgent):
             system_prompt = GAP_SYSTEM_PROMPT + build_role_gap_addendum(role_family)
             output_model = GapAnalyzerOutput
 
+        # Build sub_entry manifest with just labels (LLM has full resume text to verify content)
         sub_entry_manifest: dict[str, list[str]] = {}
         for sec_name, sec_text in resume_sections.items():
             if sec_text and sec_text.sub_entries:
                 sub_entry_manifest[sec_name] = [e.label for e in sec_text.sub_entries]
 
         user_message = (
+            f"FULL RESUME TEXT (for holistic context):\n"
+            f"{'='*60}\n"
+            f"{inp.resume_text or resume_analysis.get('raw_text', '')[:10000]}\n"
+            f"{'='*60}\n\n"
             f"Resume understanding:\n{json.dumps(resume_analysis, indent=2)}\n\n"
             f"JD intelligence:\n{json.dumps(jd_analysis, indent=2)}\n\n"
-            f"EXACT sub_entry labels per section (use VERBATIM as sub_label values):\n"
+            f"EXACT sub_entry labels per section (use VERBATIM as sub_label values in gaps):\n"
             f"{json.dumps(sub_entry_manifest, indent=2)}"
         )
 
@@ -1427,6 +1768,7 @@ class GapAnalyzerAgent(BaseAgent):
                         resume_analysis=resume_analysis,
                         jd_analysis=jd_analysis or {},
                         resume_text=inp.resume_text or "",
+                        role_family=role_family,
                     )
                 elif mode == "evaluate":
                     if not isinstance(parsed.get("estimated_score_after"), int):
@@ -1599,6 +1941,7 @@ class GapAnalyzerAgent(BaseAgent):
         resume_analysis: dict | None = None,
         jd_analysis: dict | None = None,
         resume_text: str = "",
+        role_family: str = "ENGINEERING",
     ) -> dict:
         """
         Backfills original_content on SectionGap and original_text on SubLocationChange
@@ -1704,11 +2047,9 @@ class GapAnalyzerAgent(BaseAgent):
             resume_analysis or {},
             jd_analysis or {},
         )
-        enriched_gaps = _apply_phantom_gap_filter(
+        enriched_gaps = _suppress_cross_entry_duplicate_gaps(
             enriched_gaps,
-            resume_analysis or {},
-            jd_analysis or {},
-            resume_text,
+            resume_sections,
         )
         enriched_gaps = _ensure_minimum_gap_floor(
             enriched_gaps,
@@ -1717,7 +2058,7 @@ class GapAnalyzerAgent(BaseAgent):
         )
         if not resume_text:
             resume_text = (resume_analysis or {}).get("raw_text", "") or ""
-        classified = classify_section_gaps(enriched_gaps, resume_text)
+        classified = classify_section_gaps(enriched_gaps, resume_text, role_family)
         parsed["section_gaps"] = classified
         parsed["sections_changed"] = [
             g["section"] for g in classified if g.get("needs_change")
