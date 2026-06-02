@@ -688,6 +688,71 @@ def classify_gap(gap: dict, resume_text: str = "", role_family: str = "ENGINEERI
     return _apply_gap_type_metadata(gap, GapType.STRUCTURAL.value, role_family)
 
 
+def _suppress_evidence_gaps_for_mentioned_skills(
+    section_gaps: list[dict],
+    resume_text: str = "",
+) -> list[dict]:
+    """
+    PHASE 1b: For Evidence gaps about specific skills (not sections),
+    suppress if the keyword appears anywhere in the resume.
+
+    This catches cases like:
+    - Gap: "Docker is missing"
+    - Resume has: "Docker" in skills or experience
+    - Action: Suppress (skill is mentioned, just not in a specific way JD wants)
+    """
+    if not resume_text:
+        return section_gaps
+
+    resume_blob = resume_text.lower()
+    filtered: list[dict] = []
+
+    for gap in section_gaps:
+        if not gap.get("needs_change"):
+            filtered.append(gap)
+            continue
+
+        gap_type = gap.get("gap_type", "").lower()
+
+        # Only process Evidence gaps
+        if gap_type != GapType.EVIDENCE.value:
+            filtered.append(gap)
+            continue
+
+        gap_reason = (gap.get("gap_reason") or "").lower()
+        missing_keywords = gap.get("missing_keywords") or []
+
+        # Skip if it's about a missing SECTION (not skill)
+        if any(word in gap_reason for word in ["section missing", "section is missing", "section is absent"]):
+            filtered.append(gap)
+            continue
+
+        # Check if any keyword is actually in the resume
+        gap_suppressed = False
+        for kw in missing_keywords:
+            kw_lower = str(kw).lower().strip()
+            # Simple check: is this keyword mentioned anywhere?
+            if kw_lower and kw_lower in resume_blob:
+                logging.info(
+                    "Phase 1b: Skill '%s' found in resume, suppressing coaching gap",
+                    kw_lower,
+                )
+                gap_suppressed = True
+                break
+
+        if gap_suppressed:
+            gap = dict(gap)
+            gap["needs_change"] = False
+            gap["gap_reason"] = f"Skill is mentioned in resume (coaching not needed)"
+            gap["requires_user_input"] = False
+            gap["coaching_question"] = None
+            gap["coaching_hint"] = []
+
+        filtered.append(gap)
+
+    return filtered
+
+
 def _suppress_evidence_gaps_with_resume_proof(
     section_gaps: list[dict],
     resume_text: str = "",
@@ -724,6 +789,9 @@ def _suppress_evidence_gaps_with_resume_proof(
             "architected", "architectural", "architecture", "system design",
             "designed system", "led architecture",
         ],
+        "evaluate architecture": [
+            "architected", "architectural", "architecture", "system design",
+        ],
         "team leadership": [
             "led ", "leading ", "led a team", "engineer team", "cross-functional team",
             "managed team", "team of", "direct report", "led the team",
@@ -732,6 +800,10 @@ def _suppress_evidence_gaps_with_resume_proof(
             "led a team of", "team of ", "managing ", "led ", "team members",
         ],
         "metrics": [
+            "₹", "$", "%", "crore", "increase", "growth", "improvement",
+            "reduction", "scale", "users", "requests", "concurrent",
+        ],
+        "quantified impact": [
             "₹", "$", "%", "crore", "increase", "growth", "improvement",
             "reduction", "scale", "users", "requests", "concurrent",
         ],
@@ -755,6 +827,15 @@ def _suppress_evidence_gaps_with_resume_proof(
         ],
         "uptime": [
             "uptime", "availability", "reliability", "99", "downtime",
+        ],
+        "operational risk": [
+            "reliability", "failover", "availability", "resilience", "risk",
+        ],
+        "partner with product": [
+            "cross-functional", "product", "collaboration", "partnership",
+        ],
+        "cross-functional": [
+            "cross-functional", "cross team", "collaborated", "partnership",
         ],
     }
 
@@ -2302,6 +2383,8 @@ class GapAnalyzerAgent(BaseAgent):
         classified = classify_section_gaps(enriched_gaps, resume_text, role_family)
         # PHASE 1: Suppress Evidence gaps when resume clearly demonstrates the skill
         classified = _suppress_evidence_gaps_with_resume_proof(classified, resume_text)
+        # PHASE 1b: Suppress Evidence gaps for skills that ARE mentioned in resume
+        classified = _suppress_evidence_gaps_for_mentioned_skills(classified, resume_text)
         # PHASE 2: Generate auto-suggested text for remaining Evidence gaps via A4
         classified = _generate_suggestions_for_gaps(
             classified,
