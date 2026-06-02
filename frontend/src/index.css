@@ -9,20 +9,17 @@ html {
   -webkit-text-size-adjust: 100%;
 }
 body {
-  margin: 0;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
-    Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
-  background: #ffffff;
+  background: #f7f7fc;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  color: #0d0d1a;
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
+  -moz-osx-font-smoothing: grayscale;
+  margin: 0;
+  padding: 0;
 }
+
 #root {
-  min-height: 100vh;
-  min-height: 100dvh;
-  background: #ffffff;
-  overflow-x: hidden;
+  background: #f7f7fc;
 }
 
 .page-shell {

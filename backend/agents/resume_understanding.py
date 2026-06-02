@@ -188,8 +188,12 @@ class ResumeUnderstandingAgent(BaseAgent):
         llm_seniority = parsed_output.get("seniority", "mid")
         if hasattr(llm_seniority, "value"):
             llm_seniority = llm_seniority.value
+        # Normalize Python 3.11+ enum repr: "Seniority.SENIOR" → "senior"
+        llm_seniority_str = str(llm_seniority).lower()
+        if "." in llm_seniority_str:
+            llm_seniority_str = llm_seniority_str.rsplit(".", 1)[-1]
         final_seniority, corrected = reconcile_seniority(
-            str(llm_seniority),
+            llm_seniority_str,
             resume_text,
             int(parsed_output.get("experience_years") or 0),
         )

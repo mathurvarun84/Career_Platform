@@ -1000,6 +1000,7 @@ class Orchestrator:
                             "resume_sections": resume_sections,
                             "jd_text": jd_text,
                             "mode": "gap_closer",
+                            "role_family": resume_und.get("role_family", "ENGINEERING"),
                         },
                     )
                     fut_sectioner = (
@@ -1132,6 +1133,7 @@ class Orchestrator:
                         "gap_analysis": gap_result,
                         "jd_intelligence": jd_intel,
                         "style_fingerprint": None,
+                        "role_family": resume_und.get("role_family", "ENGINEERING"),
                     },
                 )
             if has_jd and isinstance(gap_result, dict):

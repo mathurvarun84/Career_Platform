@@ -79,6 +79,17 @@ _DATE_RANGE_RE = re.compile(
     re.IGNORECASE
 )
 
+# Signals that a detected "experience" block is actually an education/declaration fragment.
+# OCR noise often pushes education lines into the experience section text window.
+_EDUCATION_FRAGMENT_RE = re.compile(
+    r'\b(b\.?\s*tech|m\.?\s*tech|mba|b\.?\s*e\.?|m\.?\s*e\.?|b\.?\s*sc\.?|'
+    r'phd|bachelor|master|university|college|institute|iit|nit|bits|niit|vit|'
+    r'cgpa|gpa|ssc|hsc|12th|10th|senior\s+secondary|secondary\s+school|'
+    r'percentage|board\s+exam|matriculation|graduation|diploma|'
+    r'bca|mca|b\.?\s*com|m\.?\s*com|bba)\b',
+    re.IGNORECASE,
+)
+
 # Core date-range token (do NOT use [-–—to]+ — that wrongly matches letters t/o inside words)
 _DATE_RANGE_CORE = (
     r'(?:(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+)?'
@@ -1380,6 +1391,11 @@ class ResumeUnderstandingValidator:
                             continue
                         if any(_labels_overlap(block_label, lbl) for lbl in existing_labels_for_overlap):
                             continue
+                        # Skip OCR fragments that look like education entries, not employers.
+                        # These appear when section boundaries are garbled by OCR noise.
+                        _fragment_probe = (block_label + ' ' + block_text[:150]).lower()
+                        if _EDUCATION_FRAGMENT_RE.search(_fragment_probe):
+                            continue
                         existing_entries.append({
                             'label': block_label,
                             'verbatim_text': block_text,
@@ -1559,6 +1575,28 @@ class ResumeUnderstandingValidator:
                     f"in skills section — injecting"
                 )
                 output['tech_stack'] = list(dict.fromkeys(detected_techs))  # dedup, preserve order
+
+        # ── 13. TECH_STACK hallucination filter ───────────────────────
+        # Remove items from tech_stack that don't appear in the full resume text.
+        # Checked against full text (not skills-only) to avoid false positives where
+        # a technology is named in experience bullets but not the skills section.
+        # Uses non-alphanumeric boundaries so "java" does not match "javascript".
+        current_ts = output.get('tech_stack', [])
+        if current_ts and resume_text:
+            text_lower = resume_text.lower()
+            grounded: list[str] = []
+            ungrounded: list[str] = []
+            for tech in current_ts:
+                pattern = r'(?<![a-z0-9])' + re.escape(tech.lower()) + r'(?![a-z0-9])'
+                if re.search(pattern, text_lower):
+                    grounded.append(tech)
+                else:
+                    ungrounded.append(tech)
+            if ungrounded and grounded:
+                all_anomalies.append(
+                    f"tech_stack: removed {len(ungrounded)} items absent from resume text: {ungrounded}"
+                )
+                output['tech_stack'] = grounded
 
         # ── Final logging ──────────────────────────────────────────────
         if all_anomalies:

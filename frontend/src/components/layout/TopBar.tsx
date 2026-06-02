@@ -4,6 +4,7 @@ import { downloadResumeReport, getDownloadVerification } from "../../api/client"
 import { useWindowSize } from "../../hooks/useWindowSize";
 import { useResumeStore } from "../../store/useResumeStore";
 import { useAuthStore } from "../../store/authStore";
+import { T } from "../../tokens";
 import type { DownloadVerification, TopBarProps } from "../../types";
 
 export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps) {
@@ -137,14 +138,15 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: isMobile ? "14px 16px" : "14px 32px",
-        background: "#ffffff",
-        borderBottom: "1.5px solid #e5e7eb",
+        padding: "0 40px",
+        height: "64px",
+        background: "rgba(255,255,255,0.96)",
+        borderBottom: `1px solid ${T.border}`,
         position: "sticky",
         top: 0,
         zIndex: 50,
-        backdropFilter: "blur(12px)",
-        boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
+        backdropFilter: "blur(20px) saturate(180%)",
+        boxShadow: T.shadowTopBar,
       }}
     >
       <div
@@ -158,17 +160,17 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
       >
         <div
           style={{
-            width: "42px",
-            height: "42px",
-            borderRadius: "12px",
-            background: "linear-gradient(135deg, #6366f1, #7c3aed)",
-            boxShadow: "0 3px 0 #4338ca, 0 5px 12px rgba(99,102,241,0.3)",
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            background: T.gradientBrand,
+            boxShadow: `0 3px 8px ${T.primaryLight}`,
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             flexShrink: 0,
             color: "#ffffff",
-            fontSize: "19px",
+            fontSize: 16,
             fontWeight: 700,
             lineHeight: 1,
           }}
@@ -178,11 +180,10 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
         <div style={{ minWidth: 0 }}>
           <div
             style={{
-              fontSize: "16px",
+              fontSize: 14,
               fontWeight: 700,
-              color: "#111827",
-              lineHeight: 1.2,
-              letterSpacing: "-0.01em",
+              color: T.textPrimary,
+              letterSpacing: "-0.02em",
               whiteSpace: isMobile ? "nowrap" : undefined,
             }}
           >
@@ -191,9 +192,9 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
           {!isMobile ? (
             <div
               style={{
-                fontSize: "11px",
+                fontSize: 10,
                 fontWeight: 400,
-                color: "#6b7280",
+                color: T.textMuted,
                 marginTop: "2px",
               }}
             >
@@ -219,23 +220,36 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
           aria-label="Analyze another resume"
           onMouseDown={() => setIsPressed(true)}
           onMouseUp={() => setIsPressed(false)}
-          onMouseLeave={() => setIsPressed(false)}
+          onMouseEnter={e => {
+            if (!(!analysisResult || isLoading)) {
+              e.currentTarget.style.background = T.primaryDark;
+              e.currentTarget.style.transform = "translateY(-1px)";
+            }
+          }}
+          onMouseLeave={e => {
+            setIsPressed(false);
+            if (!(!analysisResult || isLoading)) {
+              e.currentTarget.style.background = T.primary;
+              e.currentTarget.style.transform = "";
+            }
+          }}
           style={{
-            background: (!analysisResult || isLoading) ? "#f3f4f6" : "#7c3aed",
-            color: (!analysisResult || isLoading) ? "#9ca3af" : "#ffffff",
-            borderRadius: "10px",
-            padding: isMobile ? "10px 12px" : "10px 20px",
-            fontSize: "13px",
+            padding: "9px 20px",
+            borderRadius: 8,
+            fontSize: 13,
             fontWeight: 700,
+            background: (!analysisResult || isLoading) ? "#f3f4f6" : T.primary,
+            color: (!analysisResult || isLoading) ? T.textDisabled : "#ffffff",
             border: "none",
             cursor: (!analysisResult || isLoading) ? "not-allowed" : "pointer",
-            transform: (!analysisResult || isLoading) || isPressed ? "translateY(3px)" : "translateY(0px)",
-            transition: "transform 0.1s, box-shadow 0.1s",
+            fontFamily: "inherit",
             boxShadow: (!analysisResult || isLoading)
               ? "0 3px 0 #d1d5db"
               : isPressed
-                ? "0 1px 0 #5b21b6"
-                : "0 3px 0 #5b21b6, 0 5px 12px rgba(124, 58, 237, 0.25)",
+                ? `0 1px 0 ${T.primaryFloor}`
+                : T.shadowPrimarySm,
+            transform: (!analysisResult || isLoading) || isPressed ? "translateY(2px)" : "translateY(0px)",
+            transition: "transform 0.1s, box-shadow 0.1s",
           }}
         >
           {isMobile ? "\u21bb" : "Analyze Another Resume"}
@@ -512,19 +526,28 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
             onClick={onOpenAuthModal}
             onMouseDown={() => setIsSignInPressed(true)}
             onMouseUp={() => setIsSignInPressed(false)}
-            onMouseLeave={() => setIsSignInPressed(false)}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = T.primaryDark;
+              e.currentTarget.style.transform = "translateY(-1px)";
+            }}
+            onMouseLeave={e => {
+              setIsSignInPressed(false);
+              e.currentTarget.style.background = T.primary;
+              e.currentTarget.style.transform = "";
+            }}
             style={{
-              background: "#6366f1",
-              color: "#ffffff",
-              borderRadius: "10px",
-              padding: "8px 18px",
-              fontSize: "13px",
+              padding: "9px 20px",
+              borderRadius: 8,
+              fontSize: 13,
               fontWeight: 700,
-              boxShadow: isSignInPressed
-                ? "0 1px 0 #4338ca"
-                : "0 3px 0 #4338ca, 0 5px 12px rgba(99,102,241,0.25)",
+              background: T.primary,
+              color: "#ffffff",
               border: "none",
               cursor: "pointer",
+              fontFamily: "inherit",
+              boxShadow: isSignInPressed
+                ? `0 1px 0 ${T.primaryFloor}`
+                : T.shadowPrimarySm,
               transform: isSignInPressed ? "translateY(2px)" : "translateY(0px)",
               transition: "transform 0.1s, box-shadow 0.1s",
               flexShrink: 0,

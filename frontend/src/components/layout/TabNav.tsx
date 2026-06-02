@@ -1,6 +1,6 @@
 import { useResumeStore } from "../../store/useResumeStore";
+import { T } from "../../tokens";
 import type { TabId } from "../../types/index";
-import { useWindowSize } from "../../hooks/useWindowSize";
 import { countActionableFixes } from "../../utils/fixesPipeline";
 import { hasJobDescription } from "../../utils/hasJobDescription";
 
@@ -22,7 +22,6 @@ export default function TabNav() {
   const setActiveTab = useResumeStore((state) => state.setActiveTab);
   const analysisResult = useResumeStore((state) => state.analysisResult);
   const fallbackInfo = useResumeStore((state) => state.fallbackInfo);
-  const { isMobile } = useWindowSize();
 
   const hasJd = hasJobDescription(analysisResult?.gap);
   const roleFitLocked = analysisResult?.role_fit?.fitness === "underqualified";
@@ -57,23 +56,24 @@ export default function TabNav() {
 
   return (
     <nav
-      className={isMobile ? "tab-nav-scroll" : undefined}
       role="tablist"
       style={{
         display: "flex",
         alignItems: "center",
-        background: "#ffffff",
-        borderBottom: "1.5px solid #e5e7eb",
-        padding: isMobile ? "0 16px" : "0 32px",
-        gap: "0",
-        overflowX: isMobile ? "auto" : "visible",
-        whiteSpace: isMobile ? "nowrap" : "normal",
-        msOverflowStyle: "none",
-        scrollbarWidth: "none",
-        WebkitOverflowScrolling: "touch",
+        justifyContent: "center",
+        padding: "16px 40px",
       }}
     >
-      {tabs.map((tab) => {
+      <div
+        style={{
+          display: "flex",
+          border: `1.5px solid ${T.border}`,
+          borderRadius: 12,
+          overflow: "hidden",
+          background: T.bgCard,
+        }}
+      >
+        {tabs.map((tab, index) => {
         const isActive = activeTab === tab.id;
         const isGapLocked = tab.id === "gap" && Boolean(analysisResult) && !hasJd;
         const isRoleFitLocked = roleFitLocked && roleFitLockedTabs.has(tab.id);
@@ -97,36 +97,29 @@ export default function TabNav() {
             onClick={() => handleTabClick(tab.id)}
             onMouseEnter={(event) => {
               if (!isActive && !isDisabled) {
-                event.currentTarget.style.color = "#374151";
-                event.currentTarget.style.background = "#f9fafb";
+                event.currentTarget.style.background = T.bgHover;
               }
             }}
             onMouseLeave={(event) => {
               if (!isActive && !isDisabled) {
-                event.currentTarget.style.color = "#6b7280";
-                event.currentTarget.style.background = "transparent";
-              } else if (isGapLocked) {
-                event.currentTarget.style.color = "#d1d5db";
-                event.currentTarget.style.background = "transparent";
+                event.currentTarget.style.background = T.bgCard;
               }
             }}
             style={{
-              padding: isMobile ? "12px 14px" : "14px 20px",
-              fontSize: "13px",
+              padding: "8px 18px",
+              fontSize: 13,
               fontWeight: isActive ? 700 : 500,
-              color: isDisabled ? "#d1d5db" : isActive ? "#6366f1" : "#6b7280",
-              background: "transparent",
+              color: isDisabled ? T.textDisabled : isActive ? "#ffffff" : T.textSecondary,
+              background: isActive ? T.primary : T.bgCard,
               border: "none",
-              borderBottom: isActive
-                ? "2px solid #6366f1"
-                : "2px solid transparent",
+              borderLeft: index > 0 ? `1px solid ${isActive ? T.primary : T.border}` : "none",
               cursor: isDisabled ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
               display: "flex",
               alignItems: "center",
               gap: "6px",
               whiteSpace: "nowrap",
-              transition: "color 0.15s",
-              marginBottom: "-1.5px",
+              transition: "all 0.15s",
             }}
           >
             <span style={{ lineHeight: 1 }}>{tab.icon}</span>
@@ -179,7 +172,8 @@ export default function TabNav() {
             ) : null}
           </button>
         );
-      })}
+        })}
+      </div>
     </nav>
   );
 }

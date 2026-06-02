@@ -456,7 +456,9 @@ def _is_bare_sentence_fragment(text: str) -> bool:
     if len(first) >= 120:
         return False
     if len(first) < 20 and len(lines) == 1:
-        return True
+        # Continuation fragments start lowercase, with a digit, or with a bullet.
+        # Short company names (e.g. "TCS", "Wipro") start uppercase — don't treat as fragments.
+        return first[0].islower() or first[0].isdigit() or first[0] in ('•', '-', '*', '·', '–')
     if first[0].islower() or first[0].isdigit():
         return True
     return False
@@ -639,6 +641,22 @@ class RewriterAgent(BaseAgent):
 
         resume_text = inp.resume_text or normalized_input.get("resume_text", "")
         jd_intelligence = inp.jd_intelligence or normalized_input.get("jd_intelligence")
+        role_family = str(input_dict.get("role_family", "ENGINEERING")).upper()
+
+        # Build role context block for prompt injection
+        role_context_block = ""
+        try:
+            from backend.few_shot_prompts import get_role_context
+            role_ctx = get_role_context(role_family)
+            role_context_block = (
+                f"\nROLE CONTEXT: {role_ctx.role_family}\n"
+                f"OPTIMIZE FOR: {', '.join(role_ctx.strength_signals[:3])}\n"
+                f"PREFERRED METRIC VOCABULARY: {', '.join(role_ctx.metric_vocabulary[:5])}\n"
+                f"WEAKNESS PATTERNS TO FIX: {', '.join(role_ctx.weakness_patterns[:3])}\n"
+                f"AVOID THESE PATTERNS: assisted, helped, was part of, contributed to (without specifics)\n"
+            )
+        except Exception:
+            role_context_block = ""
 
         with ThreadPoolExecutor(max_workers=6) as executor:
             futures = {
@@ -649,6 +667,7 @@ class RewriterAgent(BaseAgent):
                     resume_sections,
                     resume_text,
                     jd_intelligence,
+                    role_context_block,
                 ): section
                 for section, gap in unique_gaps
             }
@@ -728,6 +747,7 @@ class RewriterAgent(BaseAgent):
         resume_sections: Dict[str, SectionText],
         resume_text: str = "",
         jd_intelligence: dict | None = None,
+        role_context: str = "",
     ) -> tuple[dict, list[dict]]:
         """
         Compute one section rewrite from one section gap.
@@ -779,7 +799,7 @@ class RewriterAgent(BaseAgent):
                 len(sub_changes),
             )
             return self._rewrite_with_sub_changes(
-                section, sub_changes, gap, section_text or None, resume_text
+                section, sub_changes, gap, section_text or None, resume_text, role_context
             )
 
         # Never monolithic-rewrite experience when sub_entries exist — LLM drops entries.
@@ -794,7 +814,7 @@ class RewriterAgent(BaseAgent):
                 len(section_text.sub_entries),
             )
             return self._rewrite_with_sub_changes(
-                section, [], gap, section_text, resume_text
+                section, [], gap, section_text, resume_text, role_context
             )
 
         # Pre-marked experience block with no sub_entries — preserve verbatim (no monolithic).
@@ -816,6 +836,7 @@ class RewriterAgent(BaseAgent):
             gap,
             resume_text=resume_text,
             jd_intelligence=jd_intelligence,
+            role_context=role_context,
         )
         patch_raw = _build_monolithic_section_patch(
             section, original_content, rewrite_dict, gap, resume_text
@@ -827,6 +848,7 @@ class RewriterAgent(BaseAgent):
         gap: dict,
         jd_intelligence: dict | None,
         resume_text: str,
+        role_context: str = "",
     ) -> str:
         """Prompt when the resume has no summary — write one from scratch."""
         jd = jd_intelligence or {}
@@ -856,7 +878,8 @@ class RewriterAgent(BaseAgent):
             f"- Must-have skills (JD): {must_have}\n"
             f"- Nice-to-have skills (JD): {nice_have}\n"
             f"- Rewrite instruction: {instruction}\n"
-            f"- Keywords to weave in: {missing_kw}\n\n"
+            f"- Keywords to weave in: {missing_kw}\n"
+            f"{role_context}\n"
             f"RESUME EXCERPT (source of truth):\n{resume_excerpt}\n\n"
             'Return ONLY JSON: {"balanced":"...","aggressive":"...","top_1_percent":"..."}\n'
             "No markdown, no fences, no extra keys."
@@ -947,6 +970,7 @@ class RewriterAgent(BaseAgent):
         resume_text: str = "",
         section_text: SectionText | None = None,
         max_workers: int = 4,
+        role_context: str = "",
     ) -> dict[int, tuple["SectionRewrite", dict | None]]:
         """
         Run focused sub-entry LLM rewrites in parallel.
@@ -971,6 +995,7 @@ class RewriterAgent(BaseAgent):
                     verbatim,
                     resume_text=resume_text,
                     section_text=section_text,
+                    role_context=role_context,
                 ): i
                 for i, (sub, verbatim) in jobs.items()
             }
@@ -1040,6 +1065,7 @@ class RewriterAgent(BaseAgent):
         gap: dict,
         section_text: SectionText | None,
         resume_text: str = "",
+        role_context: str = "",
     ) -> tuple[dict, list[dict]]:
         """
         Rewrites a section entry-by-entry.
@@ -1095,6 +1121,7 @@ class RewriterAgent(BaseAgent):
                 section_context,
                 resume_text=resume_text,
                 section_text=section_text,
+                role_context=role_context,
             )
 
             for idx, (kind, sub, original_text) in enumerate(degraded_items):
@@ -1180,12 +1207,14 @@ class RewriterAgent(BaseAgent):
             section_context,
             resume_text=resume_text,
             section_text=section_text,
+            role_context=role_context,
         )
 
         stitched_b, stitched_a, stitched_t = [], [], []
 
         for i, entry in enumerate(section_text.sub_entries):
             verbatim = self._resolve_entry_verbatim(entry, section_text, resume_text)
+            _verbatim_is_stub = False
             if not verbatim:
                 logging.warning(
                     "RewriterAgent: sub_entry[%d] '%s' has no verbatim anchor — "
@@ -1194,8 +1223,19 @@ class RewriterAgent(BaseAgent):
                     entry.label[:60],
                 )
                 verbatim = entry.label.strip() or f"[{section} entry {i + 1}]"
+                _verbatim_is_stub = True
 
             sub = sub_change_map.get(i)
+
+            # Stub entry: no verbatim content found anywhere — build a minimal marker
+            # header directly so the entry is preserved in the output without
+            # _is_bare_sentence_fragment misclassifying the short label as a fragment.
+            if _verbatim_is_stub and section == "experience":
+                stub = f"{COMPANY_HEADER_START}{entry.label}{COMPANY_ROLE_START}{HEADER_END}"
+                stitched_b.append(stub)
+                stitched_a.append(stub)
+                stitched_t.append(stub)
+                continue
 
             # No matching sub_change OR needs_change=False → verbatim copy
             if sub is None or not sub.get("needs_change", True):
@@ -1376,6 +1416,7 @@ class RewriterAgent(BaseAgent):
         *,
         resume_text: str = "",
         section_text: SectionText | None = None,
+        role_context: str = "",
     ) -> tuple[SectionRewrite, dict | None]:
         """
         Rewrites a SINGLE resume sub-entry with a focused LLM call.
@@ -1429,7 +1470,8 @@ class RewriterAgent(BaseAgent):
             f"Entry label: {sub.get('sub_label', 'unknown')}\n"
             f"Rewrite instruction: {rewrite_hint}\n"
             f"Section context: {section_context or 'N/A'}\n"
-            f"Keywords to weave in: {', '.join(missing_kw[:10]) or 'none'}\n\n"
+            f"Keywords to weave in: {', '.join(missing_kw[:10]) or 'none'}\n"
+            f"{role_context}\n"
 
             "OUTPUT STRUCTURE FOR EXPERIENCE ENTRIES — MANDATORY FORMAT:\n"
             "Line 1: COMPANY_NAME_ONLY (no location, no dates, no separators)\n"
@@ -1516,6 +1558,7 @@ class RewriterAgent(BaseAgent):
         *,
         resume_text: str = "",
         jd_intelligence: dict | None = None,
+        role_context: str = "",
     ) -> dict:
         """
         Rewrites a whole section monolithically (fallback when no sub_changes available).
@@ -1533,7 +1576,7 @@ class RewriterAgent(BaseAgent):
         if section == "summary":
             if not (original_content or "").strip():
                 prompt = self._build_add_summary_prompt(
-                    gap, jd_intelligence, resume_text
+                    gap, jd_intelligence, resume_text, role_context
                 )
             else:
                 prompt = (
@@ -1544,6 +1587,7 @@ class RewriterAgent(BaseAgent):
                     "(3) key career achievement with a metric, "
                     "(4) value the candidate brings to the next role. "
                     "First person. Present tense. No evaluation labels. "
+                    f"{role_context}"
                     'Return ONLY JSON: {"balanced":"...","aggressive":"...","top_1_percent":"..."}\n\n'
                     f"Original summary:\n{original_content}\n\n"
                     f"Instruction: {gap.get('rewrite_instruction', 'Strengthen this summary.')}\n"
@@ -1552,6 +1596,7 @@ class RewriterAgent(BaseAgent):
         else:
             prompt = (
                 "Rewrite this resume section using the instruction below.\n"
+                f"{role_context}"
                 'Return ONLY JSON: {"balanced":"...","aggressive":"...","top_1_percent":"..."}\n'
                 "No markdown, no fences, no extra keys. Max 150 words per style.\n\n"
                 f"Section: {section}\n"

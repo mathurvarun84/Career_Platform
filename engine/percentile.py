@@ -29,25 +29,43 @@ def load_benchmarks() -> dict:
     return _benchmarks_cache
 
 
-def get_percentile(composite_score: float, seniority: str) -> dict:
+def _coerce_seniority(seniority: object) -> str:
+    """Normalize any seniority representation to a plain lowercase value string.
+
+    Handles Python 3.11+ str-enum repr: str(Seniority.SENIOR) → 'Seniority.SENIOR'
+    must become 'senior'. Works for enum objects, repr strings, and plain values.
+    """
+    if hasattr(seniority, "value"):
+        return str(seniority.value).lower()
+    s = str(seniority).lower()
+    # "seniority.senior" or "seniority.staff" → strip class prefix
+    if "." in s:
+        s = s.rsplit(".", 1)[-1]
+    return s
+
+
+def get_percentile(composite_score: float, seniority: object) -> dict:
     """
     Converts ATS score to percentile rank using benchmarks.
 
     Parameters:
-        score (int): ATS score (0-100)
+        composite_score (float): ATS/composite score (0-100)
+        seniority: Seniority level — accepts enum object, repr string
+            ('Seniority.SENIOR'), or plain value ('senior').
 
     Returns:
-        float: Percentile (0-100), where 100 represents top 1%
+        dict: percentile, label, benchmark_avg, delta
 
     Example:
-        >>> get_percentile(85)
-        88.5  # 88.5th percentile
+        >>> get_percentile(85, 'senior')
+        {'percentile': ..., 'label': ..., ...}
     """
-    if seniority not in VALID_SENIORITY:
+    seniority_norm = _coerce_seniority(seniority)
+    if seniority_norm not in VALID_SENIORITY:
         raise ValueError(f"Invalid seniority '{seniority}'. Must be one of {sorted(VALID_SENIORITY)}.")
 
     benchmarks = load_benchmarks()
-    band = benchmarks[seniority]
+    band = benchmarks[seniority_norm]
 
     percentile = _interpolate_percentile(composite_score, band)
     label = _percentile_label(percentile)
@@ -57,7 +75,7 @@ def get_percentile(composite_score: float, seniority: str) -> dict:
         "label": label,
         "benchmark_avg": band["avg"],
         "delta": round(composite_score - band["avg"], 2),
-    }                                                                                           
+    }
 
 
 def _interpolate_percentile(score: float, band: dict) -> int:

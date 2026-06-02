@@ -1,11 +1,11 @@
 import type { CSSProperties } from "react";
 
-export const PAGE_MAX_WIDTH = "960px";
+export const PAGE_MAX_WIDTH = "1200px";
 
-/** Consistent page gutter — 16px on mobile, 32px on desktop. */
+/** Consistent page gutter — 16px on mobile, 40px on desktop. */
 export function pagePadding(isMobile: boolean, bottomExtra = 0): string {
-  const bottom = (isMobile ? 32 : 48) + bottomExtra;
-  return isMobile ? `24px 16px ${bottom}px` : `40px 32px ${bottom}px`;
+  const bottom = (isMobile ? 32 : 80) + bottomExtra;
+  return isMobile ? `24px 16px ${bottom}px` : `40px 40px ${bottom}px`;
 }
 
 export function pageContainerStyle(

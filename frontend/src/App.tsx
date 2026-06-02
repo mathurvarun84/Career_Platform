@@ -17,6 +17,7 @@ import { useProgressStore } from "./hooks/useProgressStore";
 import { supabase } from "./lib/supabase";
 import { useAuthStore } from "./store/authStore";
 import { useResumeStore } from "./store/useResumeStore";
+import { T } from "./tokens";
 import type { AnalysisResult } from "./types";
 import { hydrateWithFallback } from "./utils/analysisFallback";
 
@@ -152,7 +153,7 @@ function AppShell() {
 
   if (showProgressStandalone) {
     return (
-      <div className="page-shell min-h-screen bg-white">
+      <div className="page-shell min-h-screen" style={{ background: T.bgPage }}>
         <TopBar
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           onViewProgress={() => setActiveTab("progress")}
@@ -172,7 +173,7 @@ function AppShell() {
 
   if (showDashboard) {
     return (
-      <div className="page-shell min-h-screen bg-white">
+      <div className="page-shell min-h-screen" style={{ background: T.bgPage }}>
         <TopBar
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
           onViewProgress={() => setActiveTab("progress")}
