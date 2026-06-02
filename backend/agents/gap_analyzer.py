@@ -25,7 +25,7 @@ from backend.schemas.agent3_schema import (
 )
 from backend.few_shot_prompts import build_role_gap_addendum
 from backend.role_fit import compute_role_fit
-from backend.schemas.common import GapType, SectionText, SubEntry
+from backend.schemas.common import GapType, SectionText, SubEntry, RewriteStyle
 
 # Canonical sections every analysis must cover
 CANONICAL_SECTIONS = [
@@ -1437,6 +1437,120 @@ def _merge_ats_issue_fixes(fixes: list[dict], ats_issues: list[str]) -> list[dic
     return merged
 
 
+def _generate_suggestions_for_gaps(
+    gaps: list[dict],
+    resume_analysis: dict | None = None,
+    jd_analysis: dict | None = None,
+    resume_text: str = "",
+    resume_sections: dict | None = None,
+) -> list[dict]:
+    """
+    PHASE 2: For remaining gaps, generate auto-suggested text via A4 Rewriter.
+
+    Converts Evidence gaps that weren't suppressed into Structural fixes with
+    suggested_text ready to apply. Zero user writing required.
+
+    Process:
+    1. Identify gaps that are Evidence (coaching) type
+    2. Call A4 to generate 3-style rewrites (balanced/aggressive/top_1_percent)
+    3. Attach suggested_text to gap
+    4. Convert gap_type to STRUCTURAL
+    5. Mark as auto_apply=False (user clicks to apply, not automatic)
+
+    Args:
+        gaps: Section gaps after Phase 1 (Evidence suppression)
+        resume_analysis: A1 output with resume context
+        jd_analysis: A2 output with JD context
+        resume_text: Full resume text for A4 context
+        resume_sections: Sectioner output with original content
+
+    Returns:
+        Gaps with suggestions attached (gap_type=STRUCTURAL, has suggested_text)
+    """
+    if not resume_text or not resume_sections:
+        return gaps
+
+    try:
+        from .rewriter import RewriterAgent
+    except ImportError:
+        logging.warning("Phase 2: RewriterAgent not available, skipping suggestions")
+        return gaps
+
+    gaps_with_suggestions = []
+    rewriter = RewriterAgent()
+
+    for gap in gaps:
+        gap = dict(gap)
+        gap_type = gap.get("gap_type", "").lower()
+        section = (gap.get("section") or "").lower()
+        needs_change = gap.get("needs_change", False)
+
+        # Only generate suggestions for Evidence gaps that still need change
+        if gap_type != GapType.EVIDENCE.value or not needs_change:
+            gaps_with_suggestions.append(gap)
+            continue
+
+        # Skip if section has no original_content
+        original_content = gap.get("original_content", "")
+        if not original_content.strip() and section != "summary":
+            gaps_with_suggestions.append(gap)
+            continue
+
+        # Call A4 to generate suggestions
+        try:
+            rewrite_input = {
+                "gap_analysis": {
+                    "section_gaps": [gap],
+                },
+                "resume_analysis": resume_analysis or {},
+                "jd_intelligence": jd_analysis or {},
+                "resume_text": resume_text,
+                "resume_sections": resume_sections,
+                "role_family": str(
+                    (resume_analysis or {}).get("role_family", "ENGINEERING")
+                ).upper(),
+            }
+
+            rewrite_output = rewriter.run(rewrite_input)
+            rewrites = rewrite_output.get("rewrites", {})
+            section_rewrites = rewrites.get(section, {})
+
+            if section_rewrites:
+                # Prefer balanced style as the suggestion (middle ground)
+                suggested_text = section_rewrites.get("balanced", "")
+                if not suggested_text:
+                    # Fallback to aggressive if balanced unavailable
+                    suggested_text = section_rewrites.get(
+                        "aggressive",
+                        section_rewrites.get("top_1_percent", ""),
+                    )
+
+                if suggested_text:
+                    # Attach suggestion and convert to STRUCTURAL
+                    gap["suggested_text"] = suggested_text
+                    gap["gap_type"] = GapType.STRUCTURAL.value
+                    gap["requires_user_input"] = False
+                    gap["coaching_question"] = None
+                    gap["coaching_hint"] = []
+                    gap["auto_apply"] = False  # User clicks to apply, not automatic
+                    gap["rewrite_instruction"] = (
+                        f"Here's a suggestion. Click to apply or edit:\n{suggested_text}"
+                    )
+                    logging.info(
+                        "Phase 2: Generated suggestion for %s gap (section=%s)",
+                        gap_type, section,
+                    )
+        except Exception as exc:
+            logging.warning(
+                "Phase 2: Failed to generate suggestion for %s.%s: %s",
+                section, gap.get("gap_reason", "")[:40], exc,
+            )
+
+        gaps_with_suggestions.append(gap)
+
+    return gaps_with_suggestions
+
+
 def build_complete_priority_fixes(
     section_gaps: list[dict],
     *,
@@ -2188,6 +2302,14 @@ class GapAnalyzerAgent(BaseAgent):
         classified = classify_section_gaps(enriched_gaps, resume_text, role_family)
         # PHASE 1: Suppress Evidence gaps when resume clearly demonstrates the skill
         classified = _suppress_evidence_gaps_with_resume_proof(classified, resume_text)
+        # PHASE 2: Generate auto-suggested text for remaining Evidence gaps via A4
+        classified = _generate_suggestions_for_gaps(
+            classified,
+            resume_analysis=resume_analysis or {},
+            jd_analysis=jd_analysis or {},
+            resume_text=resume_text,
+            resume_sections=resume_sections,
+        )
         parsed["section_gaps"] = classified
         parsed["sections_changed"] = [
             g["section"] for g in classified if g.get("needs_change")
