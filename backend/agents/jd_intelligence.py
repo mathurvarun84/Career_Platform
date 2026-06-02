@@ -13,7 +13,7 @@ Uses semantic understanding: e.g., 'event streaming' implies Kafka/Pulsar,
 'fast APIs' implies low-latency knowledge, not just REST frameworks.
 
 Validates input and output against Pydantic schemas defined in schemas/agent2_schema.py.
-Provider: OpenAI (gpt-4o-mini)
+Provider: OpenAI (gpt-4o)
 Max tokens: 4000
 """
 
@@ -94,9 +94,17 @@ def _guard_seniority_fields(parsed: dict) -> dict:
     """Tiny fallback if the model still puts a leadership title in seniority_expected."""
     out = dict(parsed)
     exp_raw = str(out.get("seniority_expected") or "").lower().strip()
+    # Normalize Python 3.11+ enum repr: "seniority.senior" → "senior"
+    if "." in exp_raw:
+        exp_raw = exp_raw.rsplit(".", 1)[-1]
+    out["seniority_expected"] = exp_raw
     exp = exp_raw.replace("_", "-")
     exp_key = exp_raw.replace("-", "_")
-    jd = str(out.get("jd_seniority_level") or "").lower().strip().replace("_", "-")
+    jd_raw = str(out.get("jd_seniority_level") or "").lower().strip()
+    if "." in jd_raw:
+        jd_raw = jd_raw.rsplit(".", 1)[-1]
+        out["jd_seniority_level"] = jd_raw
+    jd = jd_raw.replace("_", "-")
 
     if exp_key in _MGMT_SENIORITY:
         # Backfill jd_seniority_level when the model left it as unknown.
@@ -111,6 +119,9 @@ def _guard_seniority_fields(parsed: dict) -> dict:
             out["seniority_expected"] = "director"
         else:
             out["seniority_expected"] = "senior"
+    elif exp_key in _IC_SENIORITY and jd == "manager":
+        # A2 returned an IC band but the JD is explicitly a people-manager role.
+        out["seniority_expected"] = "em"
 
     try:
         out["min_years_required"] = int(out.get("min_years_required") or 0)
@@ -134,7 +145,7 @@ class JDIntelligenceAgent(BaseAgent):
     """
 
     def __init__(self):
-        super().__init__(model="gpt-4o-mini", max_tokens=4000, provider="openai")
+        super().__init__(model="gpt-4o", max_tokens=4000, provider="openai")
 
     def run(self, input_dict: dict) -> dict:
         """
