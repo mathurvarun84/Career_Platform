@@ -688,6 +688,133 @@ def classify_gap(gap: dict, resume_text: str = "", role_family: str = "ENGINEERI
     return _apply_gap_type_metadata(gap, GapType.STRUCTURAL.value, role_family)
 
 
+def _suppress_evidence_gaps_with_resume_proof(
+    section_gaps: list[dict],
+    resume_text: str = "",
+) -> list[dict]:
+    """
+    PHASE 1: Suppress Evidence gaps (coaching cards) when the resume clearly
+    demonstrates the skill/requirement, even with different wording.
+
+    This prevents "Can you describe how you..." cards when the user already
+    shows the skill in their resume verbatim. Reduces coaching card spam.
+
+    Examples:
+    - Gap reason: "Lacks explicit mention of architecture evaluation"
+    - Resume has: "Architected a microservices backend..."
+    - Action: Suppress this Evidence gap (don't show coaching card)
+
+    - Gap reason: "Can you share specific metrics on team size"
+    - Resume has: "Led a cross-functional team of 15..."
+    - Action: Suppress (metric is already there, just not in this specific bullet)
+    """
+    if not resume_text:
+        return section_gaps
+
+    resume_blob = resume_text.lower()
+    filtered: list[dict] = []
+
+    # Keywords that indicate the skill is demonstrated if ANY variant is in resume
+    PROOF_PATTERNS = {
+        "architecture evaluation": [
+            "architected", "architectural", "architecture", "system design",
+            "designed system", "led architecture", "defined architecture",
+        ],
+        "system design": [
+            "architected", "architectural", "architecture", "system design",
+            "designed system", "led architecture",
+        ],
+        "team leadership": [
+            "led ", "leading ", "led a team", "engineer team", "cross-functional team",
+            "managed team", "team of", "direct report", "led the team",
+        ],
+        "team size": [
+            "led a team of", "team of ", "managing ", "led ", "team members",
+        ],
+        "metrics": [
+            "₹", "$", "%", "crore", "increase", "growth", "improvement",
+            "reduction", "scale", "users", "requests", "concurrent",
+        ],
+        "user growth": [
+            "scaled", "user base", "users", "growth", "adoption", "%",
+            "fold increase", "increase", "expansion",
+        ],
+        "performance": [
+            "latency", "throughput", "response time", "uptime", "reliability",
+            "efficiency", "optimization", "performance", "improvement",
+        ],
+        "platform adoption": [
+            "adoption", "users", "engagement", "growth", "scale", "expand",
+        ],
+        "high availability": [
+            "availability", "reliability", "uptime", "failover", "redundancy",
+            "high availability", "99", "resilience",
+        ],
+        "response time": [
+            "latency", "response time", "performance", "speed", "optimization",
+        ],
+        "uptime": [
+            "uptime", "availability", "reliability", "99", "downtime",
+        ],
+    }
+
+    for gap in section_gaps:
+        if not gap.get("needs_change"):
+            filtered.append(gap)
+            continue
+
+        gap_type = gap.get("gap_type", "").lower()
+        gap_reason = (gap.get("gap_reason") or "").lower()
+        missing_keywords = gap.get("missing_keywords") or []
+
+        # Only suppress Evidence gaps (coaching cards)
+        if gap_type != GapType.EVIDENCE.value:
+            filtered.append(gap)
+            continue
+
+        # Check if any missing keyword has proof in resume
+        gap_suppressed = False
+        for kw in missing_keywords:
+            kw_lower = str(kw).lower().strip()
+
+            # Check built-in patterns
+            if kw_lower in PROOF_PATTERNS:
+                patterns = PROOF_PATTERNS[kw_lower]
+                if any(pattern in resume_blob for pattern in patterns):
+                    logging.info(
+                        "GapAnalyzer: Evidence gap suppressed — '%s' found proof in resume",
+                        kw_lower,
+                    )
+                    gap_suppressed = True
+                    break
+
+            # Also check if keyword itself is in resume (loose match)
+            if kw_lower in resume_blob:
+                logging.info(
+                    "GapAnalyzer: Evidence gap suppressed — keyword '%s' found in resume",
+                    kw_lower,
+                )
+                gap_suppressed = True
+                break
+
+        if gap_suppressed:
+            gap = dict(gap)
+            gap["needs_change"] = False
+            gap["gap_reason"] = f"No coaching needed — skill is demonstrated in resume"
+            gap["requires_user_input"] = False
+            gap["coaching_question"] = None
+            gap["coaching_hint"] = []
+            # Keep sub_changes but mark them as not needing change
+            sub_changes = gap.get("sub_changes") or []
+            gap["sub_changes"] = [
+                {**s, "needs_change": False} for s in sub_changes
+            ]
+
+        filtered.append(gap)
+
+    return filtered
+
+
 def classify_section_gaps(gaps: list[dict], resume_text: str = "", role_family: str = "ENGINEERING") -> list[dict]:
     """Run classify_gap over every section gap and its sub_changes."""
     classified = []
@@ -2059,6 +2186,8 @@ class GapAnalyzerAgent(BaseAgent):
         if not resume_text:
             resume_text = (resume_analysis or {}).get("raw_text", "") or ""
         classified = classify_section_gaps(enriched_gaps, resume_text, role_family)
+        # PHASE 1: Suppress Evidence gaps when resume clearly demonstrates the skill
+        classified = _suppress_evidence_gaps_with_resume_proof(classified, resume_text)
         parsed["section_gaps"] = classified
         parsed["sections_changed"] = [
             g["section"] for g in classified if g.get("needs_change")
