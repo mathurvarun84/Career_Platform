@@ -179,28 +179,78 @@ export const normalizeAnalysisResult = (payload: unknown): AnalysisResult => {
 
   const fixesFromSectionGaps: PriorityFix[] = (
     (rawGap?.section_gaps as Array<Record<string, unknown>> | undefined) ?? []
-  )
-    .filter((g) => g.needs_change === true)
-    .map((g) => ({
-      section: String(g.section ?? "summary"),
-      gap_reason: String(g.gap_reason ?? "").trim() || "Gap identified for this section",
-      rewrite_instruction:
-        String(g.rewrite_instruction ?? "").trim() ||
-        "Refine wording to reflect JD requirements.",
-      missing_keywords: Array.isArray(g.missing_keywords)
-        ? (g.missing_keywords as string[])
-        : [],
-      needs_change: true,
-      gap_type: g.gap_type as PriorityFix["gap_type"],
-      requires_user_input: Boolean(g.requires_user_input),
-      coaching_question:
-        typeof g.coaching_question === "string" ? g.coaching_question : null,
-      coaching_hint: Array.isArray(g.coaching_hint)
-        ? (g.coaching_hint as string[])
-        : [],
-      auto_apply: Boolean(g.auto_apply),
-      sub_label: typeof g.sub_label === "string" ? g.sub_label : null,
-    }));
+  ).flatMap((g) => {
+    if (g.needs_change !== true) {
+      return [];
+    }
+    const section = String(g.section ?? "summary");
+    const subChanges = (g.sub_changes as Array<Record<string, unknown>> | undefined) ?? [];
+    if (subChanges.length > 0) {
+      return subChanges
+        .filter((sub) => sub.needs_change !== false)
+        .map((sub) => ({
+          section,
+          gap_reason:
+            String(sub.gap_reason ?? "").trim() ||
+            String(g.gap_reason ?? "").trim() ||
+            "Gap identified for this section",
+          rewrite_instruction:
+            String(sub.rewrite_instruction ?? "").trim() ||
+            String(g.rewrite_instruction ?? "").trim() ||
+            "Refine wording to reflect JD requirements.",
+          missing_keywords: Array.isArray(sub.missing_keywords)
+            ? (sub.missing_keywords as string[])
+            : Array.isArray(g.missing_keywords)
+              ? (g.missing_keywords as string[])
+              : [],
+          needs_change: true,
+          gap_type: (sub.gap_type ?? g.gap_type) as PriorityFix["gap_type"],
+          requires_user_input: Boolean(sub.requires_user_input ?? g.requires_user_input),
+          coaching_question:
+            typeof sub.coaching_question === "string"
+              ? sub.coaching_question
+              : typeof g.coaching_question === "string"
+                ? g.coaching_question
+                : null,
+          coaching_hint: Array.isArray(sub.coaching_hint)
+            ? (sub.coaching_hint as string[])
+            : Array.isArray(g.coaching_hint)
+              ? (g.coaching_hint as string[])
+              : [],
+          auto_apply: Boolean(sub.auto_apply ?? g.auto_apply),
+          sub_label: typeof sub.sub_label === "string" ? sub.sub_label : null,
+          entry_id:
+            typeof sub.entry_id === "string"
+              ? sub.entry_id
+              : typeof sub.sub_id === "string"
+                ? sub.sub_id
+                : null,
+        }));
+    }
+    return [
+      {
+        section,
+        gap_reason: String(g.gap_reason ?? "").trim() || "Gap identified for this section",
+        rewrite_instruction:
+          String(g.rewrite_instruction ?? "").trim() ||
+          "Refine wording to reflect JD requirements.",
+        missing_keywords: Array.isArray(g.missing_keywords)
+          ? (g.missing_keywords as string[])
+          : [],
+        needs_change: true,
+        gap_type: g.gap_type as PriorityFix["gap_type"],
+        requires_user_input: Boolean(g.requires_user_input),
+        coaching_question:
+          typeof g.coaching_question === "string" ? g.coaching_question : null,
+        coaching_hint: Array.isArray(g.coaching_hint)
+          ? (g.coaching_hint as string[])
+          : [],
+        auto_apply: Boolean(g.auto_apply),
+        sub_label: typeof g.sub_label === "string" ? g.sub_label : null,
+        entry_id: null,
+      },
+    ];
+  });
 
   const fixesFromDetailedEval: PriorityFix[] = (
     (rawGap?.changes as Array<Record<string, unknown>> | undefined) ?? []

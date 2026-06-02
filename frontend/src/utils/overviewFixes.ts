@@ -1,5 +1,6 @@
 import type { AnalysisResult, GapType, PriorityFix } from "../types";
-import { hasJobDescription } from "./hasJobDescription";
+import { gapReasonMatchesFixScope, fixScopeCompanyToken } from "./fixesCardLogic";
+import { buildCoachingQuestion } from "./coachingQuestions";
 
 const canonicalSections = [
   "summary",
@@ -59,6 +60,17 @@ const labelMatchesCompany = (label: string, company: string): boolean => {
   return compact(label).includes(compact(company)) || compact(company).includes(compact(label));
 };
 
+const inferEvidenceFromText = (text: string): boolean => {
+  const lower = text.toLowerCase();
+  return (
+    /mentor|evidence|collaborat|architectur|roadmap|ownership|quantif|cross-team|stakeholder/.test(
+      lower
+    ) && /no mention|lacks|missing|share a specific|user input|lack\b/.test(lower)
+  );
+};
+
+export { inferEvidenceFromText };
+
 export const resolveSubLabelForWeakness = (
   weakness: string,
   analysisResult: AnalysisResult
@@ -84,6 +96,24 @@ export const weaknessCoveredByFix = (weakness: string, fix: PriorityFix): boolea
   if (!w) {
     return false;
   }
+
+  const weaknessCo = extractCompanyFromWeakness(weakness).toLowerCase();
+  const fixCo = fixScopeCompanyToken(fix);
+  if (weaknessCo.length >= 3 && fixCo.length >= 3) {
+    const wHead = weaknessCo.split(/\s+/)[0] ?? "";
+    const scoped =
+      fixCo.includes(wHead) ||
+      weaknessCo.includes(fixCo.split(/\s+/)[0] ?? "") ||
+      fixCo.includes(weaknessCo);
+    if (!scoped) {
+      return false;
+    }
+  }
+
+  if (!gapReasonMatchesFixScope({ ...fix, gap_reason: weakness })) {
+    return false;
+  }
+
   if (reason === w || instruction === w) {
     return true;
   }
@@ -91,12 +121,11 @@ export const weaknessCoveredByFix = (weakness: string, fix: PriorityFix): boolea
   if (reason.includes(wHead) || w.includes(reason.slice(0, 55))) {
     return true;
   }
-  const company = extractCompanyFromWeakness(weakness).toLowerCase();
-  if (company.length > 2) {
-    if (reason.includes(company) || instruction.includes(company)) {
+  if (weaknessCo.length > 2) {
+    if (reason.includes(weaknessCo) || instruction.includes(weaknessCo)) {
       return true;
     }
-    if ((fix.sub_label ?? "").toLowerCase().includes(company.split(/\s+/)[0] ?? "")) {
+    if ((fix.sub_label ?? "").toLowerCase().includes(weaknessCo.split(/\s+/)[0] ?? "")) {
       return true;
     }
   }
@@ -122,8 +151,31 @@ export const buildOverviewWeaknessFix = (
   const resumeOnly = analysisResult.gap?.resume_only_mode === true;
   const section = inferSectionKey(gapReason);
   const sub_label = resolveSubLabelForWeakness(weakness, analysisResult);
-  const gapType: GapType = resumeOnly ? "structural" : "evidence";
-  const isCoaching = !resumeOnly && gapType === "evidence";
+  const entries = analysisResult.resume?.resume_sections?.[section]?.sub_entries ?? [];
+  let entry_id: string | null = null;
+  if (sub_label) {
+    const matched = entries.find(
+      (entry) => entry.label === sub_label || labelMatchesCompany(entry.label, sub_label)
+    );
+    entry_id = matched?.entry_id?.trim() || null;
+  }
+
+  let gapType: GapType = resumeOnly ? "structural" : "evidence";
+  let isCoaching = !resumeOnly && gapType === "evidence";
+
+  if (rewriteInstruction.trim().toLowerCase() === gapReason.trim().toLowerCase()) {
+    gapType = "evidence";
+    isCoaching = true;
+  } else if (
+    resumeOnly &&
+    inferEvidenceFromText(gapReason) &&
+    rewriteInstruction.trim().length <= 80
+  ) {
+    gapType = "evidence";
+    isCoaching = true;
+  }
+
+  const coaching = isCoaching ? buildCoachingQuestion(gapReason) : null;
 
   return {
     section,
@@ -133,12 +185,11 @@ export const buildOverviewWeaknessFix = (
     needs_change: true,
     gap_type: gapType,
     requires_user_input: isCoaching,
-    coaching_question: isCoaching
-      ? `How would you address: ${gapReason}?`
-      : undefined,
-    coaching_hint: isCoaching ? [rewriteInstruction] : undefined,
+    coaching_question: coaching?.question,
+    coaching_hint: coaching?.hints,
     auto_apply: false,
     sub_label,
+    entry_id,
   };
 };
 
@@ -146,9 +197,6 @@ export const fixesMissingFromOverview = (
   list: PriorityFix[],
   analysisResult: AnalysisResult
 ): PriorityFix[] => {
-  if (hasJobDescription(analysisResult.gap)) {
-    return [];
-  }
   const sources = collectOverviewWeaknessSources(analysisResult);
   const unique = Array.from(new Set(sources));
   return unique

@@ -18,6 +18,10 @@ class SubLocationChange(BaseModel):
     original_text is backfilled in Python from sectioner data — the LLM does NOT provide it.
     """
     sub_id: str = Field(..., description="Slugified identifier e.g. 'flipkart_em', 'iim_mba'")
+    entry_id: str = Field(
+        default="",
+        description="Stable canonical entry key — backfilled from A1 SubEntry.entry_id",
+    )
     sub_label: str = Field(..., description="Human-readable label e.g. 'Flipkart — EM (2021–present)'")
     original_text: str = Field(
         default="",

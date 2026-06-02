@@ -1114,6 +1114,12 @@ class RewriterAgent(BaseAgent):
                     patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
                     patch_raw.setdefault("section", section)
                     patch_raw.setdefault("sub_entry_label", sub.get("sub_label", ""))
+                    entry_id = sub.get("entry_id") or sub.get("sub_id") or ""
+                    if not entry_id:
+                        from backend.utils.entry_id import derive_entry_id
+                        entry_id = derive_entry_id(sub.get("sub_label", ""))
+                    if entry_id:
+                        patch_raw.setdefault("sub_entry_id", entry_id)
                     collected_patches.append(patch_raw)
                 self._append_stitched_sub_entry(
                     section,
@@ -1220,6 +1226,7 @@ class RewriterAgent(BaseAgent):
                 patch_raw.setdefault("gap_id", gap.get("gap_id", ""))
                 patch_raw.setdefault("section", section)
                 patch_raw.setdefault("sub_entry_label", entry.label)
+                patch_raw.setdefault("sub_entry_id", entry.entry_id)
                 collected_patches.append(patch_raw)
 
             self._append_stitched_sub_entry(

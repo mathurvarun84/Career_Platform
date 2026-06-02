@@ -1,7 +1,7 @@
 import { useResumeStore } from "../../store/useResumeStore";
-import type { PriorityFix, TabId } from "../../types/index";
+import type { TabId } from "../../types/index";
 import { useWindowSize } from "../../hooks/useWindowSize";
-import { isActionableFix } from "../../utils/actionableFixes";
+import { countActionableFixes } from "../../utils/fixesPipeline";
 import { hasJobDescription } from "../../utils/hasJobDescription";
 
 const tabs: Array<{ id: TabId; icon: string; label: string }> = [
@@ -17,22 +17,6 @@ const disabledBeforeAnalysis = new Set<TabId>(["fixes", "gap"]);
 const alwaysEnabledTabs = new Set<TabId>(["progress"]);
 const roleFitLockedTabs = new Set<TabId>(["fixes", "gap", "progress"]);
 
-const countFixesNeedingChange = (
-  priorityFixes: Array<string | PriorityFix> | undefined
-): number => {
-  if (!priorityFixes) {
-    return 0;
-  }
-
-  return priorityFixes.filter(
-    (item): item is PriorityFix =>
-      typeof item === "object" &&
-      item !== null &&
-      "gap_reason" in item &&
-      isActionableFix(item as PriorityFix)
-  ).length;
-};
-
 export default function TabNav() {
   const activeTab = useResumeStore((state) => state.activeTab);
   const setActiveTab = useResumeStore((state) => state.setActiveTab);
@@ -42,7 +26,7 @@ export default function TabNav() {
 
   const hasJd = hasJobDescription(analysisResult?.gap);
   const roleFitLocked = analysisResult?.role_fit?.fitness === "underqualified";
-  const fixCount = countFixesNeedingChange(analysisResult?.gap?.priority_fixes);
+  const fixCount = countActionableFixes(analysisResult);
 
   const unavailableByTab: Partial<Record<TabId, boolean>> = {
     fixes: (fallbackInfo.fixes?.length ?? 0) > 0,

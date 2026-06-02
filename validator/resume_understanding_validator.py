@@ -418,9 +418,15 @@ def _is_role_header_line(line: str) -> bool:
     s = line.strip()
     if not s or s.startswith(('•', '-', '*', '·', '●')):
         return False
-    if _is_experience_date_anchor_line(s):
-        return False
     if len(s) > 160:
+        return False
+    # A pipe-separated line is always a role header, even with inline dates.
+    # e.g. "Engineering Manager | Apttus (via Altran) — City Nov 2018 – Dec 2019"
+    # Bare date lines ("Nov 2018 – Dec 2019") have no pipe, so this doesn't fire for them.
+    if '|' in s and _ROLE_HEADER_HINT_RE.search(s):
+        return True
+    # Bare date-only lines are not role headers.
+    if _is_experience_date_anchor_line(s):
         return False
     if _ROLE_HEADER_HINT_RE.search(s):
         return True

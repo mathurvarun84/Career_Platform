@@ -2,9 +2,11 @@ import assert from "node:assert/strict";
 
 import {
   buildFixLocationKey,
+  companyTokenFromGapReason,
   deriveExampleHint,
   extractCompanyTokenFromLabel,
   findFuzzyFixLocationKey,
+  gapReasonMatchesFixScope,
   isNoChangeReplacement,
   isUsableAfterText,
   mergeFixLists,
@@ -26,6 +28,18 @@ assert.equal(isNoChangeReplacement("Reduced latency by 40% serving 2M QPS"), fal
 assert.equal(
   extractCompanyTokenFromLabel("Engineering Manager | Flipkart — Bengaluru, KA Sep 2020"),
   "flipkart"
+);
+assert.equal(
+  companyTokenFromGapReason("Flipkart EM bullets 3-5 lack explicit team scope details"),
+  "flipkart"
+);
+assert.equal(
+  gapReasonMatchesFixScope({
+    gap_reason: "Flipkart EM bullets 3-5 lack explicit team scope details",
+    sub_label: "Engineering Manager | Apttus — Bengaluru",
+    entry_id: "apttus_senior_consultant_2019",
+  }),
+  false
 );
 assert.equal(extractCompanyTokenFromLabel("Flipkart — EM (2021–present)"), "flipkart");
 assert.equal(
@@ -95,6 +109,14 @@ assert.equal(normalizeSubLabelKey("Flipkart — EM (2021–present)"), "flipkart
 assert.equal(
   buildFixLocationKey("experience", "Engineering Manager | Flipkart — Bengaluru, KA"),
   buildFixLocationKey("experience", "Flipkart — EM (2021–present)")
+);
+assert.equal(
+  buildFixLocationKey("experience", "Flipkart — EM (2021–present)", "flipkart_em_2020"),
+  "experience|flipkart_em_2020"
+);
+assert.notEqual(
+  buildFixLocationKey("experience", "Flipkart — EM", "flipkart_em_2020"),
+  buildFixLocationKey("experience", "Apttus — SC", "apttus_sc_2018")
 );
 
 const flipkartFromGap: PriorityFix = {

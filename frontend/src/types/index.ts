@@ -23,6 +23,7 @@ export interface ATSResult {
 
 export interface SubLocationChange {
   sub_id: string;
+  entry_id?: string;
   sub_label: string;
   needs_change: boolean;
   gap_reason: string;
@@ -115,7 +116,7 @@ export interface ResumeUnderstanding {
     string,
     {
       full_text: string;
-      sub_entries?: Array<{ label: string; verbatim_text: string }>;
+      sub_entries?: Array<{ label: string; entry_id?: string; verbatim_text: string }>;
     }
   >;
   weaknesses?: string[];
@@ -134,6 +135,7 @@ export interface PriorityFix {
   coaching_hint?: string[];
   auto_apply?: boolean;
   sub_label?: string | null;
+  entry_id?: string | null;
 }
 
 export interface CoachingAnswer {
@@ -232,6 +234,7 @@ export interface ResumePatch {
   gap_id: string;
   section: string;
   sub_entry_label: string;
+  sub_entry_id?: string;
   op: PatchOp;
   original_text: string;
   replacement_text: string;

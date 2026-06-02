@@ -30,6 +30,54 @@ export function extractCompanyTokenFromLabel(label: string): string {
     : lower.split("—")[0].trim();
 }
 
+/** Leading company name in A3-style gap_reason ("Flipkart EM bullets …"). */
+export function companyTokenFromGapReason(gapReason: string): string {
+  const head = gapReason.split("→")[0]?.trim() ?? "";
+  if (!head) {
+    return "";
+  }
+  const roleLead = head.match(
+    /^([A-Z][a-zA-Z0-9]+)\s+(?:EM|Senior|Lead|Engineer|Consultant|Director|Manager|bullets|role)\b/i
+  );
+  if (roleLead) {
+    return roleLead[1].toLowerCase();
+  }
+  const firstWord = head.match(/^([A-Z][a-zA-Z0-9]{2,})/);
+  return firstWord ? firstWord[1].toLowerCase() : "";
+}
+
+/** Company scope for a fix card from entry_id slug or sub_label. */
+export function fixScopeCompanyToken(fix: {
+  entry_id?: string | null;
+  sub_label?: string | null;
+}): string {
+  const fromId = fix.entry_id?.split("_")[0]?.replace(/_/g, " ").trim() ?? "";
+  if (fromId.length >= 3) {
+    return fromId.toLowerCase();
+  }
+  return extractCompanyTokenFromLabel(fix.sub_label ?? "");
+}
+
+/**
+ * True when gap_reason targets the same company as the fix's sub_label / entry_id.
+ * Prevents one company's gap from rendering on every experience card.
+ */
+export function gapReasonMatchesFixScope(fix: {
+  gap_reason?: string;
+  entry_id?: string | null;
+  sub_label?: string | null;
+}): boolean {
+  const reasonCo = companyTokenFromGapReason(fix.gap_reason ?? "");
+  if (!reasonCo || reasonCo.length < 3) {
+    return true;
+  }
+  const fixCo = fixScopeCompanyToken(fix);
+  if (!fixCo || fixCo.length < 3) {
+    return true;
+  }
+  return fixCo.includes(reasonCo) || reasonCo.includes(fixCo);
+}
+
 /** Match fix sub_label to resume sub_entry label by company, not shared role title. */
 export function subEntryLabelMatches(entryLabel: string, subLabel: string): boolean {
   if (entryLabel === subLabel) {
@@ -61,7 +109,14 @@ export function normalizeSubLabelKey(subLabel: string): string {
   return cleaned || token || subLabel.toLowerCase().trim();
 }
 
-export function buildFixLocationKey(sectionKey: string, subLabel?: string | null): string {
+export function buildFixLocationKey(
+  sectionKey: string,
+  subLabel?: string | null,
+  entryId?: string | null
+): string {
+  if (entryId?.trim()) {
+    return `${sectionKey}|${entryId.trim()}`;
+  }
   return `${sectionKey}|${normalizeSubLabelKey(subLabel ?? "")}`;
 }
 

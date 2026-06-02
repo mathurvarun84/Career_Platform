@@ -19,7 +19,9 @@ from memory.session_store import (
 )
 from backend.agents.gap_analyzer import (
     GapAnalyzerAgent,
+    build_complete_priority_fixes,
     classify_section_gaps,
+    enrich_priority_fixes_from_eval_changes,
     priority_fixes_from_gaps,
     reclassify_gaps_for_resume_only,
 )
@@ -314,13 +316,15 @@ class Orchestrator:
         *,
         structured_priority_fixes: bool = True,
         overview_strings: list[str] | None = None,
+        ats_issues: list[str] | None = None,
+        resume_sections: dict | None = None,
     ) -> dict:
         """
         Classify every section gap and rebuild priority_fixes for the UI.
 
         overview_strings: strings already surfaced in the Overview tab (A1 weaknesses +
-        improvement_areas). Any fix whose gap_reason overlaps these is filtered out so
-        both tabs show distinct content.
+        improvement_areas). JD mode filters overlapping fixes; resume-only backfills any
+        overview item missing from section_gaps.
         """
         section_gaps = gap_result.get("section_gaps") or gap_result.get("gaps") or []
         classified = classify_section_gaps(section_gaps, resume_text)
@@ -329,19 +333,14 @@ class Orchestrator:
         gap_result["section_gaps"] = classified
         gap_result["gaps"] = classified
         if structured_priority_fixes:
-            fixes = priority_fixes_from_gaps(classified)
+            fixes = build_complete_priority_fixes(
+                classified,
+                ats_issues=ats_issues,
+                overview_strings=overview_strings,
+                resume_only_mode=bool(gap_result.get("resume_only_mode")),
+                resume_sections=resume_sections,
+            )
             if fixes:
-                # Resume-only: keep structured fixes for the Fixes tab (Overview already
-                # shows the same A1 strings). JD mode: dedupe so Overview vs Fixes differ.
-                if overview_strings and not gap_result.get("resume_only_mode"):
-                    overview_lower = [s.lower() for s in overview_strings]
-                    fixes = [
-                        f for f in fixes
-                        if not any(
-                            f.get("gap_reason", "").lower()[:60] in ov
-                            for ov in overview_lower
-                        )
-                    ]
                 gap_result["priority_fixes"] = fixes
         return gap_result
 
@@ -562,6 +561,13 @@ class Orchestrator:
                         entry.verbatim_text if hasattr(entry, "verbatim_text")
                         else entry.get("verbatim_text", "")
                     )
+                    entry_id = (
+                        entry.entry_id if hasattr(entry, "entry_id")
+                        else entry.get("entry_id", "")
+                    )
+                    if not entry_id:
+                        from backend.utils.entry_id import derive_entry_id
+                        entry_id = derive_entry_id(entry_label)
                     matching = [
                         w for w in weaknesses
                         if _weakness_matches_entry(w, entry_label)
@@ -572,16 +578,9 @@ class Orchestrator:
                             if "→" in matching[0]
                             else "Improve impact clarity and add quantified metrics."
                         )
-                        company_token = (
-                            entry_label.split("|")[0]
-                            .split("—")[0]
-                            .strip()
-                            .lower()
-                            .replace(" ", "_")[:40]
-                            or "role"
-                        )
                         sub_changes.append({
-                            "sub_id": f"{company_token}_no_jd",
+                            "sub_id": entry_id,
+                            "entry_id": entry_id,
                             "sub_label": entry_label,
                             "needs_change": True,
                             "gap_reason": matching[0],
@@ -1071,6 +1070,8 @@ class Orchestrator:
                 resume_text,
                 structured_priority_fixes=True,
                 overview_strings=overview_strings,
+                ats_issues=ats_result.get("ats_issues") or [],
+                resume_sections=resume_sections,
             )
         # Build actionable changes from section gaps
         try:
@@ -1280,6 +1281,16 @@ class Orchestrator:
                         gap_result["jd_match_score_after"] = estimated_after
                     else:
                         _ensure_jd_match_score_after(gap_result)
+                    eval_changes = eval_gap.get("changes") or []
+                    if eval_changes and isinstance(gap_result, dict):
+                        gap_result["changes"] = eval_changes
+                        gap_result["priority_fixes"] = enrich_priority_fixes_from_eval_changes(
+                            gap_result.get("priority_fixes") or [],
+                            eval_changes,
+                            resume_sections,
+                        )
+                        if eval_gap.get("overall"):
+                            gap_result["eval_overall"] = eval_gap["overall"]
                 except Exception as exc:
                     logging.warning("Gap evaluate scoring failed: %s", exc)
                     if isinstance(gap_result, dict):

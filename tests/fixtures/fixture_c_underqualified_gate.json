@@ -1,0 +1,64 @@
+{
+  "job_id": "fixture-c-underqualified-gate",
+  "ats": {
+    "score": 48,
+    "breakdown": {
+      "keyword_match": 10,
+      "formatting": 14,
+      "readability": 12,
+      "impact_metrics": 12
+    },
+    "details": [],
+    "ats_issues": []
+  },
+  "resume": {
+    "experience_years": 3,
+    "seniority": "mid",
+    "role_family": "ENGINEERING",
+    "tech_stack": ["Python", "React"],
+    "domains": ["saas"],
+    "has_metrics": false,
+    "has_summary": true,
+    "sections_present": ["summary", "experience"],
+    "weaknesses": [],
+    "improvement_areas": [],
+    "resume_sections": {
+      "experience": {
+        "full_text": "STARTUP CO",
+        "sub_entries": [
+          {
+            "label": "Software Engineer | Startup Co — Remote 2022 – Present",
+            "entry_id": "startup_co_software_engineer_2022",
+            "verbatim_text": "STARTUP CO | Software Engineer\n2022 – Present\n• Built REST APIs"
+          }
+        ]
+      }
+    }
+  },
+  "gap": {
+    "resume_only_mode": false,
+    "role_fit_gate": true,
+    "jd_match_score_before": 28,
+    "jd_match_score_after": null,
+    "section_gaps": [],
+    "missing_keywords": [],
+    "priority_fixes": []
+  },
+  "patches": [],
+  "rewrites": null,
+  "sim": null,
+  "percentile": null,
+  "positioning": null,
+  "validation": null,
+  "role_fit": {
+    "fitness": "underqualified",
+    "score": 28,
+    "experience_gap": 5,
+    "seniority_gap": 2,
+    "unanswerable_evidence_gaps": 4,
+    "candidate_years": 3,
+    "jd_min_years": 8,
+    "recommended_roles": ["Mid-level Backend Engineer", "Software Engineer II"],
+    "next_step_roles": ["Senior Software Engineer"]
+  }
+}

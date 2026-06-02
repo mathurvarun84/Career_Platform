@@ -7,7 +7,9 @@ These define canonical values for fields that appear in multiple agents.
 from enum import Enum
 from typing import List
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
+
+from backend.utils.entry_id import derive_entry_id
 
 
 class Seniority(str, Enum):
@@ -93,6 +95,10 @@ class SubLocationChange(BaseModel):
     Enables surgical, entry-level targeting instead of monolithic section rewrites.
     """
     sub_id: str = Field(..., description="Slugified identifier e.g. 'flipkart_em', 'iim_mba'")
+    entry_id: str = Field(
+        default="",
+        description="Stable canonical entry key — matches SubEntry.entry_id from A1",
+    )
     sub_label: str = Field(..., description="Human-readable label e.g. 'Flipkart — EM (2021–present)'")
     needs_change: bool = Field(..., description="True only if THIS specific entry has a gap")
     gap_reason: str = Field(default="", description="Why this entry needs change — empty if needs_change=False")
@@ -135,7 +141,18 @@ class SubEntry(BaseModel):
     experience (per-company), education (per-degree), or certifications (per-cert).
     """
     label: str = Field(..., description="Human-readable label e.g. 'Flipkart — EM (2021–present)'")
+    entry_id: str = Field(
+        default="",
+        description="Stable snake_case key e.g. 'flipkart_engineering_manager_2020'",
+    )
     verbatim_text: str = Field(..., description="Exact character-for-character text of this entry from the resume")
+
+    @model_validator(mode="after")
+    def _ensure_entry_id(self) -> "SubEntry":
+        """Auto-generate entry_id from label when A1 did not supply one."""
+        if not (self.entry_id or "").strip():
+            object.__setattr__(self, "entry_id", derive_entry_id(self.label))
+        return self
 
 
 class SectionText(BaseModel):
@@ -176,6 +193,10 @@ class ResumePatch(BaseModel):
     gap_id: str = ""
     section: str = ""
     sub_entry_label: str = ""
+    sub_entry_id: str = Field(
+        default="",
+        description="Stable canonical entry key — matches SubEntry.entry_id from A1",
+    )
 
     op: PatchOp
     original_text: str = ""

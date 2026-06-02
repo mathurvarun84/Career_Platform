@@ -1,0 +1,111 @@
+{
+  "job_id": "fixture-b-resume-only",
+  "ats": {
+    "score": 55,
+    "breakdown": {
+      "keyword_match": 12,
+      "formatting": 16,
+      "readability": 14,
+      "impact_metrics": 13
+    },
+    "details": [],
+    "ats_issues": ["Add stronger quantified metrics in experience bullets"]
+  },
+  "resume": {
+    "experience_years": 10,
+    "seniority": "senior",
+    "role_family": "ENGINEERING",
+    "tech_stack": ["Java", "AWS"],
+    "domains": ["enterprise"],
+    "has_metrics": false,
+    "has_summary": false,
+    "sections_present": ["skills", "experience"],
+    "weaknesses": [
+      "Smart Viz X bullets 3-5 lack quantified impact → add revenue growth figures and user metrics",
+      "Flipkart EM bullets lack QPS metrics → add system scale (QPS, users, SLA)"
+    ],
+    "improvement_areas": [
+      "Add more quantified metrics in earlier roles",
+      "Add professional summary section"
+    ],
+    "resume_sections": {
+      "experience": {
+        "full_text": "SMARTVIZX\nFLIPKART",
+        "sub_entries": [
+          {
+            "label": "Director | Smart Viz X — Bengaluru Sep 2018 – Present",
+            "entry_id": "smart_viz_director_2018",
+            "verbatim_text": "SMART VIZ X | Director\nSept 2018 – Present\n• Built analytics platform\n• Grew enterprise pipeline"
+          },
+          {
+            "label": "Engineering Manager | Flipkart — Bengaluru Sep 2020 – Present",
+            "entry_id": "flipkart_engineering_manager_2020",
+            "verbatim_text": "FLIPKART | Engineering Manager\nSept 2020 – Present\n• Led checkout platform team\n• Improved reliability"
+          }
+        ]
+      }
+    }
+  },
+  "gap": {
+    "resume_only_mode": true,
+    "jd_match_score_before": null,
+    "jd_match_score_after": null,
+    "section_gaps": [],
+    "missing_keywords": [],
+    "priority_fixes": [
+      {
+        "section": "experience",
+        "entry_id": "smart_viz_director_2018",
+        "sub_label": "Director | Smart Viz X — Bengaluru Sep 2018 – Present",
+        "gap_reason": "Smart Viz X bullets 3-5 lack quantified impact → add revenue growth figures and user metrics",
+        "rewrite_instruction": "add revenue growth figures and user metrics",
+        "missing_keywords": [],
+        "needs_change": true,
+        "gap_type": "structural"
+      },
+      {
+        "section": "experience",
+        "entry_id": "flipkart_engineering_manager_2020",
+        "sub_label": "Engineering Manager | Flipkart — Bengaluru Sep 2020 – Present",
+        "gap_reason": "Flipkart EM bullets lack QPS metrics → add system scale (QPS, users, SLA)",
+        "rewrite_instruction": "add system scale (QPS, users, SLA)",
+        "missing_keywords": [],
+        "needs_change": true,
+        "gap_type": "structural"
+      },
+      {
+        "section": "summary",
+        "entry_id": null,
+        "sub_label": null,
+        "gap_reason": "No professional summary found — generating one improves recruiter first impression",
+        "rewrite_instruction": "Write a professional summary for this candidate",
+        "missing_keywords": [],
+        "needs_change": true,
+        "gap_type": "structural"
+      },
+      {
+        "section": "experience",
+        "entry_id": null,
+        "sub_label": null,
+        "gap_reason": "Add more quantified metrics in earlier roles",
+        "rewrite_instruction": "Add more quantified metrics in earlier roles",
+        "missing_keywords": [],
+        "needs_change": true,
+        "gap_type": "structural"
+      }
+    ]
+  },
+  "patches": [],
+  "rewrites": {
+    "summary": {
+      "balanced": "Senior engineering leader with 10+ years building enterprise platforms.",
+      "aggressive": "",
+      "top_1_percent": ""
+    }
+  },
+  "sim": null,
+  "percentile": null,
+  "positioning": null,
+  "validation": null,
+  "role_fit": null
+}

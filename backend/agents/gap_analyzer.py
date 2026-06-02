@@ -25,7 +25,7 @@ from backend.schemas.agent3_schema import (
 )
 from backend.few_shot_prompts import build_role_gap_addendum
 from backend.role_fit import compute_role_fit
-from backend.schemas.common import GapType, SectionText
+from backend.schemas.common import GapType, SectionText, SubEntry
 
 # Canonical sections every analysis must cover
 CANONICAL_SECTIONS = [
@@ -532,6 +532,9 @@ def _include_in_priority_fixes(gap_entry: dict) -> bool:
 def _priority_fix_location_key(fix: dict) -> str:
     """One fix card per section + sub_entry (not per missing keyword)."""
     section = str(fix.get("section") or "").lower().strip()
+    entry_id = str(fix.get("entry_id") or fix.get("sub_id") or "").strip()
+    if entry_id:
+        return f"{section}|{entry_id}"
     sub = str(fix.get("sub_label") or "").lower().strip()
     return f"{section}|{sub or '__section__'}"
 
@@ -600,6 +603,10 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
             for sub in sub_changes:
                 if not _include_in_priority_fixes(sub):
                     continue
+                entry_id = sub.get("entry_id") or sub.get("sub_id") or ""
+                if not entry_id and sub.get("sub_label"):
+                    from backend.utils.entry_id import derive_entry_id
+                    entry_id = derive_entry_id(sub.get("sub_label"))
                 fixes.append({
                     "section": gap.get("section", ""),
                     "gap_reason": sub.get("gap_reason") or gap.get("gap_reason", ""),
@@ -616,6 +623,7 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
                     "coaching_hint": sub.get("coaching_hint") or [],
                     "auto_apply": sub.get("auto_apply", False),
                     "sub_label": sub.get("sub_label", ""),
+                    "entry_id": entry_id,
                     "original_text": sub.get("original_text", ""),
                     "patch_text": sub.get("rewrite_instruction") or sub.get("patch_text", ""),
                 })
@@ -635,6 +643,493 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
                 "original_text": gap.get("original_content", ""),
                 "patch_text": gap.get("rewrite_instruction", ""),
             })
+    fixes = _dedupe_priority_fixes(fixes)
+    fixes.sort(key=lambda f: _GAP_TYPE_ORDER.get(f.get("gap_type", GapType.STRUCTURAL.value), 1))
+    return fixes[:12]
+
+
+def _infer_section_from_text(text: str) -> str:
+    """Route free-form issue text to a canonical resume section."""
+    lower = (text or "").lower()
+    if any(w in lower for w in ("experience", "bullet", "role")):
+        return "experience"
+    if any(w in lower for w in ("skill", "keyword")):
+        return "skills"
+    if any(w in lower for w in ("summary", "objective")):
+        return "summary"
+    if "education" in lower:
+        return "education"
+    if "certification" in lower:
+        return "certifications"
+    return "experience"
+
+
+def _infer_gap_type_from_text(text: str) -> str:
+    """Classify free-form fix text into surface / structural / evidence."""
+    lower = (text or "").lower()
+    if re.search(
+        r"readability|shorter|clearer|concise|scannab|dense|sentence|word.?spacing|runon|filler",
+        lower,
+    ):
+        return GapType.SURFACE.value
+    if re.search(r"missing keyword|typo|spelling|add keyword|include term", lower):
+        return GapType.SURFACE.value
+    if (
+        re.search(
+            r"mentor|evidence|collaborat|architectur|roadmap|ownership|quantif|cross-team|stakeholder",
+            lower,
+        )
+        and re.search(r"no mention|lacks|missing|share a specific|user input", lower)
+    ):
+        return GapType.EVIDENCE.value
+    return GapType.STRUCTURAL.value
+
+
+def _compact_alnum(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (text or "").lower())
+
+
+def _extract_company_from_weakness(weakness: str) -> str:
+    """Company/role head from A1 weakness format: 'Flipkart EM bullets …'."""
+    head = (weakness.split("→")[0] if "→" in weakness else weakness).strip()
+    match = re.match(
+        r"^([A-Za-z][A-Za-z0-9\s.&-]{1,48}?)"
+        r"(?:\s+(?:EM|role|bullets|bullet|section|lacks|lack|missing|needs))",
+        head,
+        re.IGNORECASE,
+    )
+    if match:
+        return match.group(1).strip()
+    words = head.split()
+    return " ".join(words[: min(3, len(words))])
+
+
+def _label_matches_company(label: str, company: str) -> bool:
+    label_lower = (label or "").lower()
+    company_lower = (company or "").lower().strip()
+    if not company_lower or len(company_lower) < 2:
+        return False
+    if company_lower in label_lower:
+        return True
+    first_word = company_lower.split()[0] if company_lower else ""
+    if len(first_word) > 2 and first_word in label_lower:
+        return True
+    cl = _compact_alnum(label)
+    cc = _compact_alnum(company)
+    return (cc and cc in cl) or (cl and cl in cc)
+
+
+def _resolve_verbatim_for_entry(
+    resume_sections: dict | None,
+    section: str,
+    entry_id: str,
+    sub_label: str | None,
+) -> str:
+    """Return verbatim sub_entry text when entry_id or sub_label matches."""
+    sec_obj = (resume_sections or {}).get(section) or {}
+    sub_entries = (
+        list(sec_obj.sub_entries)
+        if hasattr(sec_obj, "sub_entries")
+        else (sec_obj.get("sub_entries") or [])
+    )
+    if entry_id:
+        for entry in sub_entries:
+            eid = entry.entry_id if hasattr(entry, "entry_id") else entry.get("entry_id", "")
+            if eid and eid == entry_id:
+                text = (
+                    entry.verbatim_text if hasattr(entry, "verbatim_text")
+                    else entry.get("verbatim_text", "")
+                )
+                return (text or "").strip()
+    if sub_label:
+        for entry in sub_entries:
+            label = entry.label if hasattr(entry, "label") else entry.get("label", "")
+            if label and _label_matches_company(label, sub_label):
+                text = (
+                    entry.verbatim_text if hasattr(entry, "verbatim_text")
+                    else entry.get("verbatim_text", "")
+                )
+                return (text or "").strip()
+    return ""
+
+
+def _match_eval_change(text: str, eval_changes: list[dict]) -> dict | None:
+    """
+    Match a weakness or gap_reason string to an eval-mode ActionableChange.
+
+    Uses company token overlap on sub_location/why plus head-token overlap.
+    """
+    if not text or not eval_changes:
+        return None
+    head = (text.split("→")[0] if "→" in text else text).strip().lower()
+    company = _extract_company_from_weakness(text).lower()
+    head_tokens = {t for t in re.split(r"\W+", head) if len(t) > 3}
+
+    best: dict | None = None
+    best_score = 0
+    for change in eval_changes:
+        loc = change.get("location") or {}
+        sub_loc = (loc.get("sub_location") or "").lower()
+        why = (change.get("why") or "").lower()
+        score = 0
+        if company and len(company) > 2:
+            if company in sub_loc:
+                score += 4
+            if company in why:
+                score += 3
+            first = company.split()[0]
+            if len(first) > 2 and (first in sub_loc or first in why):
+                score += 2
+        pool_tokens = {
+            t for t in re.split(r"\W+", sub_loc + " " + why) if len(t) > 3
+        }
+        overlap = len(head_tokens & pool_tokens)
+        if overlap >= 2:
+            score += overlap
+        elif overlap == 1:
+            score += 1
+        if score > best_score:
+            best_score, best = score, change
+    return best if best_score >= 3 else None
+
+
+def enrich_priority_fixes_from_eval_changes(
+    fixes: list[dict],
+    eval_changes: list[dict],
+    resume_sections: dict | None = None,
+) -> list[dict]:
+    """
+    Upgrade priority_fixes with eval ActionableChange original_text + suggested_text.
+
+    Eval mode produces paste-ready rewrites; this turns overview-style cards into
+    structural patches the Fixes tab can apply in one click.
+    """
+    if not eval_changes:
+        return fixes
+
+    enriched: list[dict] = []
+    used_change_ids: set[int] = set()
+
+    for fix in fixes:
+        updated = dict(fix)
+        matched = _match_eval_change(
+            updated.get("gap_reason") or "",
+            eval_changes,
+        )
+        if not matched:
+            matched = _match_eval_change(
+                updated.get("rewrite_instruction") or "",
+                eval_changes,
+            )
+        if matched:
+            change_id = matched.get("change_id")
+            if change_id is not None:
+                used_change_ids.add(int(change_id))
+            suggested = (matched.get("suggested_text") or "").strip()
+            original = (matched.get("original_text") or "").strip()
+            loc = matched.get("location") or {}
+            if suggested and len(suggested) > 50:
+                updated["rewrite_instruction"] = suggested
+                updated["patch_text"] = suggested
+            if original:
+                updated["original_text"] = original
+            if original and suggested and len(suggested) > 50:
+                updated = _apply_gap_type_metadata(updated, GapType.STRUCTURAL.value)
+            elif (
+                (updated.get("rewrite_instruction") or "").strip().casefold()
+                == (updated.get("gap_reason") or "").strip().casefold()
+            ):
+                updated = _apply_gap_type_metadata(updated, GapType.EVIDENCE.value)
+            if loc.get("section") and not updated.get("section"):
+                updated["section"] = loc["section"]
+            if loc.get("sub_location") and not updated.get("sub_label"):
+                updated["sub_label"] = loc["sub_location"]
+        enriched.append(updated)
+
+    existing_reason_heads = {
+        (f.get("gap_reason") or "").lower()[:60] for f in enriched
+    }
+    for change in eval_changes:
+        change_id = change.get("change_id")
+        if change_id is not None and int(change_id) in used_change_ids:
+            continue
+        why = (change.get("why") or "").strip()
+        suggested = (change.get("suggested_text") or "").strip()
+        original = (change.get("original_text") or "").strip()
+        if not why or not suggested or len(suggested) <= 50:
+            continue
+        if any(why.lower()[:60] in head or head in why.lower()[:60] for head in existing_reason_heads):
+            continue
+        loc = change.get("location") or {}
+        section = loc.get("section") or _infer_section_from_text(why)
+        sub_label = loc.get("sub_location") or None
+        entry_id = ""
+        if sub_label and resume_sections:
+            _, entry_id = _resolve_sub_label_for_weakness(why, resume_sections)
+        enriched.append({
+            "section": section,
+            "gap_reason": why,
+            "rewrite_instruction": suggested,
+            "missing_keywords": change.get("keywords_added") or [],
+            "needs_change": True,
+            "gap_type": GapType.STRUCTURAL.value,
+            "requires_user_input": False,
+            "coaching_question": None,
+            "coaching_hint": [],
+            "auto_apply": False,
+            "sub_label": sub_label,
+            "entry_id": entry_id or None,
+            "original_text": original,
+            "patch_text": suggested,
+        })
+        existing_reason_heads.add(why.lower()[:60])
+
+    return _dedupe_priority_fixes(enriched)[:12]
+
+
+def _resolve_sub_label_for_weakness(
+    weakness: str,
+    resume_sections: dict | None,
+) -> tuple[str | None, str]:
+    """
+    Match a weakness to an A1 sub_entry label and entry_id.
+
+    Returns:
+        (sub_label, entry_id) — entry_id empty when no sub_entry match.
+    """
+    company = _extract_company_from_weakness(weakness)
+    section = _infer_section_from_text(weakness.split("→")[0] if "→" in weakness else weakness)
+    sec_obj = (resume_sections or {}).get(section) or {}
+    sub_entries = (
+        list(sec_obj.sub_entries)
+        if hasattr(sec_obj, "sub_entries")
+        else (sec_obj.get("sub_entries") or [])
+    )
+    for entry in sub_entries:
+        label = entry.label if hasattr(entry, "label") else entry.get("label", "")
+        entry_id = entry.entry_id if hasattr(entry, "entry_id") else entry.get("entry_id", "")
+        if label and _label_matches_company(label, company):
+            if not entry_id and label:
+                from backend.utils.entry_id import derive_entry_id
+                entry_id = derive_entry_id(label)
+            return label, entry_id or ""
+    return (company or None), ""
+
+
+def _weakness_covered_by_fix(weakness: str, fix: dict) -> bool:
+    """True when an existing priority_fix already addresses this overview string."""
+    w = (weakness or "").lower().strip()
+    reason = (fix.get("gap_reason") or "").lower().strip()
+    instruction = (fix.get("rewrite_instruction") or "").lower().strip()
+    if not w:
+        return False
+    if reason == w or instruction == w:
+        return True
+    w_head = w[:55]
+    if w_head in reason or reason[:55] in w:
+        return True
+    company = _extract_company_from_weakness(weakness).lower()
+    if len(company) > 2:
+        if company in reason or company in instruction:
+            return True
+        sub_label = (fix.get("sub_label") or "").lower()
+        first_word = company.split()[0] if company else ""
+        if first_word and first_word in sub_label:
+            return True
+        entry_id = (fix.get("entry_id") or "").lower()
+        if company.replace(" ", "_") in entry_id or first_word in entry_id:
+            return True
+    return False
+
+
+def _build_overview_weakness_fix(
+    weakness: str,
+    resume_only_mode: bool,
+    resume_sections: dict | None,
+    eval_changes: list[dict] | None = None,
+) -> dict:
+    """Build a structured priority_fix from an A1 weakness or improvement_area."""
+    parts = weakness.split("→")
+    gap_reason = (parts[0] if parts else weakness).strip()
+    rewrite_instruction = (parts[1] if len(parts) > 1 else parts[0]).strip() if parts else weakness
+    section = _infer_section_from_text(gap_reason)
+    sub_label, entry_id = _resolve_sub_label_for_weakness(weakness, resume_sections)
+    original_text = _resolve_verbatim_for_entry(
+        resume_sections, section, entry_id, sub_label
+    )
+
+    matched_change = _match_eval_change(weakness, eval_changes or [])
+    if matched_change:
+        suggested = (matched_change.get("suggested_text") or "").strip()
+        change_original = (matched_change.get("original_text") or "").strip()
+        if suggested and len(suggested) > 50:
+            rewrite_instruction = suggested
+        if change_original:
+            original_text = change_original
+        loc = matched_change.get("location") or {}
+        if loc.get("sub_location"):
+            sub_label = loc["sub_location"]
+
+    gap_type = GapType.STRUCTURAL.value if resume_only_mode else GapType.EVIDENCE.value
+    is_coaching = not resume_only_mode and gap_type == GapType.EVIDENCE.value
+
+    # No distinct instruction after → split — coaching, not a broken structural card.
+    if rewrite_instruction.strip().casefold() == gap_reason.strip().casefold():
+        gap_type = GapType.EVIDENCE.value
+        is_coaching = True
+    elif (
+        original_text
+        and rewrite_instruction.strip()
+        and len(rewrite_instruction.strip()) > 50
+        and matched_change
+    ):
+        gap_type = GapType.STRUCTURAL.value
+        is_coaching = False
+    elif (
+        resume_only_mode
+        and _infer_gap_type_from_text(gap_reason) == GapType.EVIDENCE.value
+        and len(rewrite_instruction.strip()) <= 80
+    ):
+        gap_type = GapType.EVIDENCE.value
+        is_coaching = True
+
+    coaching_question: str | None = None
+    coaching_hint: list[str] = []
+    if is_coaching:
+        coaching_question, coaching_hint = _build_coaching_question(
+            {"gap_reason": gap_reason}
+        )
+
+    fix = {
+        "section": section,
+        "gap_reason": gap_reason,
+        "rewrite_instruction": rewrite_instruction,
+        "missing_keywords": [],
+        "needs_change": True,
+        "gap_type": gap_type,
+        "requires_user_input": is_coaching,
+        "coaching_question": coaching_question,
+        "coaching_hint": coaching_hint,
+        "auto_apply": False,
+        "sub_label": sub_label,
+        "entry_id": entry_id or None,
+        "original_text": original_text,
+        "patch_text": rewrite_instruction,
+    }
+    if gap_type == GapType.EVIDENCE.value:
+        return _apply_gap_type_metadata(fix, GapType.EVIDENCE.value)
+    if gap_type == GapType.STRUCTURAL.value and original_text and len(rewrite_instruction) > 50:
+        return _apply_gap_type_metadata(fix, GapType.STRUCTURAL.value)
+    return fix
+
+
+def _merge_overview_backfill(
+    fixes: list[dict],
+    overview_strings: list[str],
+    resume_sections: dict | None,
+    resume_only_mode: bool,
+    eval_changes: list[dict] | None = None,
+) -> list[dict]:
+    """Resume-only: guarantee every Overview weakness/improvement_area has a fix card."""
+    if not resume_only_mode or not overview_strings:
+        return fixes
+    merged = list(fixes)
+    seen: set[str] = set()
+    for raw in overview_strings:
+        weakness = str(raw).strip()
+        if not weakness or weakness in seen:
+            continue
+        seen.add(weakness)
+        if any(_weakness_covered_by_fix(weakness, f) for f in merged):
+            continue
+        merged.append(
+            _build_overview_weakness_fix(
+                weakness,
+                resume_only_mode,
+                resume_sections,
+                eval_changes=eval_changes,
+            )
+        )
+    return merged
+
+
+def _merge_ats_issue_fixes(fixes: list[dict], ats_issues: list[str]) -> list[dict]:
+    """Add ATS issues not already represented in priority_fixes."""
+    if not ats_issues:
+        return fixes
+    existing_heads = {
+        (f.get("gap_reason") or "").lower()[:50]
+        for f in fixes
+        if f.get("gap_reason")
+    }
+    merged = list(fixes)
+    for issue in ats_issues:
+        text = str(issue).strip()
+        if not text:
+            continue
+        head = text.lower()[:50]
+        if head in existing_heads:
+            continue
+        gap_type = _infer_gap_type_from_text(text)
+        merged.append({
+            "section": _infer_section_from_text(text),
+            "gap_reason": text,
+            "rewrite_instruction": text,
+            "missing_keywords": [],
+            "needs_change": True,
+            "gap_type": gap_type,
+            "requires_user_input": False,
+            "coaching_question": None,
+            "coaching_hint": [],
+            "auto_apply": gap_type == GapType.SURFACE.value,
+            "sub_label": None,
+            "entry_id": None,
+            "original_text": "",
+            "patch_text": text,
+        })
+        existing_heads.add(head)
+    return merged
+
+
+def build_complete_priority_fixes(
+    section_gaps: list[dict],
+    *,
+    ats_issues: list[str] | None = None,
+    overview_strings: list[str] | None = None,
+    resume_only_mode: bool = False,
+    resume_sections: dict | None = None,
+    eval_changes: list[dict] | None = None,
+) -> list[dict]:
+    """
+    Single authoritative priority_fixes builder for the Fixes tab.
+
+    Expands classified section_gaps, backfills resume-only overview items,
+    and merges unaddressed ATS issues. Frontend reads only this list (+ patches).
+    """
+    fixes = priority_fixes_from_gaps(section_gaps)
+
+    if overview_strings and not resume_only_mode:
+        overview_lower = [s.lower() for s in overview_strings]
+        fixes = [
+            f for f in fixes
+            if not any(
+                (f.get("gap_reason") or "").lower()[:60] in ov
+                for ov in overview_lower
+            )
+        ]
+
+    fixes = _merge_overview_backfill(
+        fixes,
+        overview_strings or [],
+        resume_sections,
+        resume_only_mode,
+        eval_changes=eval_changes,
+    )
+    fixes = _merge_ats_issue_fixes(fixes, ats_issues or [])
+    if eval_changes:
+        fixes = enrich_priority_fixes_from_eval_changes(
+            fixes, eval_changes, resume_sections
+        )
     fixes = _dedupe_priority_fixes(fixes)
     fixes.sort(key=lambda f: _GAP_TYPE_ORDER.get(f.get("gap_type", GapType.STRUCTURAL.value), 1))
     return fixes[:12]
@@ -1152,6 +1647,13 @@ class GapAnalyzerAgent(BaseAgent):
                 sub_change["original_text"] = self._find_verbatim_text(
                     section_text, sub_change.get("sub_label", "")
                 )
+                matched_entry = self._find_sub_entry(
+                    section_text, sub_change.get("sub_label", "")
+                )
+                if matched_entry:
+                    sub_change["entry_id"] = matched_entry.entry_id
+                    if not sub_change.get("sub_id"):
+                        sub_change["sub_id"] = matched_entry.entry_id
                 sub_change["rewrite_instruction"] = self._build_concrete_instruction(
                     gap_type=sub_change.get("gap_reason", ""),
                     rewrite_instruction=sub_change.get("rewrite_instruction", ""),
@@ -1249,6 +1751,45 @@ class GapAnalyzerAgent(BaseAgent):
             f"Nice-to-Have Skills: {', '.join(jd_analysis.get('nice_to_have_skills', []))}\n"
             f"Hidden Signals: {jd_analysis.get('hidden_signals', [])}\n"
         )
+
+    def _find_sub_entry(
+        self, section: Optional[SectionText], sub_label: str
+    ) -> Optional[SubEntry]:
+        """
+        Looks up a SubEntry by label using exact, containment, then token overlap.
+
+        Args:
+            section: SectionText from sectioner, or None if section missing.
+            sub_label: Label string to match against sub_entries.
+
+        Returns:
+            Matching SubEntry if found, None otherwise.
+        """
+        if not section or not sub_label:
+            return None
+        for entry in section.sub_entries:
+            if entry.label == sub_label:
+                return entry
+        lower_sub = sub_label.lower()
+        for entry in section.sub_entries:
+            lower_entry = entry.label.lower()
+            if lower_sub in lower_entry or lower_entry in lower_sub:
+                return entry
+        sub_tokens = {t for t in re.split(r"\W+", lower_sub) if len(t) > 3}
+        if not sub_tokens:
+            return None
+        best_entry = None
+        best_score = 0
+        for entry in section.sub_entries:
+            entry_tokens = {
+                t for t in re.split(r"\W+", entry.label.lower()) if len(t) > 3
+            }
+            score = len(sub_tokens & entry_tokens)
+            if score > best_score:
+                best_score, best_entry = score, entry
+        if best_score >= 2 and best_entry:
+            return best_entry
+        return None
 
     def _find_verbatim_text(self, section: Optional[SectionText], sub_label: str) -> str:
         """

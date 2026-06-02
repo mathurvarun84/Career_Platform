@@ -99,7 +99,9 @@ def _guard_seniority_fields(parsed: dict) -> dict:
     jd = str(out.get("jd_seniority_level") or "").lower().strip().replace("_", "-")
 
     if exp_key in _MGMT_SENIORITY:
-        pass
+        # Backfill jd_seniority_level when the model left it as unknown.
+        if jd in ("", "unknown"):
+            out["jd_seniority_level"] = exp_key
     elif exp in _LEADERSHIP_LEVELS:
         if jd in ("", "unknown") or jd in _IC_SENIORITY or jd.replace("-", "_") in _MGMT_SENIORITY:
             out["jd_seniority_level"] = exp

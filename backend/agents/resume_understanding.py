@@ -223,18 +223,23 @@ class ResumeUnderstandingAgent(BaseAgent):
         )
 
         from backend.schemas.common import SectionText, SubEntry
+        from backend.utils.entry_id import derive_entry_id
         raw_sections = parsed_output.get("sections", {})
         resume_sections: dict = {}
         for sec_name, sec_data in raw_sections.items():
             if isinstance(sec_data, dict):
-                sub_entries = [
-                    SubEntry(
-                        label=e.get("label", ""),
-                        verbatim_text=e.get("verbatim_text", "")
+                sub_entries = []
+                for e in sec_data.get("sub_entries", []):
+                    if not isinstance(e, dict):
+                        continue
+                    _label = e.get("label", "")
+                    sub_entries.append(
+                        SubEntry(
+                            label=_label,
+                            verbatim_text=e.get("verbatim_text", ""),
+                            entry_id=derive_entry_id(_label),
+                        )
                     )
-                    for e in sec_data.get("sub_entries", [])
-                    if isinstance(e, dict)
-                ]
                 resume_sections[sec_name] = SectionText(
                     header=sec_name,
                     full_text=sec_data.get("full_text", ""),

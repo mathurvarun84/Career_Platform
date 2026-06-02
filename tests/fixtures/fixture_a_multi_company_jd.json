@@ -1,0 +1,188 @@
+{
+  "job_id": "fixture-a-multi-company-jd",
+  "ats": {
+    "score": 62,
+    "breakdown": {
+      "keyword_match": 14,
+      "formatting": 18,
+      "readability": 16,
+      "impact_metrics": 14
+    },
+    "details": [],
+    "ats_issues": []
+  },
+  "resume": {
+    "experience_years": 12,
+    "seniority": "senior",
+    "role_family": "ENGINEERING",
+    "tech_stack": ["Java", "Kafka", "AWS"],
+    "domains": ["e-commerce", "enterprise"],
+    "has_metrics": true,
+    "has_summary": true,
+    "sections_present": ["summary", "skills", "experience"],
+    "weaknesses": [],
+    "improvement_areas": [],
+    "resume_sections": {
+      "experience": {
+        "full_text": "FLIPKART\nAPTTUS\nBRITISH TELECOM\nMINDTREE",
+        "sub_entries": [
+          {
+            "label": "Engineering Manager | Flipkart — Bengaluru, KA Sep 2020 – Present",
+            "entry_id": "flipkart_engineering_manager_2020",
+            "verbatim_text": "FLIPKART | Engineering Manager\nSept 2020 – Present | Bengaluru\n• Led platform team of 32 engineers\n• Improved checkout latency by 35%"
+          },
+          {
+            "label": "Senior Consultant | Apttus — Bengaluru, KA Jan 2019 – Aug 2020",
+            "entry_id": "apttus_senior_consultant_2019",
+            "verbatim_text": "APTTUS | Senior Consultant\nJan 2019 – Aug 2020 | Bengaluru\n• Deployed CPQ chatbot for enterprise clients\n• Reduced quote cycle time by 28%"
+          },
+          {
+            "label": "Lead Software Engineer | British Telecom — Bengaluru Jun 2017 – Dec 2018",
+            "entry_id": "british_telecom_lead_software_2017",
+            "verbatim_text": "BRITISH TELECOM | Lead Software Engineer\nJun 2017 – Dec 2018 | Bengaluru\n• Owned billing microservices on Java/Kafka\n• Supported 4M monthly active users"
+          },
+          {
+            "label": "Lead Software Engineer | Mindtree — Bengaluru Jan 2015 – May 2017",
+            "entry_id": "mindtree_lead_software_2015",
+            "verbatim_text": "MINDTREE | Lead Software Engineer\nJan 2015 – May 2017 | Bengaluru\n• Built integration layer for retail clients\n• Mentored 6 engineers"
+          }
+        ]
+      }
+    }
+  },
+  "gap": {
+    "resume_only_mode": false,
+    "jd_match_score_before": 58,
+    "jd_match_score_after": null,
+    "section_gaps": [],
+    "missing_keywords": ["kubernetes", "system design"],
+    "priority_fixes": [
+      {
+        "section": "experience",
+        "entry_id": "flipkart_engineering_manager_2020",
+        "sub_label": "Engineering Manager | Flipkart — Bengaluru, KA Sep 2020 – Present",
+        "gap_reason": "Flipkart EM bullets lack QPS and scale metrics → add throughput and SLA numbers",
+        "rewrite_instruction": "add throughput and SLA numbers",
+        "missing_keywords": ["kubernetes"],
+        "needs_change": true,
+        "gap_type": "structural"
+      },
+      {
+        "section": "experience",
+        "entry_id": "apttus_senior_consultant_2019",
+        "sub_label": "Senior Consultant | Apttus — Bengaluru, KA Jan 2019 – Aug 2020",
+        "gap_reason": "Apttus chatbot deployment lacks user growth metrics → quantify adoption and revenue impact",
+        "rewrite_instruction": "quantify adoption and revenue impact",
+        "missing_keywords": [],
+        "needs_change": true,
+        "gap_type": "structural"
+      },
+      {
+        "section": "experience",
+        "entry_id": "british_telecom_lead_software_2017",
+        "sub_label": "Lead Software Engineer | British Telecom — Bengaluru Jun 2017 – Dec 2018",
+        "gap_reason": "British Telecom role missing architecture ownership → highlight system design decisions",
+        "rewrite_instruction": "highlight system design decisions",
+        "missing_keywords": ["system design"],
+        "needs_change": true,
+        "gap_type": "structural"
+      },
+      {
+        "section": "experience",
+        "entry_id": "mindtree_lead_software_2015",
+        "sub_label": "Lead Software Engineer | Mindtree — Bengaluru Jan 2015 – May 2017",
+        "gap_reason": "Mindtree LSE bullets lack mentorship evidence → add team development outcomes",
+        "rewrite_instruction": "add team development outcomes",
+        "missing_keywords": [],
+        "needs_change": true,
+        "gap_type": "evidence",
+        "requires_user_input": true,
+        "coaching_question": "Did you mentor engineers on your team?"
+      }
+    ]
+  },
+  "patches": [
+    {
+      "patch_id": "p-flipkart",
+      "gap_id": "g1",
+      "section": "experience",
+      "sub_entry_label": "Engineering Manager | Flipkart — Bengaluru, KA Sep 2020 – Present",
+      "sub_entry_id": "flipkart_engineering_manager_2020",
+      "op": "replace_text",
+      "original_text": "• Improved checkout latency by 35%",
+      "replacement_text": "• Improved checkout latency by 35% serving 12K QPS peak traffic",
+      "risk": "safe",
+      "hallucination_risk": false,
+      "issue_detected": "Missing scale metrics",
+      "fix_rationale": "Add QPS for JD alignment",
+      "status": "pending"
+    },
+    {
+      "patch_id": "p-apttus",
+      "gap_id": "g2",
+      "section": "experience",
+      "sub_entry_label": "Senior Consultant | Apttus — Bengaluru, KA Jan 2019 – Aug 2020",
+      "sub_entry_id": "apttus_senior_consultant_2019",
+      "op": "replace_text",
+      "original_text": "• Deployed CPQ chatbot for enterprise clients",
+      "replacement_text": "• Deployed CPQ chatbot adopted by 120 enterprise clients",
+      "risk": "safe",
+      "hallucination_risk": false,
+      "issue_detected": "Missing adoption metrics",
+      "fix_rationale": "Quantify chatbot rollout",
+      "status": "pending"
+    },
+    {
+      "patch_id": "p-bt",
+      "gap_id": "g3",
+      "section": "experience",
+      "sub_entry_label": "Lead Software Engineer | British Telecom — Bengaluru Jun 2017 – Dec 2018",
+      "sub_entry_id": "british_telecom_lead_software_2017",
+      "op": "replace_text",
+      "original_text": "• Owned billing microservices on Java/Kafka",
+      "replacement_text": "• Architected billing microservices on Java/Kafka handling 4M MAU",
+      "risk": "safe",
+      "hallucination_risk": false,
+      "issue_detected": "Weak architecture signal",
+      "fix_rationale": "Highlight system design",
+      "status": "pending"
+    },
+    {
+      "patch_id": "p-mindtree",
+      "gap_id": "g4",
+      "section": "experience",
+      "sub_entry_label": "Lead Software Engineer | Mindtree — Bengaluru Jan 2015 – May 2017",
+      "sub_entry_id": "mindtree_lead_software_2015",
+      "op": "replace_text",
+      "original_text": "• Mentored 6 engineers",
+      "replacement_text": "• Mentored 6 engineers; 2 promoted to senior within 18 months",
+      "risk": "safe",
+      "hallucination_risk": false,
+      "issue_detected": "Mentorship lacks outcome",
+      "fix_rationale": "Add promotion outcomes",
+      "status": "pending"
+    }
+  ],
+  "rewrites": null,
+  "sim": {
+    "personas": [],
+    "shortlist_rate": 0.4,
+    "consensus_strengths": [],
+    "consensus_weaknesses": [],
+    "most_critical_fix": "Add scale metrics to Flipkart role"
+  },
+  "percentile": null,
+  "positioning": null,
+  "validation": null,
+  "role_fit": {
+    "fitness": "stretch",
+    "score": 62,
+    "experience_gap": 0,
+    "seniority_gap": 0,
+    "unanswerable_evidence_gaps": 1,
+    "candidate_years": 12,
+    "jd_min_years": 10,
+    "recommended_roles": [],
+    "next_step_roles": []
+  }
+}

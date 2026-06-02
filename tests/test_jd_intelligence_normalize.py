@@ -21,11 +21,13 @@ def _minimal_payload(**overrides) -> dict:
 
 
 def test_director_in_seniority_expected_coerced():
+    # "director" is now a valid Seniority level — no coercion to "staff".
+    # jd_seniority_level should be backfilled from seniority_expected when unknown.
     normalized = _guard_seniority_fields(_minimal_payload())
-    assert normalized["seniority_expected"] == "staff"
+    assert normalized["seniority_expected"] == "director"
     assert normalized["jd_seniority_level"] == "director"
     output = JDIntelligenceOutput(**normalized)
-    assert output.seniority_expected.value == "staff"
+    assert output.seniority_expected.value == "director"
     assert output.jd_seniority_level.value == "director"
 
 
