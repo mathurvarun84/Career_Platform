@@ -13,8 +13,9 @@ Uses semantic understanding: e.g., 'event streaming' implies Kafka/Pulsar,
 'fast APIs' implies low-latency knowledge, not just REST frameworks.
 
 Validates input and output against Pydantic schemas defined in schemas/agent2_schema.py.
-Provider: OpenAI (gpt-4o)
+Provider: OpenAI (gpt-4.1-mini)
 Max tokens: 4000
+Cost optimization: 6× cheaper than gpt-4o, handles 1M context for JD extraction.
 """
 
 import json
@@ -139,13 +140,14 @@ class JDIntelligenceAgent(BaseAgent):
     Validates input against JDIntelligenceInput, calls LLM, parses JSON response,
     validates output against JDIntelligenceOutput.
 
-    Model: gpt-4o-mini
+    Model: gpt-4.1-mini (optimized June 2026 — 6× cheaper than gpt-4o)
     Max tokens: 4000
     Provider: OpenAI
+    Cost: ~$0.0003 per session
     """
 
     def __init__(self):
-        super().__init__(model="gpt-4o", max_tokens=4000, provider="openai")
+        super().__init__(model="gpt-4.1-mini", max_tokens=4000, provider="openai")
 
     def run(self, input_dict: dict) -> dict:
         """

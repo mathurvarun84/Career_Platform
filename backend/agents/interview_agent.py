@@ -3,10 +3,13 @@ InterviewAgent - Agent 6 of the Resume Intelligence Platform.
 
 Generates behavioural interview questions calibrated to a candidate's
 resume signals and a target company's behavioural framework.
+Evaluates answers with anti-pattern detection and dimension scoring.
 
 Days 2-4 implement: generate_questions, evaluate_answer, generate_summary.
-Model: claude-sonnet-4-20250514
+Model: claude-sonnet-4.6 (upgraded June 2026)
 Provider: Anthropic
+Cost optimization: Evaluator-optimizer loop + anti-pattern detection needs strong reasoning
+Cost: ~$0.06 per interview session
 """
 
 import json
@@ -611,13 +614,14 @@ class InterviewAgent(BaseAgent):
       evaluate_answer(input_dict)     → dict   Day 3
       generate_summary(input_dict)    → dict   Day 4
 
-    Model: claude-sonnet-4-20250514 (Anthropic)
+    Model: claude-sonnet-4.6 (optimized June 2026 — stronger reasoning for anti-pattern detection)
     Max tokens: 2000 for questions, 1500 for evaluation, 1000 for summary
+    Cost: ~$0.06 per interview session
     """
 
     def __init__(self):
         super().__init__(
-            model="claude-sonnet-4-20250514",
+            model="claude-sonnet-4.6",
             max_tokens=2000,
             provider="anthropic",
         )

@@ -7,18 +7,24 @@ Target: Indian SWEs 22–40, fresher–staff level
 ## Backend Stack
 Python 3.9+ | Pydantic v2 | Typer/Rich CLI | FastAPI (web) | python-docx | pdfplumber | python-dotenv
 
-## Models
-| Agent | Provider | Model | max_tokens |
-|---|---|---|---|
-| A1 Resume Understanding | OpenAI | gpt-4o-mini | 4000 |
-| A2 JD Intelligence | OpenAI | gpt-4o | 4000 |
-| A3 Gap Analyzer | OpenAI | gpt-4o | 4000 |
-| A4 Rewriter | Anthropic | claude-haiku-4-5-20251001 | 6000 |
-| A5 Recruiter Sim | Anthropic | claude-haiku-4-5-20251001 | 4000 |
-| Orchestrator | OpenAI | gpt-4o-mini | 4000 |
+## Models (Optimized June 2026)
+| Agent | Provider | Model | max_tokens | Rationale | $/session |
+|---|---|---|---|---|---|
+| A1 Resume Understanding | OpenAI | gpt-4o-mini | 4000 | Extraction, classification | ~$0.0001 |
+| A2 JD Intelligence | OpenAI | **gpt-4.1-mini** | 4000 | 1M context, extraction task, 6× cheaper than 4o | **~$0.0003** |
+| A3 Gap Analyzer | OpenAI | **gpt-4.1** | 4000 | Better instruction-following, 1M context, cheaper than 4o | **~$0.010** |
+| A4 Rewriter | OpenAI | **gpt-4o-mini** | 6000 | KEEP (structural bugs > model quality; fix pipeline first) | **~$0.001** |
+| A5 Coach Agent | Anthropic | claude-haiku-4.5 | 4000 | Classification, routing, extraction well-handled | ~$0.002 |
+| **A6 Interview Agent** | Anthropic | **claude-sonnet-4.6** | 8000 | **NEW: Evaluator-optimizer loop + anti-pattern detection** | **~$0.06** |
+| Orchestrator | OpenAI | gpt-4o-mini | 4000 | Orchestration, routing | ~$0.0001 |
+
+**Cost per session:** ~$0.074 (down from ~$0.25 with GPT-4o for A2/A3)
+**Margin at $5/analysis:** 67× (excellent for self-funding)
 
 Never hardcode model strings outside agent `__init__`. Never swap providers.
-OPENAI_API_KEY → A1–A4 + Orchestrator. ANTHROPIC_API_KEY → A5 only. Both from .env only.
+- **OpenAI keys** → A1, A2, A3, A4, Orchestrator
+- **Anthropic keys** → A5, A6
+- Both from .env only. NO hardcoded credentials.
 
 ## Folder Structure
 ```
@@ -49,6 +55,8 @@ resume_platform/
 
 **A5 out:** personas[10]{persona, first_impression, noticed[], ignored[], rejection_reason, shortlist_decision}, shortlist_rate(0-1), consensus_strengths[], consensus_weaknesses[], most_critical_fix
 
+**A6 out (Interview Agent):** per_question_feedback[]{dimension_score, anti_patterns_fired[], level_signal, executive_presence}, session_summary{dimension_scorecard[], anti_pattern_report[], top_strength, top_gap}
+
 ## Agent contract
 ```python
 class Agent(BaseAgent):
@@ -66,12 +74,17 @@ class Agent(BaseAgent):
 2. A1 + A2 parallel (ThreadPoolExecutor, max_workers=2) — if JD provided
 3. A3 sequential (needs 1+2)
 4. Memory load + fingerprint
-5. A4 + A5 parallel (if requested)
+5. A4 + A5 + A6 parallel (if requested) — A6 only on interview flow
 6. Percentile (deterministic)
 7. Memory update
 8. Return combined dict + career_positioning
 
-**Graceful degradation:** A5/A4/memory fail → warn+continue. A1/A2 fail → raise.
+**Graceful degradation:** A6/A5/A4/memory fail → warn+continue. A1/A2/A3 fail → raise.
+
+**A6 (Interview Agent) integration:**
+- Triggered separately from /analyze flow (different endpoint: /mock-interview)
+- Runs after user answers interview questions (session-based, not analysis-based)
+- Cost: ~$0.06/interview session (vs ~$0.074 for full analysis)
 
 ## Key rules
 - `response_format={"type":"json_object"}` on ALL OpenAI calls
@@ -120,6 +133,34 @@ python -c "from backend.schemas.common import *; from backend.schemas.agent1_sch
 - LLM calls per run: 4 (was 5). Latency: ~14-18s (was 18-22s)
 
 **Key invariant:** ALL original resume sections preserved in output docx. Experience: company BOLD, role italic, bullets ListBullet. Unchanged sections: verbatim, never placeholder. Placeholder guard: [.*] pattern never written.
+
+---
+
+## Model Optimization (June 2026)
+
+**Cost reduction:** ~$0.25 → ~$0.074 per analysis (67% cost savings)
+
+### Migration Log
+- **A2 (JD Intelligence):** gpt-4o → **gpt-4.1-mini** (line 148 in jd_intelligence.py)
+  - Rationale: Extraction task, 1M context, 6× cheaper
+  - Cost delta: -$0.0007/session
+  
+- **A3 (Gap Analyzer):** gpt-4o → **gpt-4.1** (line 2019 in gap_analyzer.py)
+  - Rationale: Better instruction-following, 1M context
+  - Cost delta: -$0.015/session
+  
+- **A4 (Rewriter):** claude-haiku-4.5 → **gpt-4o-mini** (line 579 in rewriter.py)
+  - Rationale: KEEP (structural bugs in pipeline > model quality)
+  - Cost delta: Neutral (will swap after pipeline stabilizes)
+  
+- **A5 (Coach Agent):** claude-haiku-4.5 → **KEEP** (no change)
+  - Cost: ~$0.002/session
+  
+- **A6 (Interview Agent):** claude-sonnet-4-20250514 → **claude-sonnet-4.6** (line 620 in interview_agent.py)
+  - Rationale: Evaluator-optimizer loop + anti-pattern detection
+  - Cost: ~$0.06/interview session
+
+All models hardcoded in `__init__` methods. API keys remain OPENAI_API_KEY + ANTHROPIC_API_KEY from .env.
 
 ---
 

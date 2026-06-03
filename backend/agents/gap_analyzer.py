@@ -4,8 +4,10 @@ GapAnalyzerAgent - Agent 3 of the Resume Intelligence Platform.
 Compares structured resume data (from Agent 1) against JD intelligence
 (from Agent 2) to produce a prioritized gap list for Agent 4 (Rewriter).
 
-Provider: OpenAI (gpt-4o-mini)
+Provider: OpenAI (gpt-4.1)
 Max tokens: 4000
+Cost optimization: Better instruction-following than gpt-4o-mini, 1M context, cheaper than gpt-4o.
+Cost: ~$0.010 per session
 """
 
 from __future__ import annotations
@@ -1053,6 +1055,7 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
                     "entry_id": entry_id,
                     "original_text": sub.get("original_text", ""),
                     "patch_text": sub.get("rewrite_instruction") or sub.get("patch_text", ""),
+                    "suggested_text": sub.get("suggested_text", ""),
                 })
         else:
             fixes.append({
@@ -1069,6 +1072,7 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
                 "sub_label": None,
                 "original_text": gap.get("original_content", ""),
                 "patch_text": gap.get("rewrite_instruction", ""),
+                "suggested_text": gap.get("suggested_text", ""),
             })
     fixes = _dedupe_priority_fixes(fixes)
     fixes.sort(key=lambda f: _GAP_TYPE_ORDER.get(f.get("gap_type", GapType.STRUCTURAL.value), 1))
@@ -2003,7 +2007,11 @@ class GapAnalyzerAgent(BaseAgent):
     (from Agent 2) to produce a prioritized section gap list for Agent 4 (Rewriter).
 
     Runs sequentially after Agents 1 and 2. Cannot run without both upstream outputs.
-    Uses gpt-4o-mini via OpenAI SDK. Returns GapAnalyzerOutput or DetailedEvalOutput as dict.
+    Uses gpt-4.1 via OpenAI SDK (optimized June 2026).
+    Returns GapAnalyzerOutput or DetailedEvalOutput as dict.
+
+    Model: gpt-4.1 (better instruction-following, 1M context, cheaper than gpt-4o)
+    Cost: ~$0.010 per session
 
     Invariants:
         - Input must contain validated Agent 1 and Agent 2 output dicts
@@ -2014,7 +2022,7 @@ class GapAnalyzerAgent(BaseAgent):
     """
 
     def __init__(self):
-        super().__init__(model="gpt-4o", max_tokens=4000, provider="openai")
+        super().__init__(model="gpt-4.1", max_tokens=4000, provider="openai")
 
     def run(self, input_dict: dict) -> dict:
         """

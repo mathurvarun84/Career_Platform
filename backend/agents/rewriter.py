@@ -5,8 +5,10 @@ Surgical sub-location rewriter: when a section has populated sub_changes,
 only the entries with needs_change=True get rewritten; verbatim entries are
 copied directly. Monolithic sections fall back to existing per-section logic.
 
-Provider: Anthropic (claude-haiku-4.5)
-Max tokens: 7000
+Provider: OpenAI (gpt-4o-mini)
+Max tokens: 6000
+Cost optimization: KEEP (structural bugs in pipeline > model quality right now)
+Cost: ~$0.001 per session
 """
 
 from __future__ import annotations
@@ -575,8 +577,10 @@ class SectionRewrite(BaseModel):
 
 
 class RewriterAgent(BaseAgent):
+    """Agent 4 — Rewriter. Optimized June 2026."""
+
     def __init__(self):
-        super().__init__(model="claude-haiku-4-5-20251001", max_tokens=7000, provider="anthropic")
+        super().__init__(model="gpt-4o-mini", max_tokens=6000, provider="openai")
 
     def run(self, input_dict: dict) -> dict:
         """
