@@ -13,12 +13,12 @@ Python 3.9+ | Pydantic v2 | Typer/Rich CLI | FastAPI (web) | python-docx | pdfpl
 | A1 Resume Understanding | OpenAI | gpt-4o-mini | 4000 | Extraction, classification | ~$0.0001 |
 | A2 JD Intelligence | OpenAI | **gpt-4.1-mini** | 4000 | 1M context, extraction task, 6× cheaper than 4o | **~$0.0003** |
 | A3 Gap Analyzer | OpenAI | **gpt-4.1** | 4000 | Better instruction-following, 1M context, cheaper than 4o | **~$0.010** |
-| A4 Rewriter | OpenAI | **gpt-4o-mini** | 6000 | KEEP (structural bugs > model quality; fix pipeline first) | **~$0.001** |
+| A4 Rewriter | OpenAI | **gpt-4.1-mini** | 6000 | 50% cheaper than gpt-4o-mini, handles surgical rewrites | **~$0.0005** |
 | A5 Coach Agent | Anthropic | claude-haiku-4.5 | 4000 | Classification, routing, extraction well-handled | ~$0.002 |
 | **A6 Interview Agent** | Anthropic | **claude-sonnet-4.6** | 8000 | **NEW: Evaluator-optimizer loop + anti-pattern detection** | **~$0.06** |
 | Orchestrator | OpenAI | gpt-4o-mini | 4000 | Orchestration, routing | ~$0.0001 |
 
-**Cost per session:** ~$0.074 (down from ~$0.25 with GPT-4o for A2/A3)
+**Cost per session:** ~$0.0735 (down from ~$0.25 with GPT-4o for A2/A3)
 **Margin at $5/analysis:** 67× (excellent for self-funding)
 
 Never hardcode model strings outside agent `__init__`. Never swap providers.
@@ -149,9 +149,9 @@ python -c "from backend.schemas.common import *; from backend.schemas.agent1_sch
   - Rationale: Better instruction-following, 1M context
   - Cost delta: -$0.015/session
   
-- **A4 (Rewriter):** claude-haiku-4.5 → **gpt-4o-mini** (line 579 in rewriter.py)
-  - Rationale: KEEP (structural bugs in pipeline > model quality)
-  - Cost delta: Neutral (will swap after pipeline stabilizes)
+- **A4 (Rewriter):** claude-haiku-4.5 → **gpt-4.1-mini** (line 579 in rewriter.py)
+  - Rationale: 50% cheaper than gpt-4o-mini, handles surgical rewrites well
+  - Cost delta: -$0.0005/session (even cheaper than haiku now)
   
 - **A5 (Coach Agent):** claude-haiku-4.5 → **KEEP** (no change)
   - Cost: ~$0.002/session

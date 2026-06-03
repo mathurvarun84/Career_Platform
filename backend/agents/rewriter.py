@@ -5,10 +5,10 @@ Surgical sub-location rewriter: when a section has populated sub_changes,
 only the entries with needs_change=True get rewritten; verbatim entries are
 copied directly. Monolithic sections fall back to existing per-section logic.
 
-Provider: OpenAI (gpt-4o-mini)
+Provider: OpenAI (gpt-4.1-mini)
 Max tokens: 6000
-Cost optimization: KEEP (structural bugs in pipeline > model quality right now)
-Cost: ~$0.001 per session
+Cost optimization: gpt-4.1-mini for extraction + rewriting (50% cheaper than gpt-4o-mini)
+Cost: ~$0.0005 per session
 """
 
 from __future__ import annotations
@@ -577,10 +577,10 @@ class SectionRewrite(BaseModel):
 
 
 class RewriterAgent(BaseAgent):
-    """Agent 4 — Rewriter. Optimized June 2026."""
+    """Agent 4 — Rewriter. Optimized June 2026 with gpt-4.1-mini."""
 
     def __init__(self):
-        super().__init__(model="gpt-4o-mini", max_tokens=6000, provider="openai")
+        super().__init__(model="gpt-4.1-mini", max_tokens=6000, provider="openai")
 
     def run(self, input_dict: dict) -> dict:
         """
