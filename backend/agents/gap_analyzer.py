@@ -133,6 +133,25 @@ Rules:
   Example 3: If any role shows "Generated ₹4 Cr, 30% increase", do NOT flag others for missing metrics.
   Example 4: If the word "architected" OR "architecture" OR "system design" appears anywhere,
              do NOT flag entries for lacking "architecture evaluation".
+- RESUME BUDGET RULE (critical — prevents bloat):
+  Each JD signal (e.g., "team leadership", "cross-functional collaboration",
+  "quantified impact", "architecture ownership") must be demonstrated in the
+  resume EXACTLY ONCE — in the role where it is most credible.
+
+  BEFORE creating any sub_change for a signal, ask:
+  "Does ANY other role in this resume already demonstrate this signal?"
+  If YES → mark needs_change=false for ALL sub_entries on that signal.
+  If NO  → add it to ONLY ONE sub_entry (the most recent or highest-signal role).
+
+  FORBIDDEN: Adding the same signal type to 3 different experience entries.
+  EXAMPLE:
+    - "cross-team collaboration" shown at Flipkart (2022–present)?
+    → DO NOT add it to BT, ClearTax, or any other entry.
+    - "team leadership" shown at Fora3D with "Led cross-functional teams"?
+    → DO NOT add a team leadership bullet to ClearTax or BT.
+
+  The goal is a resume where TOGETHER all entries cover the JD — not each
+  entry individually covering the JD.
 - PHANTOM GAP RULE: On strong matches (candidate clearly qualified for the role),
   require HIGH confidence before setting needs_change=true. Do not flag gaps for skills
   already demonstrated under different wording. Prefer 0–3 total gaps on strong matches.
@@ -599,6 +618,99 @@ def _build_coaching_question(gap: dict, role_family: str = "ENGINEERING") -> tup
     )
 
 
+def _build_grounded_hints(
+    original_text: str,
+    gap_reason: str,
+    sub_label: str = "",
+) -> tuple[list[str], str | None]:
+    """
+    Extract resume-grounded coaching hints from verbatim resume text.
+
+    Zero LLM calls — uses regex to pull numbers, percentages, and project names from
+    the actual resume bullet and injects them into targeted hint templates.
+    Returns hints that reference real resume content instead of generic placeholders.
+    """
+    if not original_text.strip():
+        return [], None
+
+    # Extract numbers, percentages, and currency amounts from resume text
+    num_pattern = re.compile(
+        r'(?:₹|Rs\.?\s*|Rs\s*)?\d+(?:\.\d+)?(?:\s*(?:Cr|LPA|K|M|B|k|m|b))?(?:\s*%)?|'
+        r'\d{1,3}(?:,\d{3})+(?:\.\d+)?',
+        re.IGNORECASE,
+    )
+    numbers = [m.strip() for m in num_pattern.findall(original_text) if m.strip() and len(m.strip()) >= 2]
+    numbers = numbers[:3]
+
+    # Extract company name from sub_label (format: "Company — Role (YYYY–YYYY)")
+    company = ""
+    if sub_label:
+        company = re.split(r'\s*[—–|-]\s*', sub_label)[0].strip()
+
+    # First non-empty line of the resume text as context
+    context_lines = [l.strip().lstrip("•-* ").strip() for l in original_text.splitlines() if l.strip()]
+    first_line = context_lines[0][:120] if context_lines else ""
+
+    reason_lower = gap_reason.lower()
+    hints: list[str] = []
+    suggestion: str | None = None
+
+    if any(w in reason_lower for w in ["metric", "quantif", "scale", "qps", "users", "sla", "impact"]):
+        if numbers and company:
+            hints.append(f"The {numbers[0]} result at {company} — what drove that number specifically?")
+            hints.append(f"What was the team size and timeline behind the {numbers[0]} outcome at {company}?")
+        elif numbers:
+            hints.append(f"You mention {numbers[0]} — what drove that number specifically?")
+            hints.append(f"What was the business impact behind the {numbers[0]} result?")
+        elif company:
+            hints.append(f"What scale did this work reach at {company}? (users served, requests/sec, or revenue)")
+            hints.append(f"What specific outcome can you quantify from your {company} work?")
+        if first_line:
+            ctx = first_line[:100]
+            if company:
+                suggestion = (
+                    f"Your resume says: \"{ctx}\". "
+                    f"Add: team size, volume, or cost/revenue impact from your work at {company}."
+                )
+            else:
+                suggestion = (
+                    f"Your resume says: \"{ctx}\". "
+                    f"Add: the specific scale, timeline, and impact metric behind this work."
+                )
+
+    elif any(w in reason_lower for w in ["architectur", "technical leadership", "technical direction"]):
+        if company:
+            hints.append(f"What was the core architecture decision you made at {company}?")
+            hints.append(f"What alternatives did you evaluate before choosing this approach at {company}?")
+        if first_line:
+            suggestion = (
+                f"Your resume mentions: \"{first_line[:80]}\". "
+                f"Describe the key trade-off: what you chose, what you rejected, and why."
+            )
+
+    elif any(w in reason_lower for w in ["mentor", "coach", "develop"]):
+        if company:
+            hints.append(f"How many engineers did you mentor at {company}?")
+            hints.append(f"What was the tangible outcome of your mentoring at {company}? (e.g. promotions, skill growth)")
+        if first_line:
+            suggestion = (
+                f"Your resume says: \"{first_line[:80]}\". "
+                f"Describe: how many you mentored, what they achieved, and one concrete outcome."
+            )
+
+    elif any(w in reason_lower for w in ["cross-team", "collaborat", "stakeholder"]):
+        if company:
+            hints.append(f"Which specific teams did you partner with at {company}?")
+            hints.append(f"What was the measurable outcome of the cross-team work at {company}?")
+        if first_line:
+            suggestion = (
+                f"Your resume says: \"{first_line[:80]}\". "
+                f"Name the specific teams, the shared goal, and the outcome."
+            )
+
+    return hints[:3], suggestion
+
+
 def _normalize_gap_type(raw: Any) -> str | None:
     """Map LLM gap_type strings to canonical GapType values."""
     if raw is None or (isinstance(raw, str) and not raw.strip()):
@@ -614,12 +726,19 @@ def _apply_gap_type_metadata(gap: dict, gap_type: str, role_family: str = "ENGIN
     """Attach coaching/auto_apply fields for a known gap_type without re-classifying."""
     if gap_type == GapType.EVIDENCE.value:
         question, hints = _build_coaching_question(gap, role_family)
+        grounded_hints, grounded_suggestion = _build_grounded_hints(
+            gap.get("original_text", ""),
+            gap.get("gap_reason", ""),
+            gap.get("sub_label", ""),
+        )
         return {
             **gap,
             "gap_type": gap_type,
             "requires_user_input": True,
             "coaching_question": question,
             "coaching_hint": hints,
+            "resume_grounded_hints": grounded_hints,
+            "resume_grounded_suggestion": grounded_suggestion,
             "auto_apply": False,
         }
 
@@ -715,6 +834,41 @@ def _suppress_evidence_gaps_for_mentioned_skills(
             continue
 
         gap_type = gap.get("gap_type", "").lower()
+
+        # Suppress individual evidence sub_changes where keyword appears in resume
+        sub_changes = gap.get("sub_changes") or []
+        if sub_changes:
+            updated_subs = []
+            for sub in sub_changes:
+                if (
+                    sub.get("needs_change")
+                    and (sub.get("gap_type") or "").lower() == GapType.EVIDENCE.value
+                ):
+                    sub_reason = (sub.get("gap_reason") or "").lower()
+                    if any(
+                        w in sub_reason
+                        for w in ["section missing", "section is missing", "section is absent"]
+                    ):
+                        updated_subs.append(sub)
+                        continue
+                    sub_kws = sub.get("missing_keywords") or []
+                    sub_suppressed = any(
+                        str(kw).lower().strip() and str(kw).lower().strip() in resume_blob
+                        for kw in sub_kws
+                    )
+                    if sub_suppressed:
+                        sub = dict(sub)
+                        sub["needs_change"] = False
+                        sub["gap_reason"] = "Skill is mentioned in resume (coaching not needed)"
+                        sub["requires_user_input"] = False
+                        sub["coaching_question"] = None
+                        sub["coaching_hint"] = []
+                        logging.info(
+                            "Phase 1b: Evidence sub_change suppressed — keyword found in resume",
+                        )
+                updated_subs.append(sub)
+            gap = dict(gap)
+            gap["sub_changes"] = updated_subs
 
         # Only process Evidence gaps
         if gap_type != GapType.EVIDENCE.value:
@@ -849,6 +1003,42 @@ def _suppress_evidence_gaps_with_resume_proof(
         gap_type = gap.get("gap_type", "").lower()
         gap_reason = (gap.get("gap_reason") or "").lower()
         missing_keywords = gap.get("missing_keywords") or []
+
+        # Suppress individual evidence sub_changes where resume proves the skill
+        sub_changes = gap.get("sub_changes") or []
+        if sub_changes:
+            updated_subs = []
+            for sub in sub_changes:
+                if (
+                    sub.get("needs_change")
+                    and (sub.get("gap_type") or "").lower() == GapType.EVIDENCE.value
+                ):
+                    sub_kws = sub.get("missing_keywords") or []
+                    sub_suppressed = False
+                    for kw in sub_kws:
+                        kw_lower = str(kw).lower().strip()
+                        if kw_lower in PROOF_PATTERNS and any(
+                            p in resume_blob for p in PROOF_PATTERNS[kw_lower]
+                        ):
+                            sub_suppressed = True
+                            break
+                        if kw_lower and kw_lower in resume_blob:
+                            sub_suppressed = True
+                            break
+                    if sub_suppressed:
+                        sub = dict(sub)
+                        sub["needs_change"] = False
+                        sub["gap_reason"] = "No coaching needed — skill is demonstrated in resume"
+                        sub["requires_user_input"] = False
+                        sub["coaching_question"] = None
+                        sub["coaching_hint"] = []
+                        logging.info(
+                            "GapAnalyzer: Evidence sub_change suppressed — proof found in resume for '%s'",
+                            (sub_kws[0] if sub_kws else ""),
+                        )
+                updated_subs.append(sub)
+            gap = dict(gap)
+            gap["sub_changes"] = updated_subs
 
         # Only suppress Evidence gaps (coaching cards)
         if gap_type != GapType.EVIDENCE.value:
@@ -1023,12 +1213,19 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
     Expands sub_changes into individual fix cards so each company/role block in
     experience gets its own card. Sorts by gap_type: evidence → structural → surface.
     """
+    # Sections where sub_changes make sense (multi-entry sections)
+    _SUB_ENTRY_SECTIONS = {"experience", "education", "certifications", "projects"}
+
     fixes: list[dict] = []
     for gap in section_gaps:
         if not _include_in_priority_fixes(gap):
             continue
+        section_name = (gap.get("section") or "").lower().strip()
         sub_changes = gap.get("sub_changes") or []
-        if sub_changes:
+        # Only expand sub_changes for multi-entry sections.
+        # Summary/skills/awards sub_changes violate A3 rules and produce cards
+        # with mismatched section labels.
+        if sub_changes and section_name in _SUB_ENTRY_SECTIONS:
             for sub in sub_changes:
                 if not _include_in_priority_fixes(sub):
                     continue
@@ -1050,6 +1247,8 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
                     "requires_user_input": sub.get("requires_user_input", False),
                     "coaching_question": sub.get("coaching_question"),
                     "coaching_hint": sub.get("coaching_hint") or [],
+                    "resume_grounded_hints": sub.get("resume_grounded_hints") or [],
+                    "resume_grounded_suggestion": sub.get("resume_grounded_suggestion"),
                     "auto_apply": sub.get("auto_apply", False),
                     "sub_label": sub.get("sub_label", ""),
                     "entry_id": entry_id,
@@ -1068,6 +1267,8 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
                 "requires_user_input": gap.get("requires_user_input", False),
                 "coaching_question": gap.get("coaching_question"),
                 "coaching_hint": gap.get("coaching_hint") or [],
+                "resume_grounded_hints": gap.get("resume_grounded_hints") or [],
+                "resume_grounded_suggestion": gap.get("resume_grounded_suggestion"),
                 "auto_apply": gap.get("auto_apply", False),
                 "sub_label": None,
                 "original_text": gap.get("original_content", ""),
@@ -1676,6 +1877,19 @@ def build_complete_priority_fixes(
             fixes, eval_changes, resume_sections
         )
     fixes = _dedupe_priority_fixes(fixes)
+    # Dedup evidence fixes by coaching_question: same question across different roles
+    # renders identically; keep the first occurrence (most recent role in sort order).
+    seen_coaching_q: set[str] = set()
+    deduped: list[dict] = []
+    for fix in fixes:
+        if fix.get("gap_type") == GapType.EVIDENCE.value:
+            q = (fix.get("coaching_question") or "").strip().lower()
+            if q and q in seen_coaching_q:
+                continue
+            if q:
+                seen_coaching_q.add(q)
+        deduped.append(fix)
+    fixes = deduped
     fixes.sort(key=lambda f: _GAP_TYPE_ORDER.get(f.get("gap_type", GapType.STRUCTURAL.value), 1))
     return fixes[:12]
 
@@ -1762,6 +1976,67 @@ def _keyword_covered_in_resume(keyword: str, resume_blob: str, semantic_map: dic
         if term and term in resume_blob:
             return True
     return False
+
+
+SIGNAL_KEYWORDS = {
+    "team_leadership": ["led", "managed", "team of", "direct report"],
+    "cross_functional": ["cross-functional", "collaborated", "partnership"],
+    "architecture": ["architected", "architectural", "system design"],
+    "quantified_impact": ["₹", "$", "%", "crore", "increase", "growth"],
+    "mentorship": ["mentor", "mentored", "coaching", "knowledge sharing"],
+    "hiring": ["hiring", "recruited", "headcount", "interview"],
+}
+
+_SIGNAL_PHRASES = [
+    "cross-team",
+    "collaboration",
+    "team leadership",
+    "team size",
+    "mentorship",
+    "mentoring",
+    "hiring",
+    "architectural ownership",
+    "quantified",
+    "metrics",
+    "cross-functional",
+]
+
+
+def _build_signal_coverage_map(resume_sections: dict) -> dict:
+    """Return {signal: [entry_labels]} showing which entries already demonstrate each signal."""
+    coverage: dict[str, list[str]] = {}
+    for _sec_name, sec_text in resume_sections.items():
+        if not sec_text or not getattr(sec_text, "sub_entries", None):
+            continue
+        for entry in sec_text.sub_entries:
+            entry_text = (entry.verbatim_text or "").lower()
+            for signal, keywords in SIGNAL_KEYWORDS.items():
+                if any(kw in entry_text for kw in keywords):
+                    coverage.setdefault(signal, []).append(entry.label)
+    return coverage
+
+
+def _deduplicate_sub_change_signals(section_gaps: list[dict]) -> list[dict]:
+    """Enforce each JD signal appears in at most ONE sub_entry across experience."""
+    seen: set[str] = set()
+    for gap in section_gaps:
+        if (gap.get("section") or "").lower() != "experience":
+            continue
+        for sub in gap.get("sub_changes") or []:
+            if not sub.get("needs_change"):
+                continue
+            reason = (sub.get("gap_reason") or "").lower()
+            for signal in _SIGNAL_PHRASES:
+                if signal in reason:
+                    if signal in seen:
+                        sub["needs_change"] = False
+                        sub["gap_reason"] = "Signal already covered in another experience entry"
+                        sub["rewrite_instruction"] = ""
+                        sub["missing_keywords"] = []
+                    else:
+                        seen.add(signal)
+                    break
+    return section_gaps
 
 
 def _suppress_cross_entry_duplicate_gaps(
@@ -1903,24 +2178,23 @@ def _apply_phantom_gap_filter(
                 filtered_subs.append(sub)
 
             gap["sub_changes"] = filtered_subs
+            missing = [str(k) for k in (gap.get("missing_keywords") or []) if str(k).strip()]
+            if (
+                gap.get("needs_change")
+                and missing
+                and all(_keyword_covered_in_resume(kw, resume_blob, semantic_map) for kw in missing)
+                and not any(s.get("needs_change") for s in filtered_subs)
+            ):
+                logging.info(
+                    "GapAnalyzer: phantom experience gap suppressed (qualified match): %s",
+                    gap.get("gap_reason", "")[:80],
+                )
+                gap["needs_change"] = False
+                gap["gap_reason"] = "No change needed — skill covered under equivalent wording"
+                gap["rewrite_instruction"] = ""
+                gap["missing_keywords"] = []
             filtered.append(gap)
             continue
-
-        if section != "experience":
-            filtered.append(gap)
-            continue
-
-        missing = [str(k) for k in (gap.get("missing_keywords") or []) if str(k).strip()]
-        if missing and all(_keyword_covered_in_resume(kw, resume_blob, semantic_map) for kw in missing):
-            logging.info(
-                "GapAnalyzer: phantom experience gap suppressed (qualified match): %s",
-                gap.get("gap_reason", "")[:80],
-            )
-            gap["needs_change"] = False
-            gap["gap_reason"] = "No change needed — skill covered under equivalent wording"
-            gap["rewrite_instruction"] = ""
-            gap["missing_keywords"] = []
-            gap["sub_changes"] = []
 
         filtered.append(gap)
 
@@ -2073,7 +2347,10 @@ class GapAnalyzerAgent(BaseAgent):
             if sec_text and sec_text.sub_entries:
                 sub_entry_manifest[sec_name] = [e.label for e in sec_text.sub_entries]
 
+        signal_coverage = _build_signal_coverage_map(resume_sections)
         user_message = (
+            f"SIGNAL COVERAGE MAP (signals already demonstrated — DO NOT duplicate):\n"
+            f"{json.dumps(signal_coverage, indent=2)}\n\n"
             f"FULL RESUME TEXT (for holistic context):\n"
             f"{'='*60}\n"
             f"{inp.resume_text or resume_analysis.get('raw_text', '')[:10000]}\n"
@@ -2381,6 +2658,7 @@ class GapAnalyzerAgent(BaseAgent):
             enriched_gaps,
             resume_sections,
         )
+        enriched_gaps = _deduplicate_sub_change_signals(enriched_gaps)
         enriched_gaps = _ensure_minimum_gap_floor(
             enriched_gaps,
             resume_analysis or {},
@@ -2393,6 +2671,13 @@ class GapAnalyzerAgent(BaseAgent):
         classified = _suppress_evidence_gaps_with_resume_proof(classified, resume_text)
         # PHASE 1b: Suppress Evidence gaps for skills that ARE mentioned in resume
         classified = _suppress_evidence_gaps_for_mentioned_skills(classified, resume_text)
+        # PHASE 1c: suppress sub_changes whose missing keywords are globally covered
+        classified = _apply_phantom_gap_filter(
+            classified,
+            resume_analysis or {},
+            jd_analysis or {},
+            resume_text,
+        )
         # PHASE 2: Generate auto-suggested text for remaining Evidence gaps via A4
         classified = _generate_suggestions_for_gaps(
             classified,

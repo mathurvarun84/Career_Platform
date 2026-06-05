@@ -13,6 +13,7 @@ import { useWindowSize } from "../../hooks/useWindowSize";
 import { supabase } from "../../lib/supabase";
 import { useAuthStore } from "../../store/authStore";
 import type { AnalysisResult } from "../../types";
+import { T } from "../../tokens";
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 /** Use access token as-is while it has this many seconds left; avoid refresh (user / Supabase limits). */
@@ -21,16 +22,16 @@ const MIN_ACCESS_TOKEN_VALID_SEC_BEFORE_REFRESH = 120;
 const STEP_TARGETS = [20, 45, 72, 88] as const;
 
 const PALETTE = {
-  primary: "#6366f1",
-  text: "#111827",
-  muted: "#6b7280",
-  border: "#e5e7eb",
-  success: "#16a34a",
-  successBg: "#dcfce7",
-  white: "#ffffff",
-  error: "#ef4444",
-  activeBg: "#eef2ff",
-  activeBorder: "#c7d2fe",
+  primary:      T.primary,
+  text:         T.textPrimary,
+  muted:        T.textMuted,
+  border:       T.border,
+  success:      T.emerald,
+  successBg:    T.emeraldLight,
+  white:        T.bgCard,
+  error:        T.rose,
+  activeBg:     T.primaryLight,
+  activeBorder: T.primaryMid,
 } as const;
 
 const STEPS = [
@@ -631,7 +632,7 @@ function LiveFindingsPanel({
                 height: "52px",
                 borderRadius: "8px",
                 border: `1px solid ${PALETTE.border}`,
-                background: `linear-gradient(90deg, ${PALETTE.white} 0%, #e0e7ff 50%, ${PALETTE.white} 100%)`,
+                background: `linear-gradient(90deg, ${T.bgPage} 0%, ${T.primaryLight} 50%, ${T.bgPage} 100%)`,
                 backgroundSize: "200% 100%",
                 animation: "ripFindingShimmer 1.4s ease-in-out infinite",
                 animationDelay: `${i * 0.2}s`,
@@ -1009,7 +1010,7 @@ export default function AnalysisProgress({
         paddingRight: isMobile ? "16px" : "24px",
         paddingTop: isMobile ? "20px" : "28px",
         paddingBottom: isMobile ? "32px" : "40px",
-        background: PALETTE.white,
+        background: T.bgPage,
       }}
     >
       <style>{`
@@ -1070,7 +1071,7 @@ export default function AnalysisProgress({
               paddingLeft: "18px",
               paddingRight: "18px",
               cursor: "pointer",
-              boxShadow: "0 3px 0 #4338ca",
+              boxShadow: T.shadowPrimarySm,
             }}
           >
             Try again
@@ -1123,7 +1124,7 @@ export default function AnalysisProgress({
                 height: "100%",
                 width: `${barPct}%`,
                 borderRadius: "999px",
-                background: `linear-gradient(90deg, ${PALETTE.primary}, #4f46e5)`,
+                background: `linear-gradient(90deg, ${T.primary}, ${T.violet})`,
               }}
             />
           </div>

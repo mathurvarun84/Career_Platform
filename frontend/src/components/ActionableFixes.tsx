@@ -28,6 +28,7 @@ import {
   getBeforeTextForFix,
   inferSectionKey,
   parseInfoOnlyCardParts,
+  partitionFixesByCoachingCap,
   resolvePatchForFix,
 } from "../utils/fixesPipeline";
 import { isEvidenceGap } from "../utils/roleFitEvidence";
@@ -38,6 +39,7 @@ import type {
   ProgressSnapshot,
   RewriteStyle,
 } from "../types";
+import { T } from "../tokens";
 import DataSourceNotice from "./DataSourceNotice";
 import EvidenceCoachingCard from "./cards/EvidenceCoachingCard";
 import StructuralPatchCard from "./cards/StructuralPatchCard";
@@ -69,16 +71,20 @@ function InfoOnlyCard({ fix }: { fix: PriorityFix }): ReactElement {
   return (
     <div
       style={{
-        border: "1.5px solid #e5e7eb",
-        borderRadius: "16px",
+        border: `1.5px solid ${T.border}`,
+        borderRadius: "18px",
         padding: "20px 24px",
         marginBottom: "12px",
-        background: "#fafafa",
+        background: T.bgPage,
+        transition: "box-shadow 0.2s ease",
+        cursor: "default",
       }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowMd; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = "none"; }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <div style={{ fontSize: "14px", fontWeight: 700, color: "#111827" }}>
+          <div style={{ fontSize: "14px", fontWeight: 700, color: T.textPrimary }}>
             {toTitleCase(inferSectionKey(fix.section))}
             {scopeLabel ? ` · ${scopeLabel}` : ""}
           </div>
@@ -87,9 +93,10 @@ function InfoOnlyCard({ fix }: { fix: PriorityFix }): ReactElement {
           style={{
             fontSize: "11px",
             fontWeight: 600,
-            color: "#9ca3af",
-            background: "#f3f4f6",
-            borderRadius: "999px",
+            color: T.textMuted,
+            background: T.bgSubtle,
+            border: `1px solid ${T.border}`,
+            borderRadius: T.radiusPill,
             padding: "3px 10px",
             whiteSpace: "nowrap",
           }}
@@ -98,7 +105,7 @@ function InfoOnlyCard({ fix }: { fix: PriorityFix }): ReactElement {
         </div>
       </div>
 
-      <div style={{ fontSize: "13px", color: "#374151", marginTop: "8px", lineHeight: 1.6 }}>
+      <div style={{ fontSize: "13px", color: T.textSecondary, marginTop: "8px", lineHeight: 1.6 }}>
         {whatPart}
       </div>
 
@@ -107,11 +114,11 @@ function InfoOnlyCard({ fix }: { fix: PriorityFix }): ReactElement {
           style={{
             marginTop: "10px",
             padding: "10px 14px",
-            background: "#eff6ff",
+            background: T.primaryLight,
             borderRadius: "10px",
-            border: "1px solid #bfdbfe",
+            border: `1px solid ${T.primaryMid}`,
             fontSize: "12px",
-            color: "#1e40af",
+            color: T.primary,
             lineHeight: 1.6,
           }}
         >
@@ -193,6 +200,7 @@ export default function ActionableFixes({
     totalCoachingAnswers
   );
   const [quickWinsExpanded, setQuickWinsExpanded] = useState(false);
+  const [showAllEvidence, setShowAllEvidence] = useState(false);
   const [careerMemoryVersion, setCareerMemoryVersion] = useState(0);
   const autoAppliedRef = useRef<Set<string>>(new Set());
   const patchCountRef = useRef(totalPatchesApplied);
@@ -564,49 +572,91 @@ export default function ActionableFixes({
   ).length;
   const appliedCount = patchAppliedCount + coachingAppliedCount;
 
+  const handleApplyAll = () => {
+    fixes.forEach((fix, index) => {
+      const fixKey = getFixKey(fix, index);
+      if (applyState[fixKey] !== "applied" && applyState[fixKey] !== "loading") {
+        void onApply(fix, fixKey);
+      }
+    });
+  };
+
   return (
-    <div style={{ minHeight: "100vh", background: "#ffffff" }}>
+    <div style={{ minHeight: "100vh", background: T.bgPage }}>
       <div style={pageContainerStyle(isMobile, isMobile ? 88 : 72)}>
-        <div style={{ marginBottom: "32px", textAlign: "center" }}>
+
+        {/* HERO */}
+        <div style={{ textAlign: "center", marginBottom: 40 }}>
           <div
             style={{
               display: "inline-flex",
               alignItems: "center",
-              borderRadius: "999px",
-              background: "#eef2ff",
-              border: "1px solid #c7d2fe",
-              color: "#4f46e5",
+              background: T.emeraldLight,
+              border: `1px solid ${T.emeraldBorder}`,
+              color: T.emerald,
+              borderRadius: T.radiusPill,
               padding: "5px 14px",
               fontSize: "12px",
               fontWeight: 600,
+              marginBottom: 16,
             }}
           >
-            ✦ Intelligent Patches
+            ✨ AI-Powered Fixes
           </div>
           <div
             style={{
-              fontSize: isMobile ? "22px" : "28px",
-              fontWeight: 800,
-              color: "#111827",
+              fontFamily: "'DM Serif Display', serif",
+              fontSize: isMobile ? "32px" : "44px",
+              fontWeight: 400,
+              color: T.textPrimary,
               letterSpacing: "-0.02em",
-              marginTop: "14px",
+              lineHeight: 1.15,
+              marginBottom: 12,
             }}
           >
-            Actionable Fixes
+            Before → After Fixes
           </div>
-          <div style={{ fontSize: "15px", color: "#6b7280", marginTop: "8px" }}>
+          <div
+            style={{
+              fontSize: "16px",
+              color: T.textSecondary,
+              maxWidth: 480,
+              margin: "0 auto",
+              lineHeight: 1.6,
+              marginBottom: 20,
+            }}
+          >
             Surface patches, surgical rewrites, and coaching for evidence gaps.
           </div>
+          {quickWinPts > 0 ? (
+            <div
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                background: T.primaryLight,
+                border: `1px solid ${T.primaryMid}`,
+                borderRadius: T.radiusPill,
+                padding: "8px 18px",
+                fontSize: "14px",
+                fontWeight: 700,
+                color: T.primary,
+              }}
+            >
+              ↑ Total potential gain: +{quickWinPts} pts
+            </div>
+          ) : null}
         </div>
 
+        {/* QUICK WINS BANNER */}
         {surfaceFixes.length > 0 ? (
           <div
             style={{
-              background: "#f0fdf4",
-              border: "1.5px solid #bbf7d0",
-              borderRadius: "12px",
-              padding: "14px 18px",
-              marginBottom: "20px",
+              background: T.emeraldLight,
+              border: `1.5px solid ${T.emeraldBorder}`,
+              borderRadius: "14px",
+              padding: "16px 20px",
+              marginBottom: "24px",
             }}
           >
             <button
@@ -652,40 +702,91 @@ export default function ActionableFixes({
           </div>
         ) : null}
 
+        {/* FIXES LIST / EMPTY STATE */}
         {fixes.length === 0 ? (
           <div
             style={{
-              border: "1.5px solid #e5e7eb",
-              borderRadius: "16px",
+              border: `1.5px solid ${T.border}`,
+              borderRadius: "18px",
               padding: "48px 32px",
               textAlign: "center",
+              background: T.bgCard,
             }}
           >
-            <div style={{ fontSize: "17px", fontWeight: 700, color: "#111827" }}>
+            <div style={{ fontSize: "17px", fontWeight: 700, color: T.textPrimary }}>
               No fixes needed
             </div>
-            <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "4px" }}>
+            <div style={{ fontSize: "13px", color: T.textSecondary, marginTop: "4px" }}>
               No fixes needed — your resume is well-optimised for this role.
             </div>
           </div>
-        ) : (
-          fixes.map((fix, index) => {
-            const displayFix: PriorityFix = {
-              ...fix,
-              section: getDisplaySection(fix),
-            };
-            const fixKey = getFixKey(fix, index);
-            return renderCard(
-              displayFix,
-              fixKey,
-              handlers,
-              coachingSessionId,
-              handleCoachingDone,
-              handleMemoryCreated
-            );
-          })
-        )}
+        ) : (() => {
+          const { visible: visibleFixes, hidden: hiddenEvidenceFixes } = partitionFixesByCoachingCap(fixes);
+          return (
+            <>
+              {visibleFixes.map((fix, index) => {
+                const displayFix: PriorityFix = {
+                  ...fix,
+                  section: getDisplaySection(fix),
+                };
+                const fixKey = getFixKey(fix, index);
+                return renderCard(
+                  displayFix,
+                  fixKey,
+                  handlers,
+                  coachingSessionId,
+                  handleCoachingDone,
+                  handleMemoryCreated
+                );
+              })}
 
+              {hiddenEvidenceFixes.length > 0 && (
+                <>
+                  {showAllEvidence && hiddenEvidenceFixes.map((fix, index) => {
+                    const displayFix: PriorityFix = {
+                      ...fix,
+                      section: getDisplaySection(fix),
+                    };
+                    const fixKey = getFixKey(fix, visibleFixes.length + index);
+                    return renderCard(
+                      displayFix,
+                      fixKey,
+                      handlers,
+                      coachingSessionId,
+                      handleCoachingDone,
+                      handleMemoryCreated
+                    );
+                  })}
+                  <button
+                    type="button"
+                    onClick={() => setShowAllEvidence((v) => !v)}
+                    style={{
+                      display: "block",
+                      width: "100%",
+                      border: "1.5px dashed #c4b5fd",
+                      borderRadius: "10px",
+                      padding: "12px 20px",
+                      background: "transparent",
+                      color: "#5b5fc7",
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      marginBottom: "16px",
+                      textAlign: "left",
+                      fontFamily: "'DM Sans', sans-serif",
+                    }}
+                  >
+                    {showAllEvidence
+                      ? `▲ Collapse extra gaps`
+                      : `▼ Show ${hiddenEvidenceFixes.length} more gap${hiddenEvidenceFixes.length > 1 ? "s" : ""} →`}
+                  </button>
+                </>
+              )}
+            </>
+          );
+        })()}
+
+        {/* ATS INSIGHTS */}
         {(() => {
           const atsIssues = analysisResult.ats.ats_issues ?? [];
           const existingReasons = new Set(fixes.map((f) => f.gap_reason.toLowerCase().slice(0, 50)));
@@ -696,18 +797,18 @@ export default function ActionableFixes({
           return (
             <div
               style={{
-                border: "1.5px solid #e0e7ff",
-                borderRadius: "12px",
+                border: `1.5px solid ${T.primaryMid}`,
+                borderRadius: "14px",
                 padding: "16px 20px",
                 marginBottom: "20px",
-                background: "#f5f3ff",
+                background: T.primaryLight,
               }}
             >
               <div
                 style={{
                   fontSize: "13px",
                   fontWeight: 700,
-                  color: "#4f46e5",
+                  color: T.primary,
                   marginBottom: "10px",
                   letterSpacing: "0.02em",
                   textTransform: "uppercase",
@@ -720,10 +821,10 @@ export default function ActionableFixes({
                   key={issue}
                   style={{
                     fontSize: "13px",
-                    color: "#374151",
+                    color: T.textSecondary,
                     lineHeight: 1.55,
                     paddingLeft: "12px",
-                    borderLeft: "3px solid #a5b4fc",
+                    borderLeft: `3px solid ${T.primary}`,
                     marginBottom: "8px",
                   }}
                 >
@@ -734,6 +835,7 @@ export default function ActionableFixes({
           );
         })()}
 
+        {/* FIX VALIDATION */}
         <FixValidation
           selectedMode={"safe"}
           originalAts={originalAts}
@@ -748,7 +850,80 @@ export default function ActionableFixes({
           onSwitchMode={() => {}}
         />
 
+        {/* BOTTOM CTA */}
+        {fixes.length > 0 ? (
+          <div style={{ marginTop: 40, marginBottom: 8 }}>
+            <div
+              style={{
+                borderRadius: "24px",
+                padding: isMobile ? "32px 24px" : "48px",
+                textAlign: "center",
+                background: T.gradientBrand,
+                boxShadow: T.shadowXl,
+              }}
+            >
+              <div
+                style={{
+                  fontFamily: "'DM Serif Display', serif",
+                  fontSize: isMobile ? "26px" : "36px",
+                  fontWeight: 400,
+                  color: "#ffffff",
+                  marginBottom: 12,
+                }}
+              >
+                Ready to transform your resume?
+              </div>
+              <div
+                style={{
+                  fontSize: "16px",
+                  color: "rgba(255, 255, 255, 0.78)",
+                  marginBottom: 28,
+                  lineHeight: 1.6,
+                }}
+              >
+                Apply all {fixes.length} fix{fixes.length === 1 ? "" : "es"} above to maximize your ATS score.
+              </div>
+              <button
+                type="button"
+                onClick={handleApplyAll}
+                style={{
+                  background: "#ffffff",
+                  color: T.primary,
+                  border: "none",
+                  borderRadius: "12px",
+                  padding: "14px 32px",
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: T.shadowLg,
+                  transition: "transform 0.1s, box-shadow 0.1s",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-2px)";
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 16px 40px rgba(0,0,0,0.15)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.transform = "";
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = T.shadowLg;
+                }}
+                onMouseDown={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.transform = "translateY(3px)";
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 2px 8px rgba(0,0,0,0.1)";
+                }}
+                onMouseUp={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-2px)";
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 16px 40px rgba(0,0,0,0.15)";
+                }}
+              >
+                Apply All Fixes →
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* DATA SOURCE NOTICE — always last */}
         <DataSourceNotice tab="fixes" />
+
       </div>
     </div>
   );

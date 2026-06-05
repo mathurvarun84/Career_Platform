@@ -399,6 +399,11 @@ export function getAfterTextForFix(
       .trim();
   }
 
+  // Phase 2: if fix has suggested_text from auto-suggestion, use it.
+  if (fix.suggested_text?.trim()) {
+    return fix.suggested_text;
+  }
+
   return "";
 }
 
@@ -535,11 +540,61 @@ export function buildActionableFixesList(
     list = list.filter((f) => !isEvidenceGap(f));
   }
 
-  return [...list].sort((a, b) => {
+  const sorted = [...list].sort((a, b) => {
     const orderA = GAP_TYPE_ORDER[a.gap_type ?? "structural"];
     const orderB = GAP_TYPE_ORDER[b.gap_type ?? "structural"];
     return orderA - orderB;
   });
+
+  // Deduplicate coaching cards by coaching_question — same question across different
+  // companies renders identically. Includes both gap_type:"evidence" and
+  // requires_user_input:true structural cards (both render as EvidenceCoachingCard).
+  const seenCoachingQuestions = new Set<string>();
+  return sorted.filter((fix) => {
+    if (!isCoachingCard(fix)) return true;
+    const q = (fix.coaching_question ?? fix.gap_reason ?? "").trim().toLowerCase();
+    if (!q) return true;
+    if (seenCoachingQuestions.has(q)) return false;
+    seenCoachingQuestions.add(q);
+    return true;
+  });
+}
+
+/**
+ * A fix renders as EvidenceCoachingCard when gap_type is "evidence" OR when
+ * requires_user_input is true (structural cards with no patch data also land here).
+ * This mirrors the renderCard() dispatch logic in ActionableFixes.
+ */
+function isCoachingCard(fix: PriorityFix): boolean {
+  return fix.gap_type === "evidence" || fix.requires_user_input === true;
+}
+
+/**
+ * Splits a flat fix list into visible (up to MAX_COACHING_CARDS coaching cards + all
+ * non-coaching) and hidden (excess coaching cards). Used by ActionableFixes to enforce
+ * the coaching card cap without losing gap data.
+ */
+export function partitionFixesByCoachingCap(
+  fixes: PriorityFix[]
+): { visible: PriorityFix[]; hidden: PriorityFix[] } {
+  let coachingCount = 0;
+  const visible: PriorityFix[] = [];
+  const hidden: PriorityFix[] = [];
+
+  for (const fix of fixes) {
+    if (isCoachingCard(fix)) {
+      if (coachingCount < MAX_COACHING_CARDS) {
+        visible.push(fix);
+        coachingCount++;
+      } else {
+        hidden.push(fix);
+      }
+    } else {
+      visible.push(fix);
+    }
+  }
+
+  return { visible, hidden };
 }
 
 export function companyMarkersForEntryId(entryId: string): string[] {

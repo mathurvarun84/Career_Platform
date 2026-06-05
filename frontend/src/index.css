@@ -22,6 +22,36 @@ body {
   background: #f7f7fc;
 }
 
+/* ── Shimmer (skeleton loading) ── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
+/* ── Chip reveal (Landing hero card keyword chips) ── */
+@keyframes chipReveal {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Fade-in (general purpose — cards entering viewport) ── */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Score bar grow (ATS breakdown bars) ── */
+@keyframes barGrow {
+  from { width: 0%; }
+  to   { width: var(--bar-target-width); }
+}
+
+/* ── Pulse (skeleton rows in loading state) ── */
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
 .page-shell {
   width: 100%;
   max-width: 100%;
@@ -53,7 +83,7 @@ body {
 }
 
 *:focus-visible {
-  outline: 2px solid #6366f1;
+  outline: 2px solid #5b5fc7;
   outline-offset: 2px;
 }
 

@@ -1,17 +1,14 @@
 import { useEffect, useState } from "react";
+import { BarChart3 } from "lucide-react";
 
 import { downloadResumeReport, getDownloadVerification } from "./api/client";
-import CareerPathPanel from "./components/CareerPathPanel";
-import QualifiedRolesPanel from "./components/QualifiedRolesPanel";
-import RoleFitBanner from "./components/RoleFitBanner";
 import type { ATSDimensionDetail, DownloadVerification, PriorityFix } from "./types";
 import DataSourceNotice from "./components/DataSourceNotice";
 import { useWindowSize } from "./hooks/useWindowSize";
 import { pageContainerStyle } from "./utils/pageLayout";
 import { useResumeStore } from "./store/useResumeStore";
 import { hasJobDescription } from "./utils/hasJobDescription";
-
-type RoleFitPanelView = "none" | "qualified_roles" | "career_path";
+import { T } from "./tokens";
 
 interface EvaluationDashboardProps {
   onTabChange?: (tab: string) => void;
@@ -38,6 +35,19 @@ const detailFallbackMeta: Record<
   readability: { label: "Readability", icon: "📖", benchmark: 19 },
   impact_metrics: { label: "Impact & Metrics", icon: "📊", benchmark: 18 },
 };
+
+function ShimmerBlock({ width, height }: { width: string | number; height: string | number }) {
+  return (
+    <div style={{
+      width,
+      height,
+      borderRadius: 6,
+      background: 'linear-gradient(90deg, #f0f0f8 25%, #e8e8f0 50%, #f0f0f8 75%)',
+      backgroundSize: '200% 100%',
+      animation: 'shimmer 1.4s infinite linear',
+    }} />
+  );
+}
 
 function getDimensionDetails(
   details: ATSDimensionDetail[] | undefined,
@@ -75,37 +85,26 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const jobId = useResumeStore((s) => s.jobId);
   const selectedStyle = useResumeStore((s) => s.selectedStyle);
   const isLoading = useResumeStore((s) => s.isLoading);
-  const setPendingAnalyseRole = useResumeStore((s) => s.setPendingAnalyseRole);
   const resetAnalysis = useResumeStore((s) => s.resetAnalysis);
   const { isMobile, isTablet } = useWindowSize();
   const [barsAnimated, setBarsAnimated] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isDownloadPressed, setIsDownloadPressed] = useState(false);
-  const [roleFitPanel, setRoleFitPanel] = useState<RoleFitPanelView>("none");
   const [verificationResult, setVerificationResult] = useState<DownloadVerification | null>(null);
 
-  const roleFitScore = analysisResult?.role_fit?.score ?? 0;
   const atsScoreForCount = analysisResult?.ats.score ?? 0;
   const jdScoreForCount = analysisResult?.gap?.jd_match_score_before ?? 0;
   const pctScoreForCount = analysisResult?.percentile?.percentile ?? 0;
-  const shortlistPctForCount = Math.round(
-    (analysisResult?.sim?.shortlist_rate ?? 0) * 100
-  );
 
-  const roleFitCount = useCountUp(roleFitScore);
   const atsCount = useCountUp(atsScoreForCount);
   const jdCount = useCountUp(jdScoreForCount);
   const pctCount = useCountUp(pctScoreForCount);
-  const shortlistCount = useCountUp(shortlistPctForCount);
 
   useEffect(() => {
     const t = window.setTimeout(() => setBarsAnimated(true), 100);
     return () => window.clearTimeout(t);
   }, []);
 
-  useEffect(() => {
-    setRoleFitPanel("none");
-  }, [analysisResult?.job_id]);
 
   if (!analysisResult) {
     return <SkeletonLoader />;
@@ -114,16 +113,8 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const hasJD = hasJobDescription(analysisResult.gap);
   const hasSim = Boolean(analysisResult.sim);
   const hasPositioning = Boolean(analysisResult.positioning);
-  const roleFit = analysisResult.role_fit ?? null;
-  const roleFitFitness = roleFit?.fitness;
-  const showGoodFitChip = roleFitFitness === "qualified";
   const targetRoleTitle =
     analysisResult.jd_intelligence?.role_title ?? "Target role";
-
-  const handleAnalyseRole = (role: string): void => {
-    setPendingAnalyseRole(role);
-    resetAnalysis();
-  };
 
   const bd = analysisResult.ats.breakdown;
   const atsDetails = getDimensionDetails(analysisResult.ats.details, bd);
@@ -145,18 +136,6 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
         .filter((p) => p.needs_change).length
     : 0;
 
-  const pctScore = analysisResult.percentile?.percentile ?? null;
-  const pctLabel = analysisResult.percentile?.label ?? "Calculating...";
-  const pctGain = pctScore !== null ? Math.min(99 - pctScore, 23) : null;
-
-  const shortlistPct = shortlistPctForCount;
-  const shortlistColor = shortlistPct >= 50 ? "#16a34a" : shortlistPct >= 30 ? "#d97706" : "#dc2626";
-  const shortlistLabel = shortlistPct >= 50 ? "Good" : shortlistPct >= 30 ? "Improve to High" : "Critical";
-  const shortlistLabelColors: Record<string, { bg: string; color: string }> = {
-    Good: { bg: "#dcfce7", color: "#16a34a" },
-    "Improve to High": { bg: "#fefce8", color: "#d97706" },
-    Critical: { bg: "#fef2f2", color: "#dc2626" },
-  };
 
   // Action items construction
   const atsActions = (analysisResult.ats.ats_issues ?? []).slice(0, 3).map((issue, i) => {
@@ -211,6 +190,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
     ) ?? analysisResult.sim?.personas[0] ?? null;
 
   const shortlisted = agencyRecruiter?.shortlist_decision ?? false;
+  const shortlistPct = Math.round((analysisResult?.sim?.shortlist_rate ?? 0) * 100);
 
   const reasonItems = !shortlisted
     ? (agencyRecruiter?.rejection_reason ?? "")
@@ -241,51 +221,104 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#ffffff" }}>
+    <div style={{ minHeight: "100vh", background: T.bgPage }}>
+      {/* ── SECTION 1: Results Hero ── */}
+      <div style={{
+        background: T.gradientHeroResults,
+        borderBottom: `1.5px solid ${T.border}`,
+        padding: "40px 40px 32px",
+      }}>
+        <div style={{
+          maxWidth: T.maxWidth,
+          margin: "0 auto",
+          display: "flex",
+          flexDirection: isTablet ? "column" : "row",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          gap: isTablet ? "16px" : "32px",
+        }}>
+          {/* Left: Title + Context */}
+          <div style={{ flex: 1 }}>
+            <div style={{
+              fontSize: "12px",
+              fontWeight: 700,
+              color: T.primary,
+              textTransform: "uppercase",
+              letterSpacing: "0.08em",
+              marginBottom: "6px",
+            }}>
+              ● Analysis Complete
+            </div>
+            <div style={{
+              fontSize: "28px",
+              fontWeight: 700,
+              color: T.textPrimary,
+              marginBottom: "6px",
+            }}>
+              Resume Analysis Results
+            </div>
+            {targetRoleTitle && (
+              <div style={{
+                fontSize: "14px",
+                color: T.textMuted,
+              }}>
+                Analyzed against: {targetRoleTitle}
+              </div>
+            )}
+          </div>
+
+          {/* Right: Re-analyze Button */}
+          <button
+            type="button"
+            onClick={() => resetAnalysis()}
+            style={{
+              fontSize: "13px",
+              fontWeight: 700,
+              color: T.textPrimary,
+              background: T.bgCard,
+              border: `1.5px solid ${T.border}`,
+              borderRadius: T.radiusSm,
+              padding: "10px 18px",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              flexShrink: 0,
+              transition: "all 0.2s ease",
+            }}
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = T.bgHover;
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = T.shadowSm;
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLButtonElement).style.background = T.bgCard;
+              (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
+            }}
+          >
+            ← Re-analyze
+          </button>
+        </div>
+      </div>
+
       <div style={pageContainerStyle(isMobile)}>
 
-        {/* ── SECTION 1: Page Header ── */}
-        <div style={{ textAlign: "center", marginBottom: "28px" }}>
-          <div style={{
-            display: "inline-flex", alignItems: "center", gap: "6px",
-            background: "#dcfce7", borderRadius: "999px",
-            padding: "5px 14px", fontSize: "12px", fontWeight: 700, color: "#16a34a",
-            marginBottom: "12px",
-          }}>
-            <span style={{ fontSize: "8px", lineHeight: 1 }}>●</span> Analysis Complete
-          </div>
-          <div style={{
-            fontSize: isMobile ? "18px" : "22px", fontWeight: 800, color: "#111827",
-            letterSpacing: "-0.02em", marginBottom: "4px",
-          }}>
-            Your Resume Intelligence Report
-          </div>
-          <div style={{ fontSize: "14px", color: "#6b7280" }}>
-            Resume analyzed successfully — here&apos;s what we found
-          </div>
-        </div>
-
-        {/* ── SECTION 2: Score Cards Grid ── */}
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            marginBottom: "20px",
-          }}
-        >
+        {/* ── Download & Verification Banner ── */}
+        <div style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          alignItems: "center",
+          gap: "12px",
+          marginTop: "20px",
+          marginBottom: "28px",
+        }}>
           {verificationResult && !verificationResult.clean ? (
-            <div
-              style={{
-                background: "#fffbeb",
-                border: "1.5px solid #fbbf24",
-                borderRadius: "10px",
-                padding: "10px 14px",
-                fontSize: "13px",
-                color: "#92400e",
-                marginRight: "12px",
-              }}
-            >
-              ⚠ {verificationResult.total_verified} of {verificationResult.total_applied} changes confirmed in document. Download may be missing some edits.
+            <div style={{
+              background: T.amberLight,
+              border: `1.5px solid ${T.amberBorder}`,
+              borderRadius: T.radiusSm,
+              padding: "10px 14px",
+              fontSize: "13px",
+              color: "#92400e",
+            }}>
+              ⚠ {verificationResult.total_verified} of {verificationResult.total_applied} changes confirmed in document.
             </div>
           ) : null}
           <button
@@ -300,9 +333,9 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             onMouseUp={() => setIsDownloadPressed(false)}
             onMouseLeave={() => setIsDownloadPressed(false)}
             style={{
-              background: canDownload ? "#6366f1" : "#f3f4f6",
-              color: canDownload ? "#ffffff" : "#9ca3af",
-              borderRadius: "10px",
+              background: canDownload ? T.primary : T.bgSubtle,
+              color: canDownload ? "#ffffff" : T.textDisabled,
+              borderRadius: T.radiusSm,
               padding: "10px 20px",
               fontSize: "13px",
               fontWeight: 700,
@@ -312,8 +345,8 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
               transition: "transform 0.1s, box-shadow 0.1s",
               boxShadow: canDownload
                 ? isDownloadPressed
-                  ? "0 1px 0 #4338ca"
-                  : "0 3px 0 #4338ca, 0 5px 12px rgba(99,102,241,0.25)"
+                  ? `0 1px 0 ${T.primaryDark}`
+                  : `0 3px 0 ${T.primaryDark}, 0 5px 12px rgba(91,95,199,0.25)`
                 : "0 3px 0 #d1d5db",
             }}
           >
@@ -321,279 +354,222 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
           </button>
         </div>
 
+        {/* ── SECTION 2: Score Cards Grid (always 3 columns) ── */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: isMobile
-            ? "1fr"
-            : isTablet
-              ? "repeat(2, 1fr)"
-              : (() => {
-                  let cols = 2;
-                  if (hasJD) cols += 1;
-                  if (showGoodFitChip) cols += 1;
-                  if (hasJD && hasSim) cols += 1;
-                  return `repeat(${cols}, 1fr)`;
-                })(),
+          gridTemplateColumns: isMobile ? "1fr" : isTablet ? "repeat(2, 1fr)" : "repeat(3, 1fr)",
           gap: "16px",
           marginBottom: "28px",
+          maxWidth: T.maxWidth,
+          margin: "28px auto 0",
+          padding: "0 40px",
         }}>
           {/* Card 1 — ATS Score */}
-          <ScoreCard
+          <ScoreCardV2
             label="ATS Score"
-            labelColor="#6366f1"
+            labelColor={T.primary}
             score={atsCount}
-            denomColor="#a5b4fc"
-            hint={
+            actualScore={atsScoreForCount}
+            trendLabel={
               atsDeltaFromBaseline > 0
-                ? `Updated after ${atsDeltaFromBaseline} pt gain from applied fixes`
-                : `You can reach ${potentialATS}`
+                ? `↑ +${atsDeltaFromBaseline} pts live`
+                : `↑ +${potentialATS - atsScore} pts possible`
             }
-            deltaBadge={
-              atsDeltaFromBaseline > 0
-                ? `↗ +${atsDeltaFromBaseline} live`
-                : `↗ +${potentialATS - atsScore} potential`
-            }
-            infoText="ATS Score shows how well your resume passes applicant tracking systems based on keywords, formatting, readability, and impact. Updates live when you apply fixes."
+            trendColor={T.primary}
+            progressPercent={Math.min(100, (atsScoreForCount / 100) * 100)}
+            progressGradient="linear-gradient(90deg, #5b5fc7, #7c3aed)"
+            footnote="ATS keyword + formatting analysis"
+            infoText="ATS Score shows how well your resume passes applicant tracking systems based on keywords, formatting, readability, and impact."
+            isLoading={isLoading}
           />
 
-          {/* Card 2 — JD Match */}
+          {/* Card 2 — JD Match (only if hasJD) */}
           {hasJD && (
-            <ScoreCard
+            <ScoreCardV2
               label="JD Match"
-              labelColor="#7c3aed"
+              labelColor={T.violet}
               score={jdCount}
-              denomColor="#c4b5fd"
-              hint={
-                missingCount > 0
-                  ? `Missing ${missingCount} key skill${missingCount !== 1 ? "s" : ""}`
-                  : "Strong JD alignment"
-              }
-              deltaBadge={`↗ +${jdGain}`}
+              actualScore={jdScoreForCount}
+              trendLabel={`↑ +${jdGain}% possible`}
+              trendColor={T.violet}
+              progressPercent={Math.min(100, (jdScoreForCount / 100) * 100)}
+              progressGradient="linear-gradient(90deg, #7c3aed, #a855f7)"
+              footnote="Match against provided job description"
               infoText="JD Match shows how closely your resume aligns with the selected job description requirements."
+              isLoading={isLoading}
             />
           )}
 
-          {/* Card 3 — Market Percentile */}
-          <ScoreCard
-            label="Market Percentile"
-            labelColor="#6366f1"
+          {/* Card 3 — Percentile */}
+          <ScoreCardV2
+            label="Percentile"
+            labelColor={T.emerald}
             score={pctCount}
-            denomColor="#a5b4fc"
-            hint={pctLabel}
-            deltaBadge={pctGain !== null ? `↗ +${pctGain}` : undefined}
-            infoText="Market Percentile compares your composite resume strength against similar candidates at your seniority level."
+            actualScore={pctScoreForCount}
+            trendLabel={`Top ${pctCount}%`}
+            trendColor={T.emerald}
+            progressPercent={Math.min(100, pctScoreForCount)}
+            progressGradient="linear-gradient(90deg, #059669, #10b981)"
+            footnote="vs. similar profiles on RIP V2"
+            infoText="Percentile compares your resume strength against similar candidates at your seniority level."
+            isLoading={isLoading}
           />
-
-          {showGoodFitChip ? (
-            <div style={{
-              background: "#ffffff",
-              border: "1.5px solid #86efac",
-              borderRadius: "16px",
-              padding: "24px",
-              boxShadow: "0 2px 0 #dcfce7, 0 4px 12px rgba(0,0,0,0.04)",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "center",
-              gap: "8px",
-            }}>
-              <span style={{ fontSize: "13px", fontWeight: 600, color: "#6b7280" }}>
-                Role Fit
-              </span>
-              <span style={{
-                display: "inline-flex",
-                alignItems: "center",
-                alignSelf: "flex-start",
-                background: "#dcfce7",
-                borderRadius: "999px",
-                padding: "6px 12px",
-                fontSize: "12px",
-                fontWeight: 700,
-                color: "#16a34a",
-              }}>
-                ✓ Good fit
-              </span>
-              <span style={{ fontSize: "12px", color: "#6b7280" }}>
-                {roleFitCount}/100 · aligned with this role
-              </span>
-            </div>
-          ) : null}
-
-          {/* Card 4 — Shortlist Probability */}
-          {hasJD && hasSim && (
-            <div style={{
-              background: "#ffffff",
-              border: "1.5px solid #e5e7eb",
-              borderRadius: "16px",
-              padding: "24px",
-              boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
-              position: "relative",
-              display: "flex",
-              flexDirection: "column",
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
-                <span style={{ fontSize: "13px", fontWeight: 600, color: "#6b7280" }}>
-                  Shortlist Probability
-                </span>
-                <InfoTooltipButton infoText="Shortlist Probability estimates the chance that recruiters would move your profile to interview review." />
-              </div>
-              <div>
-                <span style={{ fontSize: "42px", fontWeight: 800, color: shortlistColor, lineHeight: 1 }}>
-                  {shortlistCount}%
-                </span>
-              </div>
-              <div style={{
-                display: "inline-flex", alignItems: "center",
-                background: shortlistLabelColors[shortlistLabel].bg,
-                color: shortlistLabelColors[shortlistLabel].color,
-                borderRadius: "999px", padding: "3px 10px",
-                fontSize: "11px", fontWeight: 700, marginTop: "6px",
-              }}>
-                {shortlistLabel}
-              </div>
-              <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "4px" }}>
-                Based on {analysisResult.sim?.personas.length ?? 0} recruiter sim{(analysisResult.sim?.personas.length ?? 0) !== 1 ? "s" : ""}
-              </div>
-            </div>
-          )}
 
         </div>
 
-        {roleFit && roleFitFitness !== "qualified" ? (
-          <RoleFitBanner
-            roleFit={roleFit}
-            atsScore={atsScore}
-            roleTitle={targetRoleTitle}
-            onShowQualifiedRoles={() => setRoleFitPanel("qualified_roles")}
-            onShowCareerPath={() => setRoleFitPanel("career_path")}
-          />
-        ) : null}
-
-        {roleFitPanel === "qualified_roles" && roleFit ? (
-          <QualifiedRolesPanel
-            recommendedRoles={roleFit.recommended_roles}
-            nextStepRoles={roleFit.next_step_roles}
-            onAnalyseRole={handleAnalyseRole}
-          />
-        ) : null}
-
-        {roleFitPanel === "career_path" && roleFit ? (
-          <CareerPathPanel roleFit={roleFit} targetRoleTitle={targetRoleTitle} />
-        ) : null}
-
-        {/* ── SECTION 3: Recruiter 6-Second Scan ── */}
-        {hasSim && agencyRecruiter ? (
+        {/* ── SECTION 3: Recruiter Alert Card (redesigned — only if hasSim) ── */}
+        {hasSim && agencyRecruiter && (
           <div style={{
-            background: "#fff5f5",
-            border: "1.5px solid #fecaca",
-            borderRadius: "12px",
-            padding: "20px 22px",
-            marginBottom: "24px",
+            background: `linear-gradient(135deg, ${T.roseLight}, #ffffff)`,
+            border: `2px solid ${T.roseBorder}`,
+            borderRadius: T.radiusXl,
+            padding: "32px",
+            marginBottom: "28px",
+            maxWidth: T.maxWidth,
+            margin: "28px auto",
+            display: "flex",
+            gap: "20px",
           }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px", marginBottom: "12px" }}>
-              <div style={{
-                width: "22px", height: "22px", borderRadius: "50%", flexShrink: 0,
-                background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: "12px", color: "#dc2626", fontWeight: 800, marginTop: "1px",
-              }}>&#9888;</div>
-              <div style={{ flex: 1 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <span style={{ fontSize: "14px", fontWeight: 700, color: "#111827" }}>
-                    Recruiter 6-Second Scan
-                  </span>
-                  <span style={{
-                    background: "#fef2f2", color: "#dc2626",
-                    borderRadius: "999px", padding: "3px 10px",
-                    fontSize: "11px", fontWeight: 700,
-                  }}>Critical Insight</span>
-                </div>
-                <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "2px" }}>
-                  Based on 10,000+ hiring decisions
-                </div>
-              </div>
+            {/* Left: Icon */}
+            <div style={{
+              width: "52px",
+              height: "52px",
+              flexShrink: 0,
+              background: T.roseLight,
+              borderRadius: T.radiusSm,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "26px",
+            }}>
+              👀
             </div>
 
-            <div style={{
-              background: shortlisted ? "#f0fdf4" : "#fef2f2",
-              border: `1px solid ${shortlisted ? "#bbf7d0" : "#fecaca"}`,
-              borderRadius: "10px", padding: "12px 16px",
-              display: "flex", alignItems: "center", gap: "12px",
-              marginBottom: "12px",
-            }}>
+            {/* Right: Content */}
+            <div style={{ flex: 1 }}>
+              {/* Heading */}
               <div style={{
-                width: "28px", height: "28px", borderRadius: "50%", flexShrink: 0,
-                background: shortlisted ? "#16a34a" : "#dc2626",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: "14px", fontWeight: 800, color: "#ffffff",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "flex-start",
+                marginBottom: "16px",
               }}>
-                {shortlisted ? "✓" : "✗"}
-              </div>
-              <div>
+                <div>
+                  <div style={{
+                    fontSize: "20px",
+                    fontWeight: 700,
+                    color: T.textPrimary,
+                  }}>
+                    Recruiter 6-Second Scan
+                  </div>
+                  <div style={{
+                    fontSize: "13px",
+                    color: T.textMuted,
+                    marginTop: "4px",
+                  }}>
+                    Based on 10,000+ hiring decisions
+                  </div>
+                </div>
                 <div style={{
-                  fontSize: "14px", fontWeight: 700,
-                  color: shortlisted ? "#16a34a" : "#dc2626",
+                  background: T.roseLight,
+                  color: T.rose,
+                  border: `1px solid ${T.roseBorder}`,
+                  borderRadius: T.radiusPill,
+                  padding: "4px 12px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  flexShrink: 0,
                 }}>
-                  Decision: {shortlisted ? "Shortlisted" : "Not Shortlisted"}
-                </div>
-                <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "2px" }}>
-                  {shortlisted
-                    ? `${shortlistPct}% chance of recruiter review`
-                    : `${shortlistPct}% chance of recruiter review — below 50% threshold`}
+                  Critical Insight
                 </div>
               </div>
-            </div>
 
-            <div style={{ fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "8px" }}>
-              {shortlisted ? "What recruiters noticed:" : "Top reasons for rejection:"}
-            </div>
-
-            {(() => {
-              const icons = ["\u{1F3AF}", "\u{1F50D}", "\u{1F4CA}"];
-              return (
-                <>
-                  {reasonItems.map((text, i) => (
-                    <div key={i} style={{
-                      display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "6px",
-                    }}>
-                      <span style={{ fontSize: "13px", flexShrink: 0 }}>{icons[i % icons.length]}</span>
-                      <span style={{ fontSize: "13px", color: "#374151", lineHeight: 1.5 }}>{text}</span>
-                    </div>
-                  ))}
-                </>
-              );
-            })()}
-
-            <div style={{
-              background: "#f0f9ff", border: "1px solid #bae6fd",
-              borderRadius: "8px", padding: "12px 14px", marginTop: "12px",
-            }}>
-              <div style={{ fontSize: "12px", fontWeight: 700, color: "#0369a1", marginBottom: "4px" }}>
-                {shortlisted ? "✨ Keep this up:" : "✨ What would change this decision:"}
-              </div>
-              <div style={{ fontSize: "12px", color: "#374151", lineHeight: 1.6 }}>
-                {agencyRecruiter.flip_condition || analysisResult.sim?.most_critical_fix}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div style={{
-            background: "#fff5f5",
-            border: "1.5px solid #fecaca",
-            borderRadius: "12px",
-            padding: "20px 22px",
-            marginBottom: "24px",
-          }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: "10px" }}>
+              {/* Verdict Box */}
               <div style={{
-                width: "22px", height: "22px", borderRadius: "50%", flexShrink: 0,
-                background: "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: "12px", color: "#dc2626", fontWeight: 800, marginTop: "1px",
-              }}>&#9888;</div>
-              <div>
-                <div style={{ fontSize: "14px", fontWeight: 700, color: "#111827" }}>
-                  Recruiter Scan
+                background: T.bgCard,
+                border: `2px solid ${T.roseBorder}`,
+                borderRadius: T.radiusSm,
+                padding: "14px 18px",
+                display: "flex",
+                alignItems: "center",
+                gap: "12px",
+                marginBottom: "16px",
+              }}>
+                <div style={{
+                  width: "36px",
+                  height: "36px",
+                  background: T.roseLight,
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: "16px",
+                  color: T.rose,
+                  flexShrink: 0,
+                }}>
+                  ✗
                 </div>
-                <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "2px" }}>
-                  Add quantified achievements and role-specific keywords to increase shortlist probability.
+                <div>
+                  <div style={{
+                    fontSize: "16px",
+                    fontWeight: 700,
+                    color: T.rose,
+                  }}>
+                    Decision: {shortlisted ? "Shortlisted" : "Not Shortlisted"}
+                  </div>
+                  <div style={{
+                    fontSize: "12px",
+                    color: T.textMuted,
+                    marginTop: "2px",
+                  }}>
+                    {shortlistPct}% chance of recruiter review
+                  </div>
+                </div>
+              </div>
+
+              {/* Rejection Reasons */}
+              {reasonItems.map((text, i) => {
+                const isPriority = i === 0;
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: "10px",
+                      padding: "10px 14px",
+                      borderRadius: T.radiusSm,
+                      marginBottom: i < reasonItems.length - 1 ? "8px" : "16px",
+                      background: isPriority ? "#fff5f5" : T.amberLight,
+                      borderLeft: `3px solid ${isPriority ? T.rose : T.amber}`,
+                    }}
+                  >
+                    <span style={{
+                      fontSize: "13px",
+                      color: T.textSecondary,
+                      lineHeight: 1.6,
+                    }}>
+                      {text}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {/* Fix Preview */}
+              <div style={{
+                background: `linear-gradient(135deg, ${T.emeraldLight}, #d1fae5)`,
+                border: `1px solid ${T.emeraldBorder}`,
+                borderRadius: T.radiusSm,
+                padding: "14px 18px",
+                fontSize: "13px",
+                lineHeight: 1.6,
+                color: T.textSecondary,
+              }}>
+                <strong style={{ color: T.emerald }}>
+                  💡 What would change this decision:
+                </strong>
+                <div style={{ marginTop: "8px" }}>
+                  {agencyRecruiter.flip_condition || analysisResult.sim?.most_critical_fix}
                 </div>
               </div>
             </div>
@@ -605,8 +581,12 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
           const pos = analysisResult.positioning;
           return (
             <div style={{
-              background: "linear-gradient(135deg, #6366f1 0%, #7c3aed 100%)",
-              borderRadius: "16px", padding: "24px 28px", marginBottom: "24px",
+              background: T.gradientBrand,
+              borderRadius: T.radiusXl,
+              padding: "24px 28px",
+              marginBottom: "28px",
+              maxWidth: T.maxWidth,
+              margin: "28px auto",
               display: isMobile ? "flex" : "grid",
               flexDirection: isMobile ? "column" : undefined,
               gridTemplateColumns: isMobile ? undefined : "1fr auto",
@@ -615,26 +595,38 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             }}>
               <div>
                 <div style={{
-                  fontSize: "11px", fontWeight: 700, color: "rgba(255,255,255,0.65)",
-                  letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: "8px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "rgba(255,255,255,0.65)",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                  marginBottom: "8px",
                 }}>
                   Career Positioning
                 </div>
                 <div style={{
-                  fontSize: "15px", fontWeight: 700, color: "#ffffff",
-                  lineHeight: 1.4, marginBottom: "6px",
+                  fontSize: "15px",
+                  fontWeight: 700,
+                  color: "#ffffff",
+                  lineHeight: 1.4,
+                  marginBottom: "6px",
+                  fontFamily: "'JetBrains Mono', monospace",
                 }}>
                   {pos.positioning_line}
                 </div>
                 <div style={{
-                  fontSize: "13px", color: "rgba(255,255,255,0.85)",
-                  lineHeight: 1.5, marginBottom: "10px",
+                  fontSize: "13px",
+                  color: "rgba(255,255,255,0.85)",
+                  lineHeight: 1.5,
+                  marginBottom: "10px",
                 }}>
                   {pos.cta_line}
                 </div>
                 <div style={{
-                  fontSize: "12px", color: "rgba(255,255,255,0.65)",
-                  lineHeight: 1.5, fontStyle: "italic",
+                  fontSize: "12px",
+                  color: "rgba(255,255,255,0.65)",
+                  lineHeight: 1.5,
+                  fontStyle: "italic",
                 }}>
                   {pos.rank_rationale}
                 </div>
@@ -642,30 +634,60 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
               <div style={{
                 background: "rgba(255,255,255,0.15)",
                 border: "1px solid rgba(255,255,255,0.25)",
-                borderRadius: "12px", padding: "16px 20px",
+                borderRadius: T.radiusSm,
+                padding: "16px 20px",
                 backdropFilter: "blur(8px)",
                 minWidth: isMobile ? undefined : "200px",
                 flexShrink: 0,
                 width: isMobile ? "100%" : undefined,
               }}>
-                <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.65)", fontWeight: 600 }}>
+                <div style={{
+                  fontSize: "11px",
+                  color: "rgba(255,255,255,0.65)",
+                  fontWeight: 600,
+                }}>
                   Current Range
                 </div>
-                <div style={{ fontSize: "18px", fontWeight: 800, color: "#ffffff", marginTop: "2px" }}>
+                <div style={{
+                  fontSize: "18px",
+                  fontWeight: 800,
+                  color: "#ffffff",
+                  marginTop: "2px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
                   ₹{pos.current_ctc_min}–{pos.current_ctc_max} LPA
                 </div>
-                <div style={{ borderTop: "1px solid rgba(255,255,255,0.2)", margin: "10px 0" }} />
-                <div style={{ fontSize: "11px", color: "rgba(255,255,255,0.65)", fontWeight: 600 }}>
+                <div style={{
+                  borderTop: "1px solid rgba(255,255,255,0.2)",
+                  margin: "10px 0",
+                }}/>
+                <div style={{
+                  fontSize: "11px",
+                  color: "rgba(255,255,255,0.65)",
+                  fontWeight: 600,
+                }}>
                   After {pos.changes_needed} Fix{pos.changes_needed !== 1 ? "es" : ""}
                 </div>
-                <div style={{ fontSize: "18px", fontWeight: 800, color: "#86efac", marginTop: "2px" }}>
+                <div style={{
+                  fontSize: "18px",
+                  fontWeight: 800,
+                  color: "#86efac",
+                  marginTop: "2px",
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
                   ₹{pos.potential_ctc_min}–{pos.potential_ctc_max} LPA
                 </div>
                 <div style={{
-                  display: "inline-flex", alignItems: "center", gap: "4px",
-                  background: "rgba(134,239,172,0.2)", border: "1px solid rgba(134,239,172,0.35)",
-                  borderRadius: "999px", padding: "4px 12px",
-                  fontSize: "12px", fontWeight: 700, color: "#86efac",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  background: "rgba(134,239,172,0.2)",
+                  border: "1px solid rgba(134,239,172,0.35)",
+                  borderRadius: T.radiusPill,
+                  padding: "4px 12px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  color: "#86efac",
                   marginTop: "8px",
                 }}>
                   ↗ +₹{pos.ctc_delta_min}–{pos.ctc_delta_max} LPA/year
@@ -677,185 +699,156 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
 
         {/* ── SECTION 5: Priority Actions ── */}
         <div style={{
-          display: "flex",
-          alignItems: isMobile ? "flex-start" : "center",
-          flexDirection: isMobile ? "column" : "row",
-          gap: "14px",
-          marginBottom: "18px",
+          maxWidth: T.maxWidth,
+          margin: "28px auto 0",
+          padding: isMobile ? "0 20px" : "0 40px",
         }}>
           <div style={{
-            width: "42px", height: "42px", borderRadius: "12px",
-            background: "#fff7ed",
-            display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            marginBottom: "16px",
           }}>
-            <span style={{ fontSize: "20px" }}>{"\u{1F3AF}"}</span>
-          </div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: "17px", fontWeight: 700, color: "#111827", letterSpacing: "-0.01em" }}>
-              Priority Actions
+            <div>
+              <div style={{
+                fontSize: "18px",
+                fontWeight: 700,
+                color: T.textPrimary,
+              }}>
+                🎯 Priority Actions
+              </div>
             </div>
-            <div style={{ fontSize: "13px", color: "#6b7280", marginTop: "2px" }}>
-              Fix these first to maximize your score
+            <div style={{
+              fontSize: "13px",
+              color: T.textMuted,
+            }}>
+              {actionItems.length} opportunities found
             </div>
           </div>
+
           <div style={{
-            background: "#f3f4f6", borderRadius: "999px", padding: "4px 12px",
-            fontSize: "12px", fontWeight: 600, color: "#374151",
+            display: "flex",
+            flexDirection: "column",
+            gap: "12px",
           }}>
-            {actionItems.length} opportunities found
+            {actionItems.map((item, idx) => (
+              <PriorityActionCardV2 key={idx} item={item} onTabChange={onTabChange} isMobile={isMobile} />
+            ))}
           </div>
         </div>
 
-        {actionItems.map((item, idx) => (
-          <PriorityActionCard key={idx} item={item} onTabChange={onTabChange} isMobile={isMobile} />
-        ))}
-
-        <hr style={{ border: "none", borderTop: "1.5px solid #e5e7eb", margin: "20px 0" }} />
-
         {/* ── SECTION 6: ATS Score Breakdown ── */}
-        <div style={{
-          background: "#ffffff",
-          border: "1px solid #e5e7eb",
-          borderRadius: "12px",
-          padding: "20px 22px",
-          marginBottom: "0",
-        }}>
-          <div style={{ fontSize: "15px", fontWeight: 700, color: "#111827", marginBottom: "16px" }}>
-            ATS Analysis Breakdown
-          </div>
-
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
-              gap: "12px",
-            }}
-          >
-            {atsDetails.map((detail) => {
-            const scorePercent = Math.round((detail.score / 25) * 100);
-            const benchmarkPercent = (detail.benchmark / 25) * 100;
-            const barColor =
-              detail.gap === 0 ? "#16a34a" : detail.gap > 3 ? "#ef4444" : "#6366f1";
-
-            const badgeStyle =
-              detail.gap === 0
-                ? {
-                    background: "#dcfce7",
-                    border: "1px solid #86efac",
-                    color: "#166534",
-                  }
-                : detail.gap > 3
-                  ? {
-                      background: "#fee2e2",
-                      border: "1px solid #fca5a5",
-                      color: "#991b1b",
-                    }
-                  : {
-                      background: "#fef3c7",
-                      border: "1px solid #fbbf24",
-                      color: "#92400e",
-                    };
-
-            const statusIcon = detail.gap === 0 ? "✓" : detail.gap > 3 ? "✗" : "⚠";
-            return (
-              <div
-                key={detail.label}
-                style={{
-                  background: "#ffffff",
-                  border: "1.5px solid #e5e7eb",
-                  borderRadius: "10px",
-                  padding: "18px 20px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: "12px",
-                  }}
-                >
-                  <div style={{ fontSize: "14px", fontWeight: 700, color: "#111827" }}>
-                    {detail.icon} {detail.label}
-                  </div>
-                  <div style={{ fontSize: "13px", fontWeight: 700, color: "#374151" }}>
-                    {detail.score}/25
-                  </div>
-                </div>
-
-                <div style={{ position: "relative", height: "8px", background: "#f3f4f6", borderRadius: "4px" }}>
-                  <div
-                    style={{
-                      width: barsAnimated ? `${scorePercent}%` : "0%",
-                      height: "100%",
-                      background: barColor,
-                      borderRadius: "4px",
-                      transition: "width 0.6s ease",
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: "absolute",
-                      left: `${benchmarkPercent}%`,
-                      top: "-3px",
-                      width: "2px",
-                      height: "14px",
-                      background: "#d97706",
-                      borderRadius: "1px",
-                    }}
-                  />
-                </div>
-
-                <div
-                  style={{
-                    fontSize: "11px",
-                    color: "#6b7280",
-                    marginTop: "4px",
-                    marginBottom: "12px",
-                  }}
-                >
-                  Benchmark: {detail.benchmark}/25
-                </div>
-
-                <div
-                  style={{
-                    borderRadius: "6px",
-                    padding: "6px 10px",
-                    fontSize: "12px",
-                    ...badgeStyle,
-                  }}
-                >
-                  {statusIcon} {detail.gap_reason}
-                </div>
-              </div>
-            );
-          })}
-          </div>
-
-          {analysisResult.ats.ats_issues.length > 0 && (
-            <div style={{ marginTop: "16px" }}>
-              <div style={{
-                fontSize: "12px", fontWeight: 700, color: "#374151", marginBottom: "8px",
-              }}>
-                Issues Detected
-              </div>
-              {analysisResult.ats.ats_issues.map((issue, i) => (
-                <div key={i} style={{
-                  display: "flex", alignItems: "flex-start", gap: "8px", marginBottom: "6px",
-                }}>
-                  <div style={{
-                    width: "18px", height: "18px", borderRadius: "50%", flexShrink: 0,
-                    background: "#fef3c7", color: "#d97706",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: "10px", fontWeight: 800, marginTop: "1px",
-                  }}>&#9888;</div>
-                  <div style={{ fontSize: "12px", color: "#6b7280", lineHeight: 1.5 }}>
-                    {issue}
-                  </div>
-                </div>
-              ))}
+        <div
+          style={{
+            background: T.bgCard,
+            border: `1.5px solid ${T.border}`,
+            borderRadius: T.radiusXl,
+            padding: isMobile ? "24px 20px" : "32px",
+            maxWidth: T.maxWidth,
+            margin: "28px auto 0",
+            marginBottom: "48px",
+            transition: "box-shadow 0.2s ease",
+            cursor: "default",
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowLg;
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLDivElement).style.boxShadow = "none";
+          }}
+        >
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "12px",
+            marginBottom: "24px",
+          }}>
+            <div style={{
+              width: "40px",
+              height: "40px",
+              background: T.primaryLight,
+              borderRadius: T.radiusSm,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}>
+              <BarChart3 size={18} color={T.primary}/>
             </div>
-          )}
+            <div>
+              <div style={{
+                fontSize: "18px",
+                fontWeight: 700,
+                color: T.textPrimary,
+              }}>
+                ATS Score Breakdown
+              </div>
+              <div style={{
+                fontSize: "13px",
+                color: T.textMuted,
+              }}>
+                Deterministic — zero LLM calls
+              </div>
+            </div>
+          </div>
+
+          <div style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "18px",
+          }}>
+            {atsDetails.map((detail) => {
+              const scorePercent = Math.round((detail.score / 25) * 100);
+              const gradientMap: Record<string, string> = {
+                "Keyword Match": "linear-gradient(90deg, #5b5fc7, #7c3aed)",
+                "Formatting": "linear-gradient(90deg, #059669, #10b981)",
+                "Readability": "linear-gradient(90deg, #7c3aed, #a855f7)",
+                "Impact & Metrics": "linear-gradient(90deg, #dc2626, #f97316)",
+              };
+
+              return (
+                <div key={detail.label}>
+                  <div style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    marginBottom: "8px",
+                  }}>
+                    <div style={{
+                      fontSize: "13px",
+                      fontWeight: 600,
+                      color: T.textSecondary,
+                    }}>
+                      {detail.label}
+                    </div>
+                    <div style={{
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      color: T.textPrimary,
+                      fontFamily: "'JetBrains Mono', monospace",
+                    }}>
+                      {detail.score}/25
+                    </div>
+                  </div>
+                  <div style={{
+                    height: "8px",
+                    background: T.bgSubtle,
+                    borderRadius: "4px",
+                    overflow: "hidden",
+                  }}>
+                    <div
+                      style={{
+                        width: barsAnimated ? `${scorePercent}%` : "0%",
+                        height: "100%",
+                        background: gradientMap[detail.label] || "linear-gradient(90deg, #5b5fc7, #7c3aed)",
+                        borderRadius: "4px",
+                        transition: "width 0.8s ease",
+                      }}
+                    />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <DataSourceNotice tab="overview" />
@@ -865,16 +858,6 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
 }
 
 /* ─── Sub-components (inline, same file) ─── */
-
-interface ScoreCardProps {
-  label: string;
-  labelColor: string;
-  score: number | null;
-  denomColor: string;
-  hint: string;
-  deltaBadge?: string;
-  infoText?: string;
-}
 
 function InfoTooltipButton({ infoText }: { infoText: string }) {
   const [tooltipOpen, setTooltipOpen] = useState(false);
@@ -924,7 +907,7 @@ function InfoTooltipButton({ infoText }: { infoText: string }) {
             bottom: "calc(100% + 8px)",
             left: "50%",
             transform: "translateX(-50%)",
-            background: "#111827",
+            background: T.textPrimary,
             color: "#ffffff",
             fontSize: "12px",
             fontWeight: 400,
@@ -944,53 +927,137 @@ function InfoTooltipButton({ infoText }: { infoText: string }) {
   );
 }
 
-function ScoreCard({
+interface ScoreCardV2Props {
+  label: string;
+  labelColor: string;
+  score: number | null;
+  actualScore: number;
+  trendLabel: string;
+  trendColor: string;
+  progressPercent: number;
+  progressGradient: string;
+  footnote: string;
+  infoText?: string;
+  isLoading?: boolean;
+}
+
+function ScoreCardV2({
   label,
   labelColor,
   score,
-  denomColor,
-  hint,
-  deltaBadge,
+  trendLabel,
+  trendColor,
+  progressPercent,
+  progressGradient,
+  footnote,
   infoText,
-}: ScoreCardProps) {
+  isLoading = false,
+}: ScoreCardV2Props) {
   return (
-    <div style={{
-      background: "#ffffff",
-      border: "1.5px solid #e5e7eb",
-      borderRadius: "16px",
-      padding: "24px",
-      boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
-      position: "relative",
-      display: "flex",
-      flexDirection: "column",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
-        <span style={{ fontSize: "13px", fontWeight: 600, color: "#6b7280" }}>
+    <div
+      style={{
+        background: T.bgCard,
+        border: `1.5px solid ${T.border}`,
+        borderRadius: T.radiusLg,
+        padding: "24px",
+        boxShadow: T.shadowSm,
+        display: "flex",
+        flexDirection: "column",
+        transition: "box-shadow 0.2s ease, transform 0.2s ease",
+        cursor: "default",
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowMd;
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowSm;
+      }}
+    >
+      <div style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "6px",
+        marginBottom: "8px",
+      }}>
+        <span style={{
+          fontSize: "11px",
+          fontWeight: 700,
+          textTransform: "uppercase",
+          letterSpacing: "0.05em",
+          color: labelColor,
+        }}>
           {label}
         </span>
         {infoText && <InfoTooltipButton infoText={infoText} />}
       </div>
-      <div>
-        <span style={{ fontSize: "42px", fontWeight: 800, color: labelColor, lineHeight: 1 }}>
-          {score ?? "--"}
-        </span>
-        <span style={{ fontSize: "16px", color: denomColor }}>
-          /100
-        </span>
+
+      {/* Score Display */}
+      <div style={{ marginBottom: "10px" }}>
+        {isLoading ? (
+          <ShimmerBlock width={80} height={52} />
+        ) : (
+          <span style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: "48px",
+            fontWeight: 700,
+            lineHeight: 1,
+            color: labelColor,
+            display: "inline",
+          }}>
+            {score ?? "--"}
+          </span>
+        )}
       </div>
-      <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "6px" }}>
-        {hint}
-      </div>
-      {deltaBadge && (
+
+      {/* Trend Pill */}
+      {isLoading ? (
+        <div style={{ marginBottom: "10px" }}>
+          <ShimmerBlock width={100} height={22} />
+        </div>
+      ) : (
         <div style={{
-          position: "absolute", top: "16px", right: "16px",
-          display: "inline-flex", alignItems: "center", gap: "3px",
-          background: "#dcfce7", borderRadius: "999px",
-          padding: "3px 8px", fontSize: "11px", fontWeight: 700, color: "#16a34a",
+          display: "inline-flex",
+          alignItems: "center",
+          borderRadius: T.radiusPill,
+          padding: "4px 10px",
+          fontSize: "11px",
+          fontWeight: 700,
+          background: trendColor === T.primary ? "#eef0ff" : trendColor === T.violet ? "#f5f3ff" : "#ecfdf5",
+          color: trendColor,
+          marginBottom: "10px",
+          width: "fit-content",
         }}>
-          {deltaBadge}
+          {trendLabel}
         </div>
       )}
+
+      {/* Progress Bar */}
+      <div style={{
+        height: "5px",
+        borderRadius: "3px",
+        background: T.bgSubtle,
+        marginBottom: "8px",
+        overflow: "hidden",
+      }}>
+        {isLoading ? (
+          <ShimmerBlock width="100%" height={5} />
+        ) : (
+          <div style={{
+            width: `${Math.min(100, progressPercent)}%`,
+            height: "100%",
+            background: progressGradient,
+            borderRadius: "3px",
+          }}/>
+        )}
+      </div>
+
+      {/* Footnote */}
+      <div style={{
+        fontSize: "12px",
+        color: T.textMuted,
+      }}>
+        {footnote}
+      </div>
     </div>
   );
 }
@@ -1018,7 +1085,7 @@ function useCountUp(target: number, duration = 1200): number {
   return current;
 }
 
-function PriorityActionCard({
+function PriorityActionCardV2({
   item,
   onTabChange,
   isMobile,
@@ -1027,48 +1094,89 @@ function PriorityActionCard({
   onTabChange?: (tab: string) => void;
   isMobile: boolean;
 }) {
-  const styles = {
-    high:   { cardBg: "#fff5f5", cardBorder: "#fecaca", pillBg: "#fef2f2", pillColor: "#dc2626", pillText: "● High Impact", btnBg: "#dc2626" },
-    medium: { cardBg: "#fffbeb", cardBorder: "#fde68a", pillBg: "#fefce8", pillColor: "#d97706", pillText: "⚡ Medium",      btnBg: "#d97706" },
-    low:    { cardBg: "#f8f8f8", cardBorder: "#e5e7eb", pillBg: "#f3f4f6", pillColor: "#6b7280", pillText: "○ Low",         btnBg: "#6b7280" },
-  }[item.priority];
+  const severityMap = {
+    high:   { borderColor: T.rose, bgColor: T.roseLight, textColor: T.rose },
+    medium: { borderColor: T.amber, bgColor: T.amberLight, textColor: T.amber },
+    low:    { borderColor: "#94a3b8", bgColor: "#f1f5f9", textColor: "#64748b" },
+  };
+
+  const severity = severityMap[item.priority];
+
+  const badgeMap = {
+    high: { bg: T.roseLight, color: T.rose, label: "Critical" },
+    medium: { bg: T.amberLight, color: T.amber, label: "Medium" },
+    low: { bg: "#f1f5f9", color: "#64748b", label: "Low" },
+  };
+
+  const badge = badgeMap[item.priority];
 
   const gainStyles = item.gainType === "ats"
-    ? { bg: "#dcfce7", color: "#16a34a" }
-    : { bg: "#eef2ff", color: "#6366f1" };
+    ? { bg: T.emeraldLight, color: T.emerald }
+    : { bg: T.primaryLight, color: T.primary };
 
   return (
     <div style={{
-      background: styles.cardBg,
-      border: `1.5px solid ${styles.cardBorder}`,
-      borderRadius: "10px", padding: "16px 18px", marginBottom: "10px",
+      background: T.bgCard,
+      border: `1.5px solid ${T.border}`,
+      borderLeft: `4px solid ${severity.borderColor}`,
+      borderRadius: T.radiusLg,
+      padding: "20px 24px",
       display: "flex",
       flexDirection: isMobile ? "column" : "row",
-      alignItems: isMobile ? "stretch" : "center",
+      alignItems: isMobile ? "flex-start" : "center",
       justifyContent: "space-between",
       gap: "12px",
-    }}>
+      transition: "all 0.2s ease",
+      boxShadow: T.shadowSm,
+    }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowMd;
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowSm;
+      }}
+    >
       <div style={{ flex: 1 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginBottom: "5px" }}>
+        <div style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          marginBottom: "8px",
+        }}>
           <span style={{
-            background: styles.pillBg, color: styles.pillColor,
-            borderRadius: "999px", padding: "3px 10px",
-            fontSize: "11px", fontWeight: 700,
+            background: badge.bg,
+            color: badge.color,
+            borderRadius: T.radiusPill,
+            padding: "3px 10px",
+            fontSize: "11px",
+            fontWeight: 700,
           }}>
-            {styles.pillText}
+            {badge.label}
           </span>
           <span style={{
-            background: gainStyles.bg, color: gainStyles.color,
-            borderRadius: "999px", padding: "3px 10px",
-            fontSize: "11px", fontWeight: 700,
+            background: gainStyles.bg,
+            color: gainStyles.color,
+            borderRadius: T.radiusPill,
+            padding: "3px 10px",
+            fontSize: "11px",
+            fontWeight: 700,
           }}>
             {item.gainLabel}
           </span>
         </div>
-        <div style={{ fontSize: "13px", fontWeight: 700, color: "#111827" }}>
+        <div style={{
+          fontSize: "14px",
+          fontWeight: 700,
+          color: T.textPrimary,
+          marginBottom: "4px",
+        }}>
           {item.title}
         </div>
-        <div style={{ fontSize: "12px", color: "#6b7280", marginTop: "2px", lineHeight: 1.5 }}>
+        <div style={{
+          fontSize: "13px",
+          color: T.textSecondary,
+          lineHeight: 1.5,
+        }}>
           {item.description}
         </div>
       </div>
@@ -1078,13 +1186,21 @@ function PriorityActionCard({
         style={{
           fontSize: "12px",
           fontWeight: 700,
-          color: "#6366f1",
+          color: severity.textColor,
           background: "none",
           border: "none",
           cursor: "pointer",
           whiteSpace: "nowrap",
           flexShrink: 0,
-          alignSelf: isMobile ? "flex-start" : "center",
+          padding: "8px 12px",
+          borderRadius: T.radiusSm,
+          transition: "all 0.2s ease",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = severity.bgColor;
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLButtonElement).style.background = "none";
         }}
       >
         {item.linksToGap ? "Go to Gap Analysis →" : "Go to Fixes →"}
@@ -1096,7 +1212,7 @@ function PriorityActionCard({
 function SkeletonLoader() {
   const { isMobile } = useWindowSize();
   return (
-    <div style={{ minHeight: "100vh", background: "#ffffff" }}>
+    <div style={{ minHeight: "100vh", background: T.bgPage }}>
       <div style={pageContainerStyle(isMobile)}>
         <div style={{
           display: "grid",
@@ -1122,12 +1238,6 @@ function SkeletonLoader() {
           }} />
         ))}
       </div>
-      <style>{`
-        @keyframes shimmer {
-          0% { background-position: 200% 0 }
-          100% { background-position: -200% 0 }
-        }
-      `}</style>
     </div>
   );
 }

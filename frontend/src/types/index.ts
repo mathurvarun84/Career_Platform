@@ -133,9 +133,12 @@ export interface PriorityFix {
   requires_user_input?: boolean;
   coaching_question?: string | null;
   coaching_hint?: string[];
+  resume_grounded_hints?: string[];
+  resume_grounded_suggestion?: string | null;
   auto_apply?: boolean;
   sub_label?: string | null;
   entry_id?: string | null;
+  suggested_text?: string;
 }
 
 export interface CoachingAnswer {

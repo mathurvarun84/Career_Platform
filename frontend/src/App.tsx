@@ -13,6 +13,8 @@ import AuthModal from "./components/auth/AuthModal";
 import RequireAuth from "./components/auth/RequireAuth";
 import ResumeUpload from "./components/ResumeUpload";
 import AnalysisProgress from "./components/upload/AnalysisProgress";
+import LandingPage from "./components/LandingPage";
+import Footer from "./components/Footer";
 import { useProgressStore } from "./hooks/useProgressStore";
 import { supabase } from "./lib/supabase";
 import { useAuthStore } from "./store/authStore";
@@ -59,6 +61,7 @@ function AppShell() {
   } | null>(null);
   // Keep single AuthModal here so TopBar and RequireAuth share one instance.
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [hasLeftLanding, setHasLeftLanding] = useState(false);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
@@ -68,6 +71,9 @@ function AppShell() {
     } = supabase.auth.onAuthStateChange((_event, session) => {
       console.log("AUTH EVENT:", _event, session?.user?.email);
       setSession(session);
+      if (_event === "SIGNED_OUT") {
+        setHasLeftLanding(false);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -88,6 +94,8 @@ function AppShell() {
       setIsFullAnalysisReady(false);
       setIsLoading(true);
       setIsAnalyzing(true);
+      // Do NOT reset hasLeftLanding — user is on the upload page and should
+      // stay there (transitioning to AnalysisProgress) not go back to landing.
     },
     [
       setJobId,
@@ -141,6 +149,14 @@ function AppShell() {
     setIsAnalyzing(false);
   }, [setIsLoading, setIsAnalyzing]);
 
+  const handleNavigateToUpload = useCallback((): void => {
+    setHasLeftLanding(true);
+    setAnalysisResult(null);
+    setIsFullAnalysisReady(false);
+    setJobId(null);
+    setActiveTab("overview");
+  }, [setAnalysisResult, setIsFullAnalysisReady, setJobId, setActiveTab]);
+
   const showDashboard = Boolean(
     analysisResult !== null && isFullAnalysisReady
   );
@@ -150,6 +166,7 @@ function AppShell() {
     Boolean(streamInputs) &&
     (isLoading || isAnalyzing) &&
     !isFullAnalysisReady;
+  const showLandingPage = !analysisResult && !showAnalyzingPage && !hasLeftLanding;
 
   if (showProgressStandalone) {
     return (
@@ -236,7 +253,7 @@ function AppShell() {
           >
             <div
               style={{
-                maxWidth: "960px",
+                maxWidth: "1200px",
                 margin: "0 auto",
                 padding: "40px 32px 48px",
               }}
@@ -272,7 +289,7 @@ function AppShell() {
         className="page-shell"
         style={{
           minHeight: "100vh",
-          background: "#ffffff",
+          background: "#f7f7fc",
           display: "flex",
           flexDirection: "column",
         }}
@@ -303,8 +320,23 @@ function AppShell() {
     );
   }
 
+  if (showLandingPage) {
+    return (
+      <div className="page-shell" style={{ minHeight: "100vh" }}>
+        <LandingPage
+          onNavigateToUpload={handleNavigateToUpload}
+          onOpenAuthModal={() => setIsAuthModalOpen(true)}
+        />
+        <Footer />
+        {isAuthModalOpen ? (
+          <AuthModal onClose={() => setIsAuthModalOpen(false)} />
+        ) : null}
+      </div>
+    );
+  }
+
   return (
-    <div className="page-shell" style={{ minHeight: "100vh", background: "#ffffff" }}>
+    <div className="page-shell" style={{ minHeight: "100vh", background: "#f7f7fc" }}>
       <TopBar
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onViewProgress={() => setActiveTab("progress")}

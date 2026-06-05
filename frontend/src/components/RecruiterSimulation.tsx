@@ -1,17 +1,19 @@
 import { useState } from "react";
+import { AlertCircle, CheckCircle, Lightbulb, TrendingUp, Users } from "lucide-react";
 
 import { useWindowSize } from "../hooks/useWindowSize";
 import { pageContainerStyle } from "../utils/pageLayout";
 import { useResumeStore } from "../store/useResumeStore";
 import type { PersonaVerdict } from "../types";
+import { T } from "../tokens";
 import DataSourceNotice from "./DataSourceNotice";
 
-const getBadgeStyle = (
+export const getBadgeStyle = (
   persona: string
 ): { bg: string; color: string; border: string } => {
   const p = persona.toLowerCase();
   if (p.includes("faang") || p.includes("maang")) {
-    return { bg: "#eef2ff", color: "#4f46e5", border: "#c7d2fe" };
+    return { bg: T.primaryLight, color: T.primary, border: T.primaryMid };
   }
   if (
     p.includes("startup") ||
@@ -21,17 +23,17 @@ const getBadgeStyle = (
     p.includes("blinkit") ||
     p.includes("d2c")
   ) {
-    return { bg: "#f0fdf4", color: "#16a34a", border: "#bbf7d0" };
+    return { bg: T.emeraldLight, color: T.emerald, border: T.emeraldBorder };
   }
   if (p.includes("agency") || p.includes("service") || p.includes("bench")) {
-    return { bg: "#fff7ed", color: "#d97706", border: "#fed7aa" };
+    return { bg: T.amberLight, color: T.amber, border: T.amberBorder };
   }
   if (
     p.includes("fintech") ||
     p.includes("finance") ||
     p.includes("payment")
   ) {
-    return { bg: "#fef2f2", color: "#dc2626", border: "#fecaca" };
+    return { bg: T.roseLight, color: T.rose, border: T.roseBorder };
   }
   if (
     p.includes("product") ||
@@ -40,23 +42,23 @@ const getBadgeStyle = (
     p.includes("recruiter") ||
     p.includes("hr")
   ) {
-    return { bg: "#f5f0ff", color: "#7c3aed", border: "#e9d5ff" };
+    return { bg: T.violetLight, color: T.violet, border: T.violetBorder };
   }
-  return { bg: "#f3f4f6", color: "#374151", border: "#e5e7eb" };
+  return { bg: T.bgSubtle, color: T.textSecondary, border: T.border };
 };
 
 const getShortlistColor = (
   rate: number
 ): { text: string; bg: string; border: string } => {
-  if (rate >= 0.7) return { text: "#16a34a", bg: "#dcfce7", border: "#bbf7d0" };
-  if (rate >= 0.4) return { text: "#d97706", bg: "#fff7ed", border: "#fed7aa" };
-  return { text: "#dc2626", bg: "#fef2f2", border: "#fecaca" };
+  if (rate >= 0.7) return { text: T.emerald, bg: T.emeraldLight, border: T.emeraldBorder };
+  if (rate >= 0.4) return { text: T.amber, bg: T.amberLight, border: T.amberBorder };
+  return { text: T.rose, bg: T.roseLight, border: T.roseBorder };
 };
 
-function LabelWithInfo({
+export function LabelWithInfo({
   label,
   info,
-  color = "#6b7280",
+  color = T.textSecondary,
 }: {
   readonly label: string;
   readonly info: string;
@@ -111,7 +113,7 @@ function LabelWithInfo({
               bottom: "calc(100% + 8px)",
               left: "50%",
               transform: "translateX(-50%)",
-              background: "#111827",
+              background: T.textPrimary,
               color: "#ffffff",
               fontSize: "12px",
               fontWeight: 400,
@@ -139,215 +141,272 @@ function PersonaCard({
   readonly persona: PersonaVerdict;
   readonly probingPersona: string | null;
 }) {
-  const badge = getBadgeStyle(persona.persona);
+  const [isHovered, setIsHovered] = useState(false);
   const isShortlisted = persona.shortlist_decision;
+  const badge = getBadgeStyle(persona.persona);
+
+  const getPersonaStyle = (name: string): { bg: string; color: string; emoji: string } => {
+    const n = name.toLowerCase();
+    if (n.includes("faang") || n.includes("maang") || n.includes("big tech"))
+      return { bg: "#eef0ff", color: T.primary, emoji: "🏢" };
+    if (
+      n.includes("startup") ||
+      n.includes("cto") ||
+      n.includes("series") ||
+      n.includes("zepto") ||
+      n.includes("blinkit") ||
+      n.includes("d2c")
+    )
+      return { bg: T.emeraldLight, color: T.emerald, emoji: "🚀" };
+    if (n.includes("agency") || n.includes("service") || n.includes("bench"))
+      return { bg: T.amberLight, color: T.amber, emoji: "📋" };
+    if (n.includes("fintech") || n.includes("finance") || n.includes("payment"))
+      return { bg: T.roseLight, color: T.rose, emoji: "💰" };
+    return { bg: "#f5f3ff", color: T.violet, emoji: "🎯" };
+  };
+
+  const ps = getPersonaStyle(persona.persona);
+  const keyReasonText = isShortlisted ? persona.first_impression : persona.rejection_reason;
 
   return (
     <div
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       style={{
-        background: "#ffffff",
-        border: "1.5px solid #e5e7eb",
-        borderRadius: "16px",
-        padding: "20px",
-        boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
-        display: "flex",
-        flexDirection: "column",
-        gap: "12px",
+        marginBottom: "20px",
+        borderRadius: "24px",
+        overflow: "hidden",
+        boxShadow: isHovered ? T.shadowLg : T.shadowMd,
+        background: T.bgCard,
+        border: isShortlisted ? "2px solid #6ee7b7" : "2px solid #fca5a5",
+        transition: "box-shadow 0.2s ease",
       }}
     >
-      {/* Header row */}
+      {/* Card Header */}
       <div
         style={{
+          padding: "24px 28px",
           display: "flex",
-          alignItems: "flex-start",
           justifyContent: "space-between",
-          gap: "10px",
+          alignItems: "flex-start",
+          flexWrap: "wrap",
+          gap: "16px",
+          borderBottom: `1.5px solid ${T.border}`,
         }}
       >
-        <div style={{ flex: 1 }}>
-          <div
-            style={{ fontSize: "15px", fontWeight: 700, color: "#111827" }}
-          >
-            {persona.persona}
-          </div>
+        {/* Left: icon + name */}
+        <div style={{ display: "flex", gap: "16px", alignItems: "center" }}>
           <div
             style={{
+              width: "48px",
+              height: "48px",
+              borderRadius: "12px",
+              flexShrink: 0,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: "22px",
+              background: ps.bg,
+            }}
+          >
+            {ps.emoji}
+          </div>
+          <div>
+            <div style={{ fontSize: "17px", fontWeight: 700, color: T.textPrimary }}>
+              {persona.persona}
+            </div>
+            <div style={{
               display: "inline-flex",
               alignItems: "center",
               background: badge.bg,
               border: `1px solid ${badge.border}`,
               color: badge.color,
-              borderRadius: "999px",
+              borderRadius: T.radiusPill,
               padding: "2px 10px",
               fontSize: "11px",
               fontWeight: 600,
-              marginTop: "6px",
-            }}
-          >
-            {persona.persona.split(" ").slice(-2).join(" ")}
+              marginTop: "4px",
+            }}>
+              {persona.persona.split(" ").slice(-2).join(" ")}
+            </div>
+            {probingPersona && persona.persona === probingPersona && (
+              <div style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "5px",
+                background: "#fef3c7",
+                border: "1px solid #fbbf24",
+                borderRadius: "6px",
+                padding: "3px 8px",
+                fontSize: "11px",
+                color: "#92400e",
+                fontWeight: 600,
+                marginTop: "6px",
+              }}>
+                🎯 Targeted your weakest area
+              </div>
+            )}
           </div>
         </div>
 
-        <div
-          style={{
-            background: isShortlisted ? "#dcfce7" : "#fef2f2",
-            color: isShortlisted ? "#16a34a" : "#dc2626",
-            borderRadius: "999px",
-            padding: "4px 12px",
-            fontSize: "12px",
-            fontWeight: 700,
-            whiteSpace: "nowrap",
-            flexShrink: 0,
-          }}
-        >
-          {isShortlisted ? "✓ Shortlisted" : "✗ Not Shortlisted"}
-        </div>
-      </div>
+        {/* Right: fit score + verdict badge */}
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <div>
+            <div style={{
+              fontSize: "10px",
+              textTransform: "uppercase",
+              letterSpacing: "0.06em",
+              color: T.textMuted,
+              marginBottom: "2px",
+            }}>
+              Fit Score
+            </div>
+            <div style={{ display: "flex", alignItems: "baseline", gap: "2px" }}>
+              <span style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: "36px",
+                fontWeight: 600,
+                color: isShortlisted ? T.emerald : T.rose,
+                lineHeight: 1,
+              }}>
+                {persona.fit_score}
+              </span>
+              <span style={{ fontSize: "14px", color: T.textMuted }}>/100</span>
+            </div>
+          </div>
 
-      {/* Fit score */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <div style={{ fontSize: "12px", color: "#6b7280" }}>Fit Score</div>
-        <div
-          style={{
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "7px",
+            padding: "9px 16px",
+            borderRadius: "8px",
             fontSize: "13px",
             fontWeight: 700,
-            color: persona.fit_score >= 70 ? "#16a34a" : persona.fit_score >= 50 ? "#d97706" : "#dc2626",
-          }}
-        >
-          {persona.fit_score}/100
-        </div>
-        {/* Mini bar */}
-        <div
-          style={{
-            flex: 1,
-            height: "4px",
-            background: "#f3f4f6",
-            borderRadius: "999px",
-            overflow: "hidden",
-          }}
-        >
-          <div
-            style={{
-              width: `${persona.fit_score}%`,
-              height: "100%",
-              background:
-                persona.fit_score >= 70
-                  ? "#16a34a"
-                  : persona.fit_score >= 50
-                    ? "#d97706"
-                    : "#dc2626",
-              borderRadius: "999px",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* First impression */}
-      {probingPersona && persona.persona === probingPersona && (
-        <div style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "5px",
-          background: "#fef3c7",
-          border: "1px solid #fbbf24",
-          borderRadius: "6px",
-          padding: "3px 8px",
-          fontSize: "11px",
-          color: "#92400e",
-          fontWeight: 600,
-          marginBottom: "8px",
-        }}>
-          🎯 Targeted your weakest area
-        </div>
-      )}
-      <div
-        style={{
-          fontSize: "13px",
-          color: "#374151",
-          fontStyle: "italic",
-          lineHeight: 1.55,
-        }}
-      >
-        "{persona.first_impression}"
-      </div>
-
-      {/* Noticed */}
-      {persona.noticed.length > 0 && (
-        <div>
-          <div
-            style={{
-              fontSize: "11px",
-              fontWeight: 700,
-              color: "#374151",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              marginBottom: "4px",
-            }}
-          >
-            Noticed
+            background: isShortlisted ? T.emeraldLight : T.roseLight,
+            color: isShortlisted ? T.emerald : T.rose,
+            border: isShortlisted ? `1.5px solid #6ee7b7` : `1.5px solid #fca5a5`,
+            whiteSpace: "nowrap",
+          }}>
+            {isShortlisted ? "✓ Shortlisted" : "✗ Rejected"}
           </div>
-          {persona.noticed.map((item) => (
-            <div
-              key={item}
-              style={{
-                fontSize: "12px",
-                color: "#16a34a",
-                lineHeight: 1.6,
-              }}
-            >
-              ✓ {item}
+        </div>
+      </div>
+
+      {/* Card Body */}
+      <div style={{ padding: "16px 28px 24px" }}>
+        {/* Key reason box */}
+        {keyReasonText && (
+          <div style={{
+            padding: "14px 18px",
+            borderRadius: "12px",
+            borderLeft: `4px solid ${isShortlisted ? T.emerald : T.rose}`,
+            marginBottom: "14px",
+            background: isShortlisted ? T.emeraldLight : T.roseLight,
+          }}>
+            <div style={{
+              fontSize: "9px",
+              textTransform: "uppercase" as const,
+              letterSpacing: "0.07em",
+              color: T.textMuted,
+              marginBottom: "5px",
+            }}>
+              {isShortlisted ? "Why Shortlisted" : "Rejection Reason"}
             </div>
-          ))}
-        </div>
-      )}
+            <div style={{ fontSize: "14px", fontWeight: 700, color: T.textPrimary }}>
+              {keyReasonText}
+            </div>
+          </div>
+        )}
 
-      {/* Rejection reason */}
-      {!isShortlisted && persona.rejection_reason && (
-        <div
-          style={{
-            background: "#fef2f2",
-            border: "1px solid #fecaca",
-            borderRadius: "8px",
-            padding: "10px 12px",
-            fontSize: "12px",
-            color: "#dc2626",
-            lineHeight: 1.55,
-          }}
-        >
-          <span style={{ fontWeight: 700 }}>Reason: </span>
-          {persona.rejection_reason}
+        {/* First impression paragraph */}
+        <div style={{
+          background: T.bgSubtle,
+          borderRadius: "12px",
+          padding: "14px 16px",
+          marginBottom: "14px",
+          fontSize: "13px",
+          color: T.textSecondary,
+          lineHeight: 1.65,
+          fontStyle: "italic",
+        }}>
+          "{persona.first_impression}"
         </div>
-      )}
 
-      {/* Flip condition */}
-      {persona.flip_condition && (
-        <div
-          style={{
-            background: "#eef2ff",
-            border: "1px solid #c7d2fe",
-            borderRadius: "8px",
-            padding: "10px 12px",
-          }}
-        >
-          <div
-            style={{
+        {/* Noticed chips */}
+        {persona.noticed.length > 0 && (
+          <div style={{ marginBottom: "14px" }}>
+            <div style={{
               fontSize: "11px",
-              fontWeight: 700,
-              color: "#4f46e5",
-              textTransform: "uppercase",
-              letterSpacing: "0.06em",
-              marginBottom: "4px",
-            }}
-          >
-            What would change this
+              textTransform: "uppercase" as const,
+              letterSpacing: "0.04em",
+              color: T.textMuted,
+              marginBottom: "8px",
+            }}>
+              What stood out
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "7px" }}>
+              {persona.noticed.map((item) => (
+                <div
+                  key={item}
+                  style={{
+                    background: T.bgSubtle,
+                    border: `1px solid ${T.border}`,
+                    borderRadius: "20px",
+                    padding: "5px 12px",
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    color: T.textSecondary,
+                  }}
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
-          <div
-            style={{ fontSize: "12px", color: "#374151", lineHeight: 1.55 }}
-          >
-            {persona.flip_condition}
+        )}
+
+        {/* Flip decision box — rejected cards only */}
+        {!isShortlisted && persona.flip_condition && (
+          <div style={{
+            background: "linear-gradient(135deg, #eef0ff, #f5f3ff)",
+            border: `1px solid ${T.primaryMid}`,
+            borderRadius: "12px",
+            padding: "16px 18px",
+            display: "flex",
+            gap: "12px",
+            alignItems: "flex-start",
+          }}>
+            <div style={{
+              width: "32px",
+              height: "32px",
+              borderRadius: "8px",
+              background: T.primaryLight,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}>
+              <Lightbulb size={14} color={T.primary} />
+            </div>
+            <div>
+              <div style={{
+                fontSize: "10px",
+                textTransform: "uppercase" as const,
+                letterSpacing: "0.06em",
+                color: T.primary,
+                marginBottom: "5px",
+                fontWeight: 700,
+              }}>
+                💡 How to flip this decision
+              </div>
+              <div style={{ fontSize: "13px", color: T.textSecondary, lineHeight: 1.6 }}>
+                {persona.flip_condition}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
@@ -355,27 +414,27 @@ function PersonaCard({
 export default function RecruiterSimulation() {
   const analysisResult = useResumeStore((s) => s.analysisResult);
   const setActiveTab = useResumeStore((s) => s.setActiveTab);
-  const { isMobile } = useWindowSize();
+  const { isMobile, isTablet } = useWindowSize();
   const [isViewFixPressed, setIsViewFixPressed] = useState(false);
 
   if (!analysisResult?.sim) {
     return (
-      <div style={{ minHeight: "100vh", background: "#ffffff" }}>
+      <div style={{ minHeight: "100vh", background: T.bgPage }}>
         <div style={pageContainerStyle(isMobile)}>
           <div
             style={{
               textAlign: "center",
               padding: "64px 32px",
-              border: "1.5px solid #e5e7eb",
-              borderRadius: "16px",
-              background: "#ffffff",
+              border: `1.5px solid ${T.border}`,
+              borderRadius: "18px",
+              background: T.bgCard,
             }}
           >
             <div style={{ fontSize: "32px", marginBottom: "12px" }}>⚠️</div>
-            <div style={{ fontSize: "15px", fontWeight: 700, color: "#111827", marginBottom: "6px" }}>
+            <div style={{ fontSize: "15px", fontWeight: 700, color: T.textPrimary, marginBottom: "6px" }}>
               Data Unavailable
             </div>
-            <div style={{ fontSize: "13px", color: "#6b7280" }}>
+            <div style={{ fontSize: "13px", color: T.textSecondary }}>
               This analysis could not be completed. Try re-uploading your resume.
             </div>
           </div>
@@ -393,187 +452,271 @@ export default function RecruiterSimulation() {
   const shortlistColors = getShortlistColor(sim.shortlist_rate);
   const nextTier = positioning?.next_tier_label ?? "the next tier";
 
-  return (
-    <div style={{ minHeight: "100vh", background: "#ffffff" }}>
-      <div style={pageContainerStyle(isMobile)}>
-        {/* Hero Header */}
-        <div style={{ marginBottom: "32px", textAlign: "center" }}>
-          <div
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              borderRadius: "999px",
-              background: "#f5f0ff",
-              border: "1px solid #e9d5ff",
-              color: "#7c3aed",
-              padding: "5px 14px",
-              fontSize: "12px",
-              fontWeight: 600,
-            }}
-          >
-            👤 Recruiter Simulation
-          </div>
-          <div
-            style={{
-              fontSize: isMobile ? "22px" : "28px",
-              fontWeight: 800,
-              color: "#111827",
-              letterSpacing: "-0.02em",
-              marginTop: "14px",
-            }}
-          >
-            How Recruiters See Your Resume
-          </div>
-          <div style={{ fontSize: "15px", color: "#6b7280", marginTop: "8px" }}>
-            {personas.length} recruiter archetypes evaluated your profile.
-            Here's their verdict.
-          </div>
-        </div>
+  const shortlistedCount = personas.filter((p) => p.shortlist_decision).length;
+  const bestMatch = personas.reduce(
+    (best, p) => (p.fit_score > best.fit_score ? p : best),
+    personas[0]
+  );
+  const needsWork = personas.reduce(
+    (worst, p) => (p.fit_score < worst.fit_score ? p : worst),
+    personas[0]
+  );
+  const lift = Math.round(((personas.length - shortlistedCount) / personas.length) * 100);
 
-        {/* Summary Stats Row */}
-        <div
-          style={{
+  return (
+    <div style={{ minHeight: "100vh", background: T.bgPage }}>
+      {/* Full-bleed hero */}
+      <div style={{
+        background: "linear-gradient(160deg, #f5f3ff, #faf5ff 50%, #ffffff)",
+        padding: "52px 40px 40px",
+        textAlign: "center",
+        borderBottom: `1.5px solid ${T.border}`,
+      }}>
+        <div style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: "6px",
+          background: "#f5f3ff",
+          border: "1px solid #e9d5ff",
+          color: T.violet,
+          borderRadius: T.radiusPill,
+          padding: "5px 14px",
+          fontSize: "12px",
+          fontWeight: 600,
+          marginBottom: "16px",
+        }}>
+          👥 AI Recruiter Simulation
+        </div>
+        <div style={{
+          fontFamily: "'DM Serif Display', serif",
+          fontSize: isMobile ? "32px" : "44px",
+          fontWeight: 400,
+          color: T.textPrimary,
+          letterSpacing: "-0.02em",
+          lineHeight: 1.15,
+          marginBottom: "12px",
+        }}>
+          How Recruiters See You
+        </div>
+        <div style={{
+          fontSize: "16px",
+          color: T.textSecondary,
+          maxWidth: "480px",
+          margin: "0 auto",
+          lineHeight: 1.6,
+        }}>
+          5 recruiter archetypes — FAANG, Startup, Agency, Fintech, Product
+        </div>
+      </div>
+
+      <div style={pageContainerStyle(isMobile)}>
+        {/* Stats row */}
+        <div style={{
+          maxWidth: "1060px",
+          margin: "32px auto 0",
+          padding: isMobile ? "0 20px" : "0 40px",
+          marginBottom: "32px",
+        }}>
+          <div style={{
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(4, 1fr)",
+            gridTemplateColumns: isTablet ? "repeat(2, 1fr)" : "repeat(4, 1fr)",
             gap: "16px",
-            marginBottom: "32px",
-          }}
-        >
-          {/* Shortlist Rate */}
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1.5px solid #e5e7eb",
-              borderRadius: "16px",
-              padding: "24px",
-              boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
-            }}
-          >
-            <LabelWithInfo
-              label="Shortlist Rate"
-              info="Shortlist Rate is the share of simulated recruiter personas that would shortlist your resume."
-            />
+          }}>
+            {/* Shortlist Rate */}
             <div
               style={{
-                fontSize: "36px",
-                fontWeight: 800,
-                color: shortlistColors.text,
-                lineHeight: 1,
+                background: T.bgCard,
+                border: `1.5px solid ${T.border}`,
+                borderRadius: "18px",
+                padding: "20px 24px",
+                boxShadow: T.shadowSm,
+                transition: "box-shadow 0.2s ease",
+                cursor: "default",
               }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowMd; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowSm; }}
             >
-              {shortlistRate}%
-            </div>
-            <div
-              style={{
+              <div style={{ display: "flex", alignItems: "center", marginBottom: "12px" }}>
+                <div style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "#eef0ff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <Users size={16} color={T.primary} />
+                </div>
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 800, color: T.primary, marginBottom: "4px" }}>
+                {shortlistedCount} of {personas.length}
+              </div>
+              <div style={{
                 display: "inline-flex",
                 alignItems: "center",
                 background: shortlistColors.bg,
                 border: `1px solid ${shortlistColors.border}`,
                 color: shortlistColors.text,
-                borderRadius: "999px",
-                padding: "3px 10px",
+                borderRadius: T.radiusPill,
+                padding: "2px 8px",
                 fontSize: "11px",
                 fontWeight: 700,
-                marginTop: "8px",
-              }}
-            >
-              {shortlistRate >= 70
-                ? "↗ Strong"
-                : shortlistRate >= 40
-                  ? "→ Moderate"
-                  : "↘ Needs Work"}
+                marginBottom: "6px",
+              }}>
+                {shortlistRate}%
+              </div>
+              <div style={{
+                fontSize: "11px",
+                color: T.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}>
+                Shortlist Rate
+              </div>
             </div>
-          </div>
 
-          {/* Avg Fit Score */}
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1.5px solid #e5e7eb",
-              borderRadius: "16px",
-              padding: "24px",
-              boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
-            }}
-          >
-            <LabelWithInfo
-              label="Avg Fit Score"
-              info="Avg Fit Score is the average fit rating across all simulated recruiter personas."
-            />
+            {/* Avg Fit Score */}
             <div
               style={{
-                fontSize: "36px",
+                background: T.bgCard,
+                border: `1.5px solid ${T.border}`,
+                borderRadius: "18px",
+                padding: "20px 24px",
+                boxShadow: T.shadowSm,
+                transition: "box-shadow 0.2s ease",
+                cursor: "default",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowMd; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowSm; }}
+            >
+              <div style={{ display: "flex", alignItems: "center", marginBottom: "12px" }}>
+                <div style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: "#f5f3ff",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <TrendingUp size={16} color={T.violet} />
+                </div>
+              </div>
+              <div style={{ fontSize: "24px", fontWeight: 800, color: T.violet, marginBottom: "4px" }}>
+                {avgFitScore}
+              </div>
+              <div style={{
+                fontSize: "11px",
+                color: T.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}>
+                Avg Fit Score
+              </div>
+            </div>
+
+            {/* Best Match */}
+            <div
+              style={{
+                background: T.bgCard,
+                border: `1.5px solid ${T.border}`,
+                borderRadius: "18px",
+                padding: "20px 24px",
+                boxShadow: T.shadowSm,
+                transition: "box-shadow 0.2s ease",
+                cursor: "default",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowMd; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowSm; }}
+            >
+              <div style={{ display: "flex", alignItems: "center", marginBottom: "12px" }}>
+                <div style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: T.emeraldLight,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <CheckCircle size={16} color={T.emerald} />
+                </div>
+              </div>
+              <div style={{
+                fontSize: "14px",
                 fontWeight: 800,
-                color: "#6366f1",
-                lineHeight: 1,
-              }}
-            >
-              {avgFitScore}
+                color: T.emerald,
+                marginBottom: "4px",
+                lineHeight: 1.3,
+              }}>
+                {bestMatch.persona.split(" ").slice(0, 2).join(" ")}
+              </div>
+              <div style={{
+                fontSize: "11px",
+                color: T.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}>
+                Best Match
+              </div>
             </div>
-            <div style={{ fontSize: "13px", color: "#9ca3af", marginTop: "4px" }}>
-              /100
-            </div>
-          </div>
 
-          {/* Top Strength */}
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1.5px solid #e5e7eb",
-              borderRadius: "16px",
-              padding: "24px",
-              boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
-            }}
-          >
-            <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "8px" }}>
-              Top Strength
-            </div>
+            {/* Needs Work */}
             <div
               style={{
-                fontSize: "13px",
-                fontWeight: 700,
-                color: "#16a34a",
-                lineHeight: 1.4,
+                background: T.bgCard,
+                border: `1.5px solid ${T.border}`,
+                borderRadius: "18px",
+                padding: "20px 24px",
+                boxShadow: T.shadowSm,
+                transition: "box-shadow 0.2s ease",
+                cursor: "default",
               }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowMd; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLDivElement).style.boxShadow = T.shadowSm; }}
             >
-              {sim.consensus_strengths[0] ?? "—"}
-            </div>
-          </div>
-
-          {/* Top Weakness */}
-          <div
-            style={{
-              background: "#ffffff",
-              border: "1.5px solid #e5e7eb",
-              borderRadius: "16px",
-              padding: "24px",
-              boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
-            }}
-          >
-            <div style={{ fontSize: "13px", color: "#6b7280", marginBottom: "8px" }}>
-              Top Weakness
-            </div>
-            <div
-              style={{
-                fontSize: "13px",
-                fontWeight: 700,
-                color: "#dc2626",
-                lineHeight: 1.4,
-              }}
-            >
-              {sim.consensus_weaknesses[0] ?? "—"}
+              <div style={{ display: "flex", alignItems: "center", marginBottom: "12px" }}>
+                <div style={{
+                  width: "32px",
+                  height: "32px",
+                  borderRadius: "8px",
+                  background: T.roseLight,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}>
+                  <AlertCircle size={16} color={T.rose} />
+                </div>
+              </div>
+              <div style={{
+                fontSize: "14px",
+                fontWeight: 800,
+                color: T.rose,
+                marginBottom: "4px",
+                lineHeight: 1.3,
+              }}>
+                {needsWork.persona.split(" ").slice(0, 2).join(" ")}
+              </div>
+              <div style={{
+                fontSize: "11px",
+                color: T.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: "0.05em",
+              }}>
+                Needs Work
+              </div>
             </div>
           </div>
         </div>
 
         {/* Persona Cards Grid */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
-            gap: "16px",
-            marginBottom: "32px",
-          }}
-        >
+        <div style={{
+          display: "grid",
+          gridTemplateColumns: isMobile ? "1fr" : "repeat(2, 1fr)",
+          gap: "16px",
+          marginBottom: "8px",
+        }}>
           {personas.map((persona) => (
             <PersonaCard
               key={persona.persona}
@@ -583,81 +726,78 @@ export default function RecruiterSimulation() {
           ))}
         </div>
 
-        {/* Strategic Insight Card */}
-        <div
-          style={{
-            background: "linear-gradient(135deg, #6366f1, #7c3aed)",
-            borderRadius: "20px",
-            padding: "36px 40px",
-            boxShadow: "0 4px 0 #4338ca, 0 8px 24px rgba(99,102,241,0.3)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "24px",
-            flexWrap: "wrap",
-          }}
-        >
-          <div style={{ flex: 1 }}>
-            <div
-              style={{
-                fontSize: "11px",
-                fontWeight: 700,
-                color: "rgba(255,255,255,0.7)",
-                textTransform: "uppercase",
-                letterSpacing: "0.06em",
-                marginBottom: "10px",
-              }}
-            >
-              Strategic Insight
+        {/* Strategic Insight Card — dark */}
+        <div style={{
+          background: "linear-gradient(135deg, #0d0d1a, #1a1240)",
+          borderRadius: "24px",
+          padding: isMobile ? "28px 20px" : "40px",
+          display: "flex",
+          flexDirection: isTablet ? "column" : "row",
+          alignItems: isTablet ? "flex-start" : "flex-start",
+          gap: isTablet ? "24px" : "32px",
+          boxShadow: T.shadowXl,
+          marginTop: "8px",
+          marginBottom: "32px",
+        }}>
+          {/* Left text column */}
+          <div style={{ flex: 1, minWidth: "280px" }}>
+            <div style={{
+              fontSize: "22px",
+              fontWeight: 700,
+              color: "#f0f0ff",
+              marginBottom: "12px",
+            }}>
+              🎯 Strategic Insight
             </div>
-            <div
-              style={{
-                fontSize: "17px",
-                fontWeight: 700,
-                color: "#ffffff",
-                lineHeight: 1.4,
-                marginBottom: "8px",
-              }}
-            >
-              To break into {nextTier}, focus on:
+            <div style={{
+              fontSize: "14px",
+              color: "#a1a1c0",
+              lineHeight: 1.65,
+              marginBottom: "10px",
+            }}>
+              To break into{" "}
+              <span style={{ color: "#f0f0ff", fontWeight: 700 }}>{nextTier}</span>
+              , focus on: {sim.most_critical_fix}{" "}
+              <span style={{ color: "#f0f0ff", fontWeight: 700 }}>
+                {shortlistedCount} of {personas.length}
+              </span>{" "}
+              recruiters shortlisted you.
             </div>
-            <div
-              style={{
-                fontSize: "14px",
-                color: "rgba(255,255,255,0.85)",
-                lineHeight: 1.6,
-              }}
-            >
-              {sim.most_critical_fix}
-            </div>
+            {shortlistedCount < personas.length && (
+              <div style={{ fontSize: "13px", color: "#a1a1c0" }}>
+                Fixing ownership language alone lifts your shortlist rate by an estimated
+                <span style={{ color: "#34d399", fontWeight: 700 }}> +{lift}%</span>
+              </div>
+            )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setActiveTab("fixes")}
-            onMouseDown={() => setIsViewFixPressed(true)}
-            onMouseUp={() => setIsViewFixPressed(false)}
-            onMouseLeave={() => setIsViewFixPressed(false)}
-            style={{
-              background: "#ffffff",
-              color: "#6366f1",
-              borderRadius: "12px",
-              padding: "12px 24px",
-              fontSize: "13px",
-              fontWeight: 700,
-              border: "none",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-              flexShrink: 0,
-              boxShadow: isViewFixPressed
-                ? "0 1px 0 rgba(0,0,0,0.15)"
-                : "0 3px 0 rgba(0,0,0,0.15)",
-              transform: isViewFixPressed ? "translateY(2px)" : "translateY(0)",
-              transition: "transform 0.1s, box-shadow 0.1s",
-            }}
-          >
-            Go to Fixes →
-          </button>
+          {/* Right button */}
+          <div style={{ flexShrink: isTablet ? 0 : 0, width: isMobile ? "100%" : "auto" }}>
+            <button
+              type="button"
+              onClick={() => { setActiveTab("fixes"); }}
+              onMouseDown={() => setIsViewFixPressed(true)}
+              onMouseUp={() => setIsViewFixPressed(false)}
+              onMouseLeave={() => setIsViewFixPressed(false)}
+              style={{
+                padding: "13px 26px",
+                borderRadius: "12px",
+                background: "#ffffff",
+                color: T.primary,
+                fontSize: "14px",
+                fontWeight: 700,
+                border: "none",
+                cursor: "pointer",
+                boxShadow: isViewFixPressed ? T.shadowSm : T.shadowMd,
+                whiteSpace: "nowrap",
+                transform: isViewFixPressed ? "translateY(2px)" : "translateY(0)",
+                transition: "transform 0.1s, box-shadow 0.1s",
+                width: isMobile ? "100%" : "auto",
+              }}
+            >
+              View Recommended Fixes →
+            </button>
+          </div>
         </div>
 
         <DataSourceNotice tab="recruiter" />

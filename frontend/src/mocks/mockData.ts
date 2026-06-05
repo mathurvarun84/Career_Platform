@@ -264,19 +264,14 @@ export const MOCK_ANALYSIS_RESULT: AnalysisResult = {
       },
       {
         section: "experience",
-        gap_reason: "No mention of mentoring or developing engineers",
-        rewrite_instruction: "Add evidence of mentorship, 1:1s, or coaching junior engineers.",
+        gap_reason: "Could strengthen experience with mentorship examples",
+        rewrite_instruction: "Add evidence of mentorship impact to demonstrate leadership maturity.",
         missing_keywords: ["mentorship", "coaching"],
         needs_change: true,
-        gap_type: "evidence",
-        requires_user_input: true,
-        coaching_question: "Did you mentor, coach, or develop engineers on your team?",
-        coaching_hint: [
-          "Conducted regular 1:1s with direct reports",
-          "Mentored junior engineers through architecture decisions",
-          "Helped team members get promoted",
-          "Ran knowledge-sharing sessions or tech talks",
-        ],
+        gap_type: "structural",
+        requires_user_input: false,
+        suggested_text: "• Led mentorship of 2-3 junior engineers, providing guidance on system design and architecture decisions",
+        auto_apply: false,
         sub_label: "PaySprint Labs - Software Engineer",
       },
       {
@@ -294,6 +289,12 @@ export const MOCK_ANALYSIS_RESULT: AnalysisResult = {
           "Aligned with cross-functional stakeholders on roadmap",
           "Represented engineering in business planning discussions",
         ],
+        resume_grounded_hints: [
+          "KartPilot Commerce work improved conversion — which stakeholders approved or reviewed that decision?",
+          "Who from leadership did you align with on the checkout service roadmap at KartPilot?",
+        ],
+        resume_grounded_suggestion:
+          "Your resume says: \"Owned checkout service enhancements that improved conversion\". Add: which VP or business owner you presented this work to, how you got buy-in, and what the stakeholder ask was.",
         sub_label: "KartPilot Commerce - Software Engineer",
       },
     ],

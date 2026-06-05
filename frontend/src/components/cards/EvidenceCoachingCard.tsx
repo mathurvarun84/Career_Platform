@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { addBulletToResume, generateCoachingBullet } from "../../api/client";
 import type { CareerMemoryEntry, PriorityFix } from "../../types";
@@ -57,8 +57,18 @@ export default function EvidenceCoachingCard({
   const [isAdding, setIsAdding] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const hints = fix.coaching_hint ?? [];
+  const groundedHints = fix.resume_grounded_hints ?? [];
+  const hints = groundedHints.length > 0 ? groundedHints : (fix.coaching_hint ?? []);
+  const hasGroundedSuggestion = Boolean(fix.resume_grounded_suggestion?.trim());
   const canGenerate = rawAnswer.trim().length > 15;
+
+  useEffect(() => {
+    if (hasGroundedSuggestion && !rawAnswer) {
+      setRawAnswer(fix.resume_grounded_suggestion ?? "");
+    }
+  // Only run on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const charCount = rawAnswer.length;
   const canAddToResume = generatedBullet.trim().length > 0 && !isAdding;
 
@@ -325,13 +335,14 @@ export default function EvidenceCoachingCard({
                 type="button"
                 onClick={() => handleHintClick(hint)}
                 style={{
-                  background: "#f3f4f6",
-                  border: "1px solid #e5e7eb",
+                  background: groundedHints.length > 0 ? "#f5f3ff" : "#f3f4f6",
+                  border: `1px solid ${groundedHints.length > 0 ? "#ddd6fe" : "#e5e7eb"}`,
                   borderRadius: "20px",
                   padding: "4px 12px",
                   fontSize: "13px",
                   cursor: "pointer",
                   transition: "all 0.15s ease",
+                  color: groundedHints.length > 0 ? "#5b21b6" : "inherit",
                 }}
               >
                 {hint}
@@ -340,6 +351,18 @@ export default function EvidenceCoachingCard({
           </div>
         ) : null}
 
+        {hasGroundedSuggestion && (
+          <div
+            style={{
+              color: "#8b8baa",
+              fontSize: "11px",
+              fontStyle: "italic",
+              marginBottom: "4px",
+            }}
+          >
+            Based on your resume — edit as needed
+          </div>
+        )}
         <textarea
           ref={textareaRef}
           className="coaching-textarea"

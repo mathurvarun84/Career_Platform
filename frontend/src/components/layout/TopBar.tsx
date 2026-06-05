@@ -29,14 +29,16 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const [verificationResult, setVerificationResult] = useState<DownloadVerification | null>(null);
+  const [avatarImgError, setAvatarImgError] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const displayName = user?.user_metadata.full_name ?? user?.email ?? "";
   const avatarName =
     user?.user_metadata.full_name ?? user?.email?.split("@")[0] ?? "User";
-  const avatarUrl = user?.user_metadata.avatar_url
+  const fallbackAvatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(avatarName).replace(/%20/g, "+")}&background=5b5fc7&color=fff&size=40`;
+  const avatarUrl = (!avatarImgError && user?.user_metadata.avatar_url)
     ? user.user_metadata.avatar_url
-    : `https://ui-avatars.com/api/?name=${encodeURIComponent(avatarName).replace(/%20/g, "+")}&background=6366f1&color=fff&size=40`;
+    : fallbackAvatarUrl;
   const firstName =
     user?.user_metadata.full_name?.split(" ").filter(Boolean)[0] ??
     user?.email?.split("@")[0] ??
@@ -52,6 +54,10 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
   const downloadLabel = scoreImprovement > 0
     ? `Download (+${scoreImprovement} pts)`
     : "Download Report";
+
+  useEffect(() => {
+    setAvatarImgError(false);
+  }, [user?.id]);
 
   useEffect(() => {
     if (!isMenuOpen) {
@@ -284,9 +290,9 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                 alignItems: "center",
                 gap: "8px",
                 padding: "5px 10px 5px 5px",
-                border: `1.5px solid ${isChipHovered || isMenuOpen ? "#d1d5db" : "#e5e7eb"}`,
+                border: `1.5px solid ${isChipHovered || isMenuOpen ? T.borderStrong : T.border}`,
                 borderRadius: "999px",
-                background: isChipHovered || isMenuOpen ? "#f9fafb" : "#ffffff",
+                background: isChipHovered || isMenuOpen ? T.bgHover : T.bgCard,
                 cursor: "pointer",
                 transition: "all 0.15s",
                 minWidth: 0,
@@ -295,11 +301,12 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
               <img
                 src={avatarUrl}
                 alt={displayName ? `${displayName} avatar` : "User avatar"}
+                onError={() => setAvatarImgError(true)}
                 style={{
                   width: "28px",
                   height: "28px",
                   borderRadius: "50%",
-                  border: "1.5px solid #e5e7eb",
+                  border: `1.5px solid ${T.border}`,
                   objectFit: "cover",
                   flexShrink: 0,
                 }}
@@ -308,7 +315,7 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                 style={{
                   fontSize: "13px",
                   fontWeight: 500,
-                  color: "#111827",
+                  color: T.textPrimary,
                   maxWidth: isMobile ? "88px" : "120px",
                   overflow: "hidden",
                   textOverflow: "ellipsis",
@@ -320,7 +327,7 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                 <path
                   d="M3 4.5L6 7.5L9 4.5"
-                  stroke="#6b7280"
+                  stroke={T.textMuted}
                   strokeWidth="1.5"
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -334,8 +341,8 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                   position: "absolute",
                   top: "calc(100% + 8px)",
                   right: 0,
-                  background: "#ffffff",
-                  border: "1.5px solid #e5e7eb",
+                  background: T.bgCard,
+                  border: `1.5px solid ${T.border}`,
                   borderRadius: "12px",
                   boxShadow: "0 4px 16px rgba(0,0,0,0.08)",
                   minWidth: "180px",
@@ -346,14 +353,14 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                 <div
                   style={{
                     padding: "10px 12px 8px",
-                    borderBottom: "1px solid #f3f4f6",
+                    borderBottom: `1px solid ${T.bgSubtle}`,
                   }}
                 >
                   <div
                     style={{
                       fontSize: "13px",
                       fontWeight: 600,
-                      color: "#111827",
+                      color: T.textPrimary,
                     }}
                   >
                     {displayName}
@@ -361,7 +368,7 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                   <div
                     style={{
                       fontSize: "12px",
-                      color: "#6b7280",
+                      color: T.textMuted,
                       marginTop: "2px",
                     }}
                   >
@@ -386,9 +393,9 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                       padding: "9px 12px",
                       borderRadius: "8px",
                       fontSize: "13px",
-                      color: "#374151",
+                      color: T.textSecondary,
                       cursor: "pointer",
-                      background: isDownloadHovered ? "#f9fafb" : "#ffffff",
+                      background: isDownloadHovered ? T.bgHover : T.bgCard,
                       border: "none",
                       width: "100%",
                       marginTop: "2px",
@@ -397,7 +404,7 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                       <path
                         d="M2 12L6 8L9 11L14 5M14 5H10M14 5V9"
-                        stroke="#6b7280"
+                        stroke={T.textMuted}
                         strokeWidth="1.4"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -443,9 +450,9 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                       padding: "9px 12px",
                       borderRadius: "8px",
                       fontSize: "13px",
-                      color: canDownload ? "#374151" : "#9ca3af",
+                      color: canDownload ? T.textSecondary : T.textMuted,
                       cursor: canDownload ? "pointer" : "not-allowed",
-                      background: canDownload && isDownloadHovered ? "#f9fafb" : "#ffffff",
+                      background: canDownload && isDownloadHovered ? T.bgHover : T.bgCard,
                       border: "none",
                       width: "100%",
                       marginTop: "2px",
@@ -455,7 +462,7 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                       <path
                         d="M8 2.5V9.5M8 9.5L5.5 7M8 9.5L10.5 7M3 11.5V12C3 12.5523 3.44772 13 4 13H12C12.5523 13 13 12.5523 13 12V11.5"
-                        stroke={canDownload ? "#6b7280" : "#9ca3af"}
+                        stroke={canDownload ? T.textMuted : T.textDisabled}
                         strokeWidth="1.4"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -469,7 +476,7 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                         position: "absolute",
                         bottom: "calc(100% + 8px)",
                         left: 0,
-                        background: "#111827",
+                        background: T.textPrimary,
                         color: "#ffffff",
                         borderRadius: "6px",
                         padding: "6px 10px",
@@ -499,9 +506,9 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
                     fontSize: "13px",
                     color: isSigningOut ? "#fca5a5" : "#ef4444",
                     cursor: isSigningOut ? "not-allowed" : "pointer",
-                    background: !isSigningOut && isSignOutHovered ? "#f9fafb" : "#ffffff",
+                    background: !isSigningOut && isSignOutHovered ? T.bgHover : T.bgCard,
                     border: "none",
-                    borderTop: "1px solid #f3f4f6",
+                    borderTop: `1px solid ${T.bgSubtle}`,
                     width: "100%",
                     marginTop: "2px",
                   }}
