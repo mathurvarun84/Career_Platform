@@ -1229,10 +1229,11 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
             for sub in sub_changes:
                 if not _include_in_priority_fixes(sub):
                     continue
+                # Trust entry_id written by _enrich_section_gaps (A1 canonical id).
+                # Do NOT call derive_entry_id on the LLM sub_label — that produces
+                # year-suffixed ids that mismatch A1 ids on the same entry.
                 entry_id = sub.get("entry_id") or sub.get("sub_id") or ""
-                if not entry_id and sub.get("sub_label"):
-                    from backend.utils.entry_id import derive_entry_id
-                    entry_id = derive_entry_id(sub.get("sub_label"))
+                entry_id_confidence = "canonical" if entry_id else "absent"
                 fixes.append({
                     "section": gap.get("section", ""),
                     "gap_reason": sub.get("gap_reason") or gap.get("gap_reason", ""),
@@ -1252,6 +1253,8 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
                     "auto_apply": sub.get("auto_apply", False),
                     "sub_label": sub.get("sub_label", ""),
                     "entry_id": entry_id,
+                    "entry_id_confidence": entry_id_confidence,
+                    "section_gap_id": gap.get("section_gap_id", ""),
                     "original_text": sub.get("original_text", ""),
                     "patch_text": sub.get("rewrite_instruction") or sub.get("patch_text", ""),
                     "suggested_text": sub.get("suggested_text", ""),
@@ -1271,6 +1274,9 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
                 "resume_grounded_suggestion": gap.get("resume_grounded_suggestion"),
                 "auto_apply": gap.get("auto_apply", False),
                 "sub_label": None,
+                "entry_id": "",
+                "entry_id_confidence": "absent",
+                "section_gap_id": gap.get("section_gap_id", ""),
                 "original_text": gap.get("original_content", ""),
                 "patch_text": gap.get("rewrite_instruction", ""),
                 "suggested_text": gap.get("suggested_text", ""),
@@ -2564,10 +2570,11 @@ class GapAnalyzerAgent(BaseAgent):
         section_gaps = parsed.get("section_gaps", [])
 
         enriched_gaps = []
-        for gap in section_gaps:
+        for gap_idx, gap in enumerate(section_gaps):
             section_name = gap.get("section", "")
             section_text = resume_sections.get(section_name)
 
+            gap["section_gap_id"] = f"{section_name}|{gap_idx}"
             gap["original_content"] = self._section_original_content(section_text)
             gap["present_in_resume"] = self._section_has_content(section_text)
 
@@ -2601,9 +2608,23 @@ class GapAnalyzerAgent(BaseAgent):
                     section_text, sub_change.get("sub_label", "")
                 )
                 if matched_entry:
+                    # Always overwrite — A1's entry_id is the canonical source of truth.
+                    # This ensures even if the LLM set a stale/wrong entry_id, it is
+                    # replaced with the id that A1 derived from the verbatim label.
                     sub_change["entry_id"] = matched_entry.entry_id
-                    if not sub_change.get("sub_id"):
-                        sub_change["sub_id"] = matched_entry.entry_id
+                    sub_change["sub_id"] = matched_entry.entry_id
+                elif sub_change.get("entry_id"):
+                    # _find_sub_entry failed but LLM provided an entry_id.
+                    # Clear it — a wrong id is worse than no id because it causes
+                    # the section-wide pool fallback on the frontend.
+                    logging.warning(
+                        "GapAnalyzer: _find_sub_entry failed for sub_label '%s', "
+                        "clearing LLM-provided entry_id '%s' to prevent mismatch",
+                        sub_change.get("sub_label", "")[:60],
+                        sub_change.get("entry_id", "")[:40],
+                    )
+                    sub_change["entry_id"] = ""
+                    sub_change["sub_id"] = ""
                 sub_change["rewrite_instruction"] = self._build_concrete_instruction(
                     gap_type=sub_change.get("gap_reason", ""),
                     rewrite_instruction=sub_change.get("rewrite_instruction", ""),
@@ -2627,6 +2648,7 @@ class GapAnalyzerAgent(BaseAgent):
                     "rewrite_instruction": "",
                     "original_content": self._section_original_content(section_text),
                     "present_in_resume": self._section_has_content(section_text),
+                    "section_gap_id": f"{section}|{len(enriched_gaps)}",
                     "sub_changes": [],
                 })
 

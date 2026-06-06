@@ -16,8 +16,7 @@ import {
   resolvePatchForFix,
   shouldRenderStructuralApplyButton,
 } from "./fixesPipeline";
-import { gapReasonMatchesFixScope } from "./fixesCardLogic";
-import { isNoChangeReplacement } from "./fixesCardLogic";
+import { gapReasonMatchesFixScope, isNoChangeReplacement, isUsableAfterText } from "./fixesCardLogic";
 
 const fixtureDir = join(dirname(fileURLToPath(import.meta.url)), "../../../tests/fixtures");
 
@@ -334,5 +333,151 @@ assert.ok(
   ),
   "Structural gap with no patch must render as InfoOnlyCard, not be dropped"
 );
+
+// Patch-derived fixes must survive even when issue_detected starts with "Original lacks…"
+{
+  const patchOnlyFixture: AnalysisResult = {
+    ...fixtureB,
+    gap: {
+      ...fixtureB.gap!,
+      priority_fixes: [
+        {
+          section: "experience",
+          entry_id: null,
+          sub_label: "Add more quantified",
+          gap_reason: "Add more quantified metrics in Smart Viz X and Apttus roles",
+          rewrite_instruction: "Add more quantified metrics in Smart Viz X and Apttus roles",
+          missing_keywords: [],
+          needs_change: true,
+          gap_type: "evidence",
+          requires_user_input: true,
+        },
+      ],
+    },
+    patches: [
+      {
+        patch_id: "p-smart",
+        gap_id: "g-smart",
+        section: "experience",
+        sub_entry_label: "Head of Engineering | Smart Viz X — Bengaluru, KA",
+        sub_entry_id: "head_engineering_smart",
+        op: "replace_text",
+        original_text: "• Led cross-functional teams for 3D design SaaS platform",
+        replacement_text:
+          "• Led cross-functional teams for 3D design SaaS platform serving [N] enterprise architects",
+        risk: "safe",
+        hallucination_risk: false,
+        issue_detected:
+          "Original lacks quantified cost savings in rupees and user scale metrics required for engineering leadership roles.",
+        fix_rationale: "Add scale metrics",
+        status: "pending",
+      },
+      {
+        patch_id: "p-apttus",
+        gap_id: "g-apttus",
+        section: "experience",
+        sub_entry_label:
+          "Engineering Manager | Apttus (via Altran — Consulting Engagement) — Bengaluru, KA",
+        sub_entry_id: "engineering_manager_apttus",
+        op: "replace_text",
+        original_text:
+          "• Led architecture and delivery of a multi-tenant B2B chatbot on a microservices-based backend",
+        replacement_text:
+          "• Architected multi-tenant B2B chatbot on microservices backend scaling user base 65x",
+        risk: "safe",
+        hallucination_risk: false,
+        issue_detected:
+          "Original lacks quantified cost/revenue impact and uses passive 'led' instead of active 'architected'.",
+        fix_rationale: "Strengthen impact",
+        status: "pending",
+      },
+    ],
+    rewrites: null,
+  };
+
+  const patchOnlyFixes = buildActionableFixesList(patchOnlyFixture);
+  assert.ok(
+    patchOnlyFixes.some((f) => f.entry_id === "head_engineering_smart"),
+    "Smart Viz patch must appear on Fixes tab"
+  );
+  assert.ok(
+    patchOnlyFixes.some((f) => f.entry_id === "engineering_manager_apttus"),
+    "Apttus patch must appear on Fixes tab"
+  );
+
+  for (const entryId of ["head_engineering_smart", "engineering_manager_apttus"]) {
+    const fix = patchOnlyFixes.find((f) => f.entry_id === entryId);
+    assert.ok(fix, `patch fix present for ${entryId}`);
+    const patch = resolvePatchForFix(fix!, patchOnlyFixture.patches, "experience");
+    assert.ok(patch, `patch resolves for ${entryId}`);
+    const after = getAfterTextForFix(patchOnlyFixture, fix!, patch);
+    assert.ok(isUsableAfterText(after), `after text usable for ${entryId}`);
+    assert.equal(
+      shouldRenderStructuralApplyButton(fix!, after, null),
+      true,
+      `structural Apply button for ${entryId}`
+    );
+  }
+}
+
+{
+  const architectureRiskPatch = {
+    patch_id: "p-arch-risk",
+    gap_id: "g-arch-risk",
+    section: "experience",
+    sub_entry_label: "Engineering Manager | Flipkart — Bengaluru, KA",
+    sub_entry_id: "engineering_manager_flipkart",
+    op: "replace_text" as const,
+    original_text:
+      "Designed and executed platform scalability initiatives including DB sharding, Kubernetes adoption, and queue migration — scaling systems to 15K QPS and reducing MTTR by 30% through improved observability.",
+    replacement_text:
+      "Designed and executed platform scalability initiatives including DB sharding, Kubernetes adoption, and queue migration—scaling systems to 15K QPS and reducing MTTR by 30% through improved observability. • Oversaw architecture evaluation and operational risk assessment for all supply chain platforms, ensuring system reliability and scalability at 15K+ QPS.",
+    risk: "safe" as const,
+    hallucination_risk: false,
+    issue_detected:
+      "missing explicit mention of architecture evaluation and operational risk assessment",
+    fix_rationale:
+      "Added a bullet explicitly stating architecture evaluation and operational risk",
+    status: "pending" as const,
+  };
+
+  const archFixture: AnalysisResult = {
+    ...fixtureB,
+    gap: {
+      ...fixtureB.gap!,
+      priority_fixes: [
+        {
+          section: "experience",
+          entry_id: "engineering_manager_flipkart",
+          sub_label: "Engineering Manager | Flipkart — Bengaluru, KA",
+          gap_reason:
+            "missing explicit mention of architecture evaluation and operational risk assessment",
+          rewrite_instruction: "Add architecture evaluation and operational risk bullets",
+          missing_keywords: ["architecture evaluation", "operational risk"],
+          needs_change: true,
+          gap_type: "evidence",
+          requires_user_input: true,
+        },
+      ],
+    },
+    patches: [architectureRiskPatch],
+    rewrites: null,
+  };
+
+  const archFixes = buildActionableFixesList(archFixture);
+  const archFix = archFixes.find((f) => f.entry_id === "engineering_manager_flipkart");
+  assert.ok(archFix, "architecture/risk patch must appear on Fixes tab");
+  assert.notEqual(
+    archFix!.gap_type,
+    "evidence",
+    "surgical patch must not be classified as evidence coaching"
+  );
+  assert.equal(
+    archFix!.fix_rationale,
+    architectureRiskPatch.fix_rationale,
+    "fix_rationale preserved for Why line"
+  );
+  assert.equal(archFix!.requires_user_input, false, "patch-derived fix must not require coaching");
+}
 
 console.log("fixesPipeline.test.ts: all fixture assertions passed");

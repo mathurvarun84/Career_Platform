@@ -113,6 +113,17 @@ export function normalizePriorityFixes(
   });
 }
 
+/**
+ * Surgical replace_text patches always render as structural/surface cards.
+ * Do not use inferGapTypeFromText on patch metadata — phrases like
+ * "missing architecture evaluation" falsely match the evidence heuristic.
+ */
+function inferGapTypeFromPatch(patch: ResumePatch): GapType {
+  const context = `${patch.issue_detected} ${patch.fix_rationale} ${patch.original_text}`;
+  const inferred = inferGapTypeFromText(context);
+  return inferred === "surface" ? "surface" : "structural";
+}
+
 export function fixesFromPatches(patches: ResumePatch[] | undefined): PriorityFix[] {
   if (!patches?.length) return [];
 
@@ -125,8 +136,7 @@ export function fixesFromPatches(patches: ResumePatch[] | undefined): PriorityFi
         !isNoChangeReplacement(patch.replacement_text)
     )
     .map((patch) => {
-      const context = `${patch.issue_detected} ${patch.fix_rationale} ${patch.original_text}`;
-      const gapType = inferGapTypeFromText(context);
+      const gapType = inferGapTypeFromPatch(patch);
       return {
         section: patch.section,
         gap_reason:
@@ -141,6 +151,7 @@ export function fixesFromPatches(patches: ResumePatch[] | undefined): PriorityFi
         requires_user_input: false,
         sub_label: patch.sub_entry_label?.trim() || null,
         entry_id: patch.sub_entry_id?.trim() || null,
+        fix_rationale: patch.fix_rationale?.trim() || undefined,
       };
     });
 }
@@ -164,6 +175,28 @@ const labelsMatch = (fixLabel: string, patchLabel: string): boolean => {
   );
 };
 
+/**
+ * Slug-boundary entry_id equality check.
+ *
+ * A3 enrichment writes A1's canonical entry_id onto sub_changes. In rare cases
+ * where the LLM's sub_label had a date suffix and _enrich_section_gaps fell back,
+ * the fix.entry_id may carry a trailing _YYYY that A1's patch.sub_entry_id does not.
+ *
+ * Rules (all operate on normalized slugs, never on human-readable labels):
+ *   1. Exact match → true
+ *   2. Strip trailing _20XX from either id, then exact match → true
+ *   3. One is a _ -bounded prefix of the other → true
+ *   4. Anything else → false (no fuzzy substring — prevents Cleartrip matching Clear)
+ */
+function entryIdMatches(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const strip = (id: string) => id.replace(/_20\d{2}$/, "");
+  if (strip(a) === strip(b)) return true;
+  if (a.startsWith(b + "_") || b.startsWith(a + "_")) return true;
+  return false;
+}
+
 export function resolvePatchForFix(
   fix: PriorityFix,
   patches: ResumePatch[] | undefined,
@@ -178,24 +211,26 @@ export function resolvePatchForFix(
   if (!inSection.length) {
     return undefined;
   }
+  // --- entry_id path (primary) ---
   if (fix.entry_id) {
     const idMatches = inSection.filter(
       (patch) =>
-        patch.sub_entry_id === fix.entry_id &&
+        entryIdMatches(fix.entry_id!, patch.sub_entry_id ?? "") &&
         isUsableAfterText(patch.replacement_text ?? "")
     );
     if (idMatches.length) {
-      return (
-        idMatches.find((patch) => patch.original_text?.trim()) ?? idMatches[0]
-      );
+      return idMatches.find((p) => p.original_text?.trim()) ?? idMatches[0];
     }
-    // No id-match (e.g. old session data where sub_entry_id was not set).
-    // If sub_label is also absent there is nothing safe to fall back on.
+    // entry_id match failed. If there is also no sub_label, we have no safe
+    // fallback — return undefined so the card shows nothing rather than
+    // bleeding another entry's patch (e.g. Flipkart) into this card.
     if (!fix.sub_label?.trim()) {
       return undefined;
     }
-    // Fall through to sub_label matching below.
+    // Fall through to sub_label matching only when sub_label is also available.
   }
+
+  // --- sub_label path (secondary, only when entry_id is absent or fell through) ---
   if (fix.sub_label) {
     const subMatches = inSection.filter(
       (patch) =>
@@ -203,19 +238,26 @@ export function resolvePatchForFix(
         isUsableAfterText(patch.replacement_text ?? "")
     );
     if (subMatches.length) {
-      return (
-        subMatches.find((patch) => patch.original_text?.trim()) ?? subMatches[0]
-      );
+      return subMatches.find((p) => p.original_text?.trim()) ?? subMatches[0];
     }
+    // sub_label match also failed — this fix has sub-entry scope but no matching
+    // patch. Return undefined. NEVER fall to the section-wide pool here: that
+    // would return Flipkart's patch for every failed Cleartax/Apttus lookup.
     return undefined;
   }
+
+  // --- section-wide path (only for section-level fixes with no sub-entry scope) ---
+  // Reached only when fix has neither entry_id nor sub_label — i.e. it targets
+  // the section as a whole, not a specific experience entry.
   const sectionWide = inSection.filter((patch) => !patch.sub_entry_label?.trim());
   const pool = sectionWide.length ? sectionWide : inSection;
   return (
     pool.find(
       (patch) =>
         patch.original_text?.trim() && isUsableAfterText(patch.replacement_text ?? "")
-    ) ?? pool.find((patch) => patch.original_text?.trim()) ?? pool[0]
+    ) ??
+    pool.find((patch) => patch.original_text?.trim()) ??
+    pool[0]
   );
 }
 
@@ -230,7 +272,9 @@ export function getBeforeTextForFix(
     analysisResult.resume.resume_sections?.[key]?.sub_entries ?? [];
 
   if (fix.entry_id && subEntries.length) {
-    const byId = subEntries.find((entry) => entry.entry_id === fix.entry_id);
+    const byId = subEntries.find(
+      (entry) => entry.entry_id && entryIdMatches(fix.entry_id!, entry.entry_id)
+    );
     if (byId?.verbatim_text) {
       return byId.verbatim_text.trim();
     }
@@ -279,7 +323,7 @@ const isForeignRoleHeader = (line: string, companyToken: string): boolean => {
 
 const patchMatchesFixScope = (fix: PriorityFix, patch: ResumePatch): boolean => {
   if (fix.entry_id?.trim() && patch.sub_entry_id?.trim()) {
-    return patch.sub_entry_id === fix.entry_id;
+    return entryIdMatches(fix.entry_id, patch.sub_entry_id);
   }
   if (fix.sub_label?.trim() && patch.sub_entry_label?.trim()) {
     return labelsMatch(fix.sub_label, patch.sub_entry_label);
@@ -404,6 +448,19 @@ export function getAfterTextForFix(
     return fix.suggested_text;
   }
 
+  // Last resort: rewrite_instruction as suggested content.
+  // Covers priority_fixes that have a substantive rewrite but no resolvable patch —
+  // e.g. "No explicit mention of operational risk evaluation..." which has a full
+  // rewrite_instruction but the rewriter didn't generate an exact-match patch for it.
+  // Guards: not a duplicate of gap_reason, length > 40 (filters short placeholders).
+  if (
+    fix.rewrite_instruction?.trim() &&
+    fix.rewrite_instruction.trim() !== fix.gap_reason?.trim() &&
+    fix.rewrite_instruction.trim().length > 40
+  ) {
+    return fix.rewrite_instruction.trim();
+  }
+
   return "";
 }
 
@@ -511,19 +568,20 @@ export function buildActionableFixesList(
 
   const fromPriority = normalizePriorityFixes(
     analysisResult.gap.priority_fixes as Array<string | PriorityFix>
-  ).filter(isActionableFix);
+  )
+    .filter(isActionableFix)
+    // Scope filter applies only to A3 priority_fix cards. Never drop patch-derived fixes:
+    // their gap_reason comes from issue_detected ("Original lacks…") and is not company-scoped.
+    .filter((fix) => {
+      if (!fix.sub_label?.trim() && !fix.entry_id?.trim()) {
+        return true;
+      }
+      return gapReasonMatchesFixScope(fix);
+    });
   const fromPatches = fixesFromPatches(analysisResult.patches).filter(isActionableFix);
 
-  let list = mergeFixLists(fixLocationKey, fromPriority, fromPatches);
-
-  // Drop sub-entry fix cards whose gap_reason explicitly names a DIFFERENT company.
-  // Evidence/coaching cards (no patch, no rewrite) must pass through — they rely on user input.
-  list = list.filter((fix) => {
-    if (!fix.sub_label?.trim() && !fix.entry_id?.trim()) {
-      return true;
-    }
-    return gapReasonMatchesFixScope(fix);
-  });
+  // Patches first so merge retains surgical replacement_text when keys collide.
+  let list = mergeFixLists(fixLocationKey, fromPatches, fromPriority);
 
   // Overview weaknesses/improvement_areas → one fix card each (JD + resume-only).
   list = mergeFixLists(

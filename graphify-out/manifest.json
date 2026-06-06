@@ -104,8 +104,8 @@
     "hash": "9921b213dffa3c184d6b28ffa3494037"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\gap_analyzer.py": {
-    "mtime": 1780497498.028133,
-    "hash": "fefb2ae71ef47bac9e40e7c5365ff75a"
+    "mtime": 1780665803.2316945,
+    "hash": "63015920cf95461a95ba50204eec2ccd"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\backend\\agents\\interview_agent.py": {
     "mtime": 1780495471.267363,
@@ -356,16 +356,16 @@
     "hash": "baad65aa18522ed957bd8e60499c7a2e"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\App.tsx": {
-    "mtime": 1780427564.9371989,
-    "hash": "5df2b71978759886181f381029c87640"
+    "mtime": 1780645417.6169412,
+    "hash": "b0604dce2f593478fade99542d10b44b"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\App1.tsx": {
     "mtime": 1777116556.226019,
     "hash": "c5e44a49ac2a44373fba5d1a7fe35be4"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\EvaluationDashboard.tsx": {
-    "mtime": 1780493321.4835281,
-    "hash": "b8f2e11de1adf4f85e38efa54ecec803"
+    "mtime": 1780642456.3301678,
+    "hash": "64f88ef0947d6c650675e516ab558f22"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\main.tsx": {
     "mtime": 1777969345.228021,
@@ -384,8 +384,8 @@
     "hash": "287d8a46288b2b9bbe31d5873e3a4cae"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\ActionableFixes.tsx": {
-    "mtime": 1780163774.847589,
-    "hash": "42dd9c7ea65fc2f1140582095ea611e6"
+    "mtime": 1780642815.96238,
+    "hash": "d97342fd316eb69b1c71e3afb6110398"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\CareerPathPanel.tsx": {
     "mtime": 1779304111.896737,
@@ -412,12 +412,12 @@
     "hash": "88242d1429b77ce8a902900b72ea81b8"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\GapCloser.tsx": {
-    "mtime": 1779285524.9207184,
-    "hash": "2c7fc1761c5b2e5e9043c6c008b32785"
+    "mtime": 1780668319.7720015,
+    "hash": "d2780827da676710dc457dc0be5451b6"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\LandingPage.tsx": {
-    "mtime": 1780427801.2052798,
-    "hash": "1e3fced51e236b4a29473c47c5f65e55"
+    "mtime": 1780667319.8465252,
+    "hash": "15edc18ea2f3a482c11253c80b2eb59e"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\MockInterview.tsx": {
     "mtime": 1780046576.1331384,
@@ -440,8 +440,8 @@
     "hash": "dd06f2eda40cc8d2b6b03bf35a1f9f47"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\RecruiterSimulation.tsx": {
-    "mtime": 1779951486.0245206,
-    "hash": "e01fad08ec57096d8fa610af74cf2b27"
+    "mtime": 1780642799.6152236,
+    "hash": "8b96afc971a2a2b4596d877b3f9eaa76"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\ResumeUpload.tsx": {
     "mtime": 1778241349.948106,
@@ -472,36 +472,36 @@
     "hash": "cbdbbee170356cdcb1895743081ab387"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\cards\\EvidenceCoachingCard.tsx": {
-    "mtime": 1780286758.6650717,
-    "hash": "4608fa93100c853569341dd081da8231"
+    "mtime": 1780576149.6505492,
+    "hash": "f3640c2ec3d89c63ed678a1a45efe067"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\cards\\StructuralPatchCard.tsx": {
-    "mtime": 1779646052.7241855,
-    "hash": "532a6d2359865bd2a4cc884364706259"
+    "mtime": 1780668537.9375615,
+    "hash": "4e50e91d8f13f7e61398ef82e7ea1450"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\cards\\SurfacePatchCard.tsx": {
-    "mtime": 1779526000.3859138,
-    "hash": "54947ba49f4f91127d7d28355cc5030b"
+    "mtime": 1780668537.9375615,
+    "hash": "4ae9aa2414e9cea9089dd087bbed10ba"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\layout\\TabNav.tsx": {
     "mtime": 1780392638.1858208,
     "hash": "b1699a17c6c5df0bb253e29691a9fc67"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\layout\\TopBar.tsx": {
-    "mtime": 1780388810.0595384,
-    "hash": "128ffaadcff42e52f9c04e3b66ee93c9"
+    "mtime": 1780645498.6151152,
+    "hash": "daaeb4bea4363b4c002030c1817d20a8"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\upload\\AnalysisProgress.tsx": {
-    "mtime": 1780495605.1899545,
-    "hash": "c7786d583daa82bafe3ff28afe6e48f2"
+    "mtime": 1780645468.539012,
+    "hash": "99ffa7a969209e6d3edd7bdc7266e97c"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\upload\\CareerPositioning.tsx": {
     "mtime": 1777619859.6606286,
     "hash": "db78a543b459903920501cad584bfcae"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\upload\\UploadZone.tsx": {
-    "mtime": 1780465993.870177,
-    "hash": "f18ddf1c6c31a3c78f93df6e725f2d90"
+    "mtime": 1780645434.8873003,
+    "hash": "ae8bc2e075517aed36e9113349cbc048"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\components\\upload\\VerdictBanner.tsx": {
     "mtime": 1777619838.0056922,
@@ -552,8 +552,8 @@
     "hash": "45063fc4e94cc12ae9f67262d54f6b44"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\mocks\\mockData.ts": {
-    "mtime": 1780425763.0962684,
-    "hash": "2e41a715b3918d81caa19043edea7fc7"
+    "mtime": 1780499995.9442484,
+    "hash": "f6742449e2e0387f99c76138d7a6aea2"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\mocks\\mockInterviewData.ts": {
     "mtime": 1780030900.2951396,
@@ -568,8 +568,8 @@
     "hash": "282ba60d003febe1cef12d318d702667"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\types\\index.ts": {
-    "mtime": 1780495605.192955,
-    "hash": "31e69daf07585bed58a96ce36fd4c4cc"
+    "mtime": 1780668533.0309868,
+    "hash": "0ff041b88e10382518c7fc7e7ac05976"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\utils\\actionableFixes.ts": {
     "mtime": 1779704283.481431,
@@ -592,20 +592,20 @@
     "hash": "fbca568a0aa8480fa7d9206071730588"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\utils\\fixesCardLogic.test.ts": {
-    "mtime": 1780242839.2017918,
-    "hash": "efb2b43cb03ff4651f315fc294ff83a0"
+    "mtime": 1780667678.8171678,
+    "hash": "cc896119c72ecdc171e8e74825046d42"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\utils\\fixesCardLogic.ts": {
-    "mtime": 1780242821.8387656,
-    "hash": "f5c34c9c1565aa3a5fbdfc99e055c3ed"
+    "mtime": 1780668544.9378395,
+    "hash": "ed33a6c5fa575f734d2b0ffc0d789275"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\utils\\fixesPipeline.test.ts": {
-    "mtime": 1780286840.6344073,
-    "hash": "a5ea06511b43b8f12811ed5ebc6f41d3"
+    "mtime": 1780668548.0336154,
+    "hash": "52920bd3e88ff0d2675b230dbac3e1c6"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\utils\\fixesPipeline.ts": {
-    "mtime": 1780425663.1684616,
-    "hash": "f989325c863ba50787b648bd75c0c626"
+    "mtime": 1780668536.139059,
+    "hash": "606c5cbe765ed59bf127411e17e7de8f"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\frontend\\src\\utils\\hasJobDescription.ts": {
     "mtime": 1779205096.8754363,
@@ -891,6 +891,10 @@
     "mtime": 1780368089.861432,
     "hash": "4f85d2dca2a454604ebddd6af5182edf"
   },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\1e7bbef9.txt": {
+    "mtime": 1780663139.164351,
+    "hash": "4399f7d4fc80ccc120355c56da29860f"
+  },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\2164b794.txt": {
     "mtime": 1780081057.4731696,
     "hash": "d920f1f980c8055a51f405f34e0db687"
@@ -927,6 +931,10 @@
     "mtime": 1780080623.8970988,
     "hash": "aa1922752db75a0be188c79d1415bab4"
   },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\3395524d.txt": {
+    "mtime": 1780644095.227485,
+    "hash": "8e92c2d1f157da1f831d2afb794b133a"
+  },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\3429300d.txt": {
     "mtime": 1780368100.643575,
     "hash": "ab40d09668553c0e3b28836768ca76dd"
@@ -946,6 +954,10 @@
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\4acd0333.txt": {
     "mtime": 1780405543.6524925,
     "hash": "0499edfb7e5e1e2571c1f1ab47ceab41"
+  },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\4c92ab7b.txt": {
+    "mtime": 1780498245.400319,
+    "hash": "7d861e19398ae452074490d9a833e823"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\4d8feed0.txt": {
     "mtime": 1780080209.6837716,
@@ -974,6 +986,10 @@
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\63cdf5e1.txt": {
     "mtime": 1780163664.4604037,
     "hash": "a90601ad2b184018b8d3fcfac3eafbaf"
+  },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\68f88fdd.txt": {
+    "mtime": 1780501429.2118545,
+    "hash": "ee1d90ed44f9fc5772ed3bfc20031514"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\74ff7e4a.txt": {
     "mtime": 1780371296.6705785,
@@ -1031,6 +1047,10 @@
     "mtime": 1780382309.1100168,
     "hash": "7f5e3e7d59f04c69d0a40e04932b8eb0"
   },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\8f1d6756.txt": {
+    "mtime": 1780667217.769653,
+    "hash": "be4d3c17e348602847903159c2ab93fb"
+  },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\908657e9.txt": {
     "mtime": 1780078726.8116238,
     "hash": "0d0578a18ecc565d61879a30e8479ef6"
@@ -1078,6 +1098,10 @@
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\a32a8785.txt": {
     "mtime": 1780038935.0591671,
     "hash": "ef994f90e3eb35119ceb4cb0248aabf0"
+  },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\a4d27860.txt": {
+    "mtime": 1780500503.8227668,
+    "hash": "06206ce93060cf1a275b08e06875bfbd"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\a6b10a88.txt": {
     "mtime": 1780382768.8311825,
@@ -1191,13 +1215,17 @@
     "mtime": 1780043000.1305394,
     "hash": "2196f34862c4f9b635d32e7a0f7d53b7"
   },
+  "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\fdcd4db3.txt": {
+    "mtime": 1780667856.8794825,
+    "hash": "a0d828b544359edd73b4ecc98ceea06c"
+  },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\fe8d9839.txt": {
     "mtime": 1780382326.7251728,
     "hash": "e146f6c92bef4350f54435ed4b77d538"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\logs\\llm_traces\\latest.txt": {
-    "mtime": 1780496164.0313716,
-    "hash": "f78f19e24f1499971c645d5864516d82"
+    "mtime": 1780667856.8848453,
+    "hash": "a0d828b544359edd73b4ecc98ceea06c"
   },
   "C:\\Users\\mathu\\projects\\Github\\Career_Platform\\tempjsons\\README.md": {
     "mtime": 1779272727.4957902,

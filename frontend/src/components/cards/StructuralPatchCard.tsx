@@ -26,10 +26,13 @@ export default function StructuralPatchCard({
   handlers,
 }: StructuralPatchCardProps) {
   const state = handlers.applyState[fixKey] ?? "idle";
+  const patchDiff = handlers.getPatchDiff(fix);
   const before = handlers.getBeforeText(fix);
   const after = handlers.getAfterText(fix);
-  const hasPatch = after.trim().length > 0 && after !== before;
+  const hasPatchDiff = Boolean(patchDiff?.original.trim() && patchDiff?.replacement.trim());
+  const hasPatch = hasPatchDiff || (after.trim().length > 0 && after !== before);
   const changedSentence = diffSentences(before, after);
+  const whyText = fix.fix_rationale?.trim();
   const pts = handlers.scoreDelta(fix);
   const loading = state === "loading";
   const isConfirmed = state === "applied";
@@ -89,7 +92,7 @@ export default function StructuralPatchCard({
               lineHeight: 1.55,
             }}
           >
-            {changedSentence.before}
+            {hasPatchDiff ? patchDiff!.original : changedSentence.before}
           </div>
           <div
             style={{
@@ -99,8 +102,21 @@ export default function StructuralPatchCard({
               lineHeight: 1.55,
             }}
           >
-            {changedSentence.after}
+            {hasPatchDiff ? patchDiff!.replacement : changedSentence.after}
           </div>
+          {whyText ? (
+            <div
+              style={{
+                fontSize: "12px",
+                color: "#6b7280",
+                fontStyle: "italic",
+                lineHeight: 1.55,
+                marginTop: "4px",
+              }}
+            >
+              Why: {whyText}
+            </div>
+          ) : null}
         </div>
       ) : (
         <div

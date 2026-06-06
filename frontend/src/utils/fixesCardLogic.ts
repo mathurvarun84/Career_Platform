@@ -30,6 +30,24 @@ export function extractCompanyTokenFromLabel(label: string): string {
     : lower.split("—")[0].trim();
 }
 
+/** Non-company leading tokens in gap_reason / patch issue_detected text. */
+const GENERIC_GAP_REASON_TOKENS = new Set([
+  "add",
+  "ensure",
+  "entry",
+  "highlight",
+  "include",
+  "lacks",
+  "missing",
+  "no",
+  "original",
+  "quantify",
+  "review",
+  "section",
+  "the",
+  "weak",
+]);
+
 /** Leading company name in A3-style gap_reason ("Flipkart EM bullets …"). */
 export function companyTokenFromGapReason(gapReason: string): string {
   const head = gapReason.split("→")[0]?.trim() ?? "";
@@ -40,10 +58,15 @@ export function companyTokenFromGapReason(gapReason: string): string {
     /^([A-Z][a-zA-Z0-9]+)\s+(?:EM|Senior|Lead|Engineer|Consultant|Director|Manager|bullets|role)\b/i
   );
   if (roleLead) {
-    return roleLead[1].toLowerCase();
+    const token = roleLead[1].toLowerCase();
+    return GENERIC_GAP_REASON_TOKENS.has(token) ? "" : token;
   }
   const firstWord = head.match(/^([A-Z][a-zA-Z0-9]{2,})/);
-  return firstWord ? firstWord[1].toLowerCase() : "";
+  if (!firstWord) {
+    return "";
+  }
+  const token = firstWord[1].toLowerCase();
+  return GENERIC_GAP_REASON_TOKENS.has(token) ? "" : token;
 }
 
 /** Company scope for a fix card from entry_id slug or sub_label. */
@@ -156,13 +179,25 @@ const mergePriorityFix = (existing: PriorityFix, incoming: PriorityFix): Priorit
   const existingType = existing.gap_type ?? "structural";
   const incomingType = incoming.gap_type ?? "structural";
   const preferIncoming = typeOrder[incomingType] < typeOrder[existingType];
-  return {
+  const patchDerived = [existing, incoming].find((fix) => fix.fix_rationale?.trim());
+  const merged: PriorityFix = {
     ...existing,
     ...(preferIncoming ? incoming : {}),
     gap_reason: existing.gap_reason,
     missing_keywords: mergedKeywords,
     auto_apply: preferIncoming ? incoming.auto_apply : existing.auto_apply,
+    fix_rationale: existing.fix_rationale ?? incoming.fix_rationale,
   };
+  if (patchDerived) {
+    return {
+      ...merged,
+      gap_type: patchDerived.gap_type ?? "structural",
+      requires_user_input: false,
+      rewrite_instruction:
+        patchDerived.rewrite_instruction?.trim() || merged.rewrite_instruction,
+    };
+  }
+  return merged;
 };
 
 export function mergeFixLists(

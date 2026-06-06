@@ -14,6 +14,7 @@ export default function SurfacePatchCard({
 }: SurfacePatchCardProps) {
   const diff = handlers.getPatchDiff(fix);
   const state = handlers.applyState[fixKey] ?? "idle";
+  const whyText = fix.fix_rationale?.trim();
   const pts = handlers.scoreDelta(fix);
   const isConfirmed = state === "applied";
   const isLoading = state === "loading";
@@ -65,6 +66,19 @@ export default function SurfacePatchCard({
               fix.gap_reason
             )}
           </div>
+          {whyText ? (
+            <div
+              style={{
+                fontSize: "12px",
+                color: "#6b7280",
+                fontStyle: "italic",
+                marginTop: "6px",
+                lineHeight: 1.5,
+              }}
+            >
+              Why: {whyText}
+            </div>
+          ) : null}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
           <div

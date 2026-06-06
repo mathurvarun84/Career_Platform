@@ -139,6 +139,8 @@ export interface PriorityFix {
   sub_label?: string | null;
   entry_id?: string | null;
   suggested_text?: string;
+  /** From ResumePatch.fix_rationale when fix is patch-derived. */
+  fix_rationale?: string;
 }
 
 export interface CoachingAnswer {

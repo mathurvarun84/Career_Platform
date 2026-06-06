@@ -34,6 +34,22 @@ assert.equal(
   "flipkart"
 );
 assert.equal(
+  companyTokenFromGapReason(
+    "Original lacks quantified cost savings in rupees and user scale metrics"
+  ),
+  ""
+);
+assert.equal(
+  gapReasonMatchesFixScope({
+    gap_reason:
+      "Original lacks quantified cost/revenue impact and uses passive 'led' instead of active 'architected'.",
+    entry_id: "engineering_manager_apttus",
+    sub_label:
+      "Engineering Manager | Apttus (via Altran — Consulting Engagement) — Bengaluru, KA",
+  }),
+  true
+);
+assert.equal(
   gapReasonMatchesFixScope({
     gap_reason: "Flipkart EM bullets 3-5 lack explicit team scope details",
     sub_label: "Engineering Manager | Apttus — Bengaluru",

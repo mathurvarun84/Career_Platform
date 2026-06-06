@@ -95,11 +95,20 @@ const NavBar = ({
   const { isMobile } = useWindowSize();
   const [hoveredLink, setHoveredLink] = React.useState<string | null>(null);
 
-  const navLinks = [
-    "Features",
-    "How It Works",
-    "Success Stories",
+  const navLinks: Array<{ label: string; sectionId: string }> = [
+    { label: "Features", sectionId: "features" },
+    { label: "How It Works", sectionId: "how-it-works" },
+    { label: "Success Stories", sectionId: "success-stories" },
   ];
+
+  const scrollToSection = (sectionId: string): void => {
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+    const navHeight = parseInt(T.topBarHeight, 10);
+    const top =
+      section.getBoundingClientRect().top + window.scrollY - navHeight;
+    window.scrollTo({ top, behavior: "smooth" });
+  };
 
   return (
     <nav
@@ -173,25 +182,27 @@ const NavBar = ({
 
         {/* Center Nav Links — hidden on mobile */}
         <div style={{ display: isMobile ? "none" : "flex", gap: 28 }}>
-          {navLinks.map((link) => (
+          {navLinks.map(({ label, sectionId }) => (
             <button
-              key={link}
-              onMouseEnter={() => setHoveredLink(link)}
+              key={sectionId}
+              type="button"
+              onClick={() => scrollToSection(sectionId)}
+              onMouseEnter={() => setHoveredLink(label)}
               onMouseLeave={() => setHoveredLink(null)}
               style={{
                 fontSize: 13,
                 fontWeight: 500,
-                color: hoveredLink === link ? T.primary : T.textSecondary,
+                color: hoveredLink === label ? T.primary : T.textSecondary,
                 background: "transparent",
                 border: "none",
                 cursor: "pointer",
-                textDecoration: hoveredLink === link ? "underline" : "none",
-                textDecorationColor: hoveredLink === link ? T.primary : undefined,
+                textDecoration: hoveredLink === label ? "underline" : "none",
+                textDecorationColor: hoveredLink === label ? T.primary : undefined,
                 transition: "color 0.2s ease",
               }}
-              aria-label={`Navigate to ${link}`}
+              aria-label={`Navigate to ${label}`}
             >
-              {link}
+              {label}
             </button>
           ))}
         </div>
@@ -808,7 +819,13 @@ const CompanyLogos = () => {
 const SuccessStories = () => {
   const { isMobile, isTablet } = useWindowSize();
   return (
-    <section style={{ padding: isMobile ? "40px 20px" : "60px 40px" }}>
+    <section
+      id="success-stories"
+      style={{
+        padding: isMobile ? "40px 20px" : "60px 40px",
+        scrollMarginTop: T.topBarHeight,
+      }}
+    >
       {/* Section Header */}
       <div style={{ textAlign: "center", marginBottom: 48 }}>
         <div
@@ -979,7 +996,15 @@ const CompanyLogo = ({ name }: { name: string }) => (
 const Features = () => {
   const { isMobile, isTablet } = useWindowSize();
   return (
-    <section style={{ padding: isMobile ? "48px 20px" : "80px 40px", maxWidth: "1200px", margin: "0 auto" }}>
+    <section
+      id="features"
+      style={{
+        padding: isMobile ? "48px 20px" : "80px 40px",
+        maxWidth: "1200px",
+        margin: "0 auto",
+        scrollMarginTop: T.topBarHeight,
+      }}
+    >
       {/* Section Header */}
       <div style={{ textAlign: "center", marginBottom: 64 }}>
         <div
@@ -1608,7 +1633,14 @@ const Features = () => {
 const HowItWorks = () => {
   const { isMobile, isTablet } = useWindowSize();
   return (
-    <section style={{ background: T.bgCard, padding: isMobile ? "48px 20px" : "80px 40px" }}>
+    <section
+      id="how-it-works"
+      style={{
+        background: T.bgCard,
+        padding: isMobile ? "48px 20px" : "80px 40px",
+        scrollMarginTop: T.topBarHeight,
+      }}
+    >
       <div style={{ maxWidth: T.maxWidth, margin: "0 auto" }}>
         {/* Section Header */}
         <div style={{ textAlign: "center", marginBottom: 56 }}>

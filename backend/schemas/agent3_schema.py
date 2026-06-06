@@ -47,6 +47,10 @@ class SectionGap(BaseModel):
         default=True,
         description="True if section exists — set to True when sectioner provides it"
     )
+    section_gap_id: str = Field(
+        default="",
+        description="Stable identifier for Gap/Fixes tab correlation — format: section|index"
+    )
     sub_changes: List[SubLocationChange] = Field(
         default_factory=list,
         description="Per-entry decomposition for multi-entry sections (experience, education, etc.)"
@@ -78,6 +82,18 @@ class PriorityFix(BaseModel):
     coaching_hint: List[str] = Field(default_factory=list)
     auto_apply: bool = False
     sub_label: str | None = None
+    entry_id: str = Field(
+        default="",
+        description="Canonical entry ID from A1 — empty for section-wide fixes"
+    )
+    entry_id_confidence: str = Field(
+        default="absent",
+        description="One of: 'canonical' (from A1 match), 'absent' (no entry anchor)"
+    )
+    section_gap_id: str = Field(
+        default="",
+        description="Stable identifier for Gap/Fixes tab correlation — format: section|index"
+    )
 
 
 class GapAnalyzerInput(BaseModel):

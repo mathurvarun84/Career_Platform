@@ -1402,6 +1402,7 @@ class Orchestrator:
                 classified_patches = []
 
         final_result = {
+            "api_version": 2,
             "session_id": run_id,
             "ats": ats_result,
             "resume": resume_und,

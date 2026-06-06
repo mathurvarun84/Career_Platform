@@ -53,35 +53,15 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
         [patch.patch_id],
         patch.risk === "needs_confirmation"
       );
-      const outcome = result.results?.find((r) => r.patch_id === patch.patch_id);
-      if (!outcome?.applied || !outcome.found_in_doc) {
-        alert(
-          outcome?.rejection_reason?.trim() ||
-            "Could not apply — text may have changed in the document."
-        );
-        setPatches((prev) =>
-          prev.map((p) =>
-            p.patch_id === patch.patch_id ? { ...p, status: "rejected" } : p
-          )
-        );
-        return;
-      }
       setPatches((prev) =>
         prev.map((p) =>
-          p.patch_id === patch.patch_id
-            ? { ...p, status: "applied" }
-            : p
+          p.patch_id === patch.patch_id ? { ...p, status: "applied" } : p
         )
       );
-      // Display the updated resume text info
-      if (result.resume_text) {
-        console.log("Patch applied. Updated resume text available in session.");
-      }
-      // Show score improvement
       if (result.score) {
         setPatchScores((prev) => ({
           ...prev,
-          [patch.patch_id]: typeof result.score === 'number' ? result.score : result.score.score,
+          [patch.patch_id]: typeof result.score === "number" ? result.score : result.score.score,
         }));
       }
     } catch (error) {
@@ -96,9 +76,7 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
       await rollbackPatch(jobId || analysisResult?.job_id || "", patchId);
       setPatches((prev) =>
         prev.map((p) =>
-          p.patch_id === patchId
-            ? { ...p, status: "rolled_back" }
-            : p
+          p.patch_id === patchId ? { ...p, status: "rolled_back" } : p
         )
       );
       setPatchScores((prev) => {
@@ -423,22 +401,24 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
           </div>
         </div>
 
-
         {patches.length > 0 && (
           <div style={{ marginBottom: "20px" }}>
             <div style={{ fontSize: "15px", fontWeight: 700, color: "#111827", marginBottom: "12px" }}>
               Intelligent Patches
             </div>
-            <div style={{
-              background: "#f0fdf4",
-              border: "1px solid #bbf7d0",
-              borderRadius: "8px",
-              padding: "10px 12px",
-              fontSize: "12px",
-              color: "#166534",
-              marginBottom: "16px"
-            }}>
-              💡 Applied patches will be included in your downloaded resume. Click Apply to activate fixes.
+            <div
+              style={{
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
+                borderRadius: "8px",
+                padding: "10px 12px",
+                fontSize: "12px",
+                color: "#166534",
+                marginBottom: "16px",
+              }}
+            >
+              Applied patches will be included in your downloaded resume. Click Apply to activate fixes.
+              Also available in the Fixes tab while we finish parity there.
             </div>
             {patches.map((patch) => (
               <div
@@ -484,7 +464,7 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
                     }}
                   >
                     {patch.risk === "safe" ? "Safe" : "Needs Review"}
-                    {patch.hallucination_risk && " ⚠️"}
+                    {patch.hallucination_risk ? " ⚠️" : ""}
                   </div>
                 </div>
 
@@ -534,16 +514,11 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
                   Why: {patch.fix_rationale}
                 </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    gap: "8px",
-                    flexWrap: "wrap",
-                  }}
-                >
+                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
                   {patch.status === "pending" && (
                     <>
                       <button
+                        type="button"
                         onClick={() => handleApplyPatch(patch)}
                         disabled={applying === patch.patch_id}
                         style={{
@@ -562,12 +537,11 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
                         {applying === patch.patch_id ? "Applying..." : "Apply"}
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
                           setPatches((prev) =>
                             prev.map((p) =>
-                              p.patch_id === patch.patch_id
-                                ? { ...p, status: "rejected" }
-                                : p
+                              p.patch_id === patch.patch_id ? { ...p, status: "rejected" } : p
                             )
                           );
                         }}
@@ -599,9 +573,9 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
                           fontWeight: 600,
                         }}
                       >
-                        ✓ Applied (verified)
+                        ✓ Applied
                       </div>
-                      {patchScores[patch.patch_id] && (
+                      {patchScores[patch.patch_id] != null && (
                         <div
                           style={{
                             background: "#eef2ff",
@@ -617,6 +591,7 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
                         </div>
                       )}
                       <button
+                        type="button"
                         onClick={() => handleRollback(patch.patch_id)}
                         style={{
                           background: "#fee2e2",
@@ -664,12 +639,11 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
                         ↺ Rolled Back
                       </div>
                       <button
+                        type="button"
                         onClick={() => {
                           setPatches((prev) =>
                             prev.map((p) =>
-                              p.patch_id === patch.patch_id
-                                ? { ...p, status: "pending" }
-                                : p
+                              p.patch_id === patch.patch_id ? { ...p, status: "pending" } : p
                             )
                           );
                         }}
@@ -695,99 +669,107 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
           </div>
         )}
 
-        <div style={{ marginBottom: "20px" }}>
-          {fixes.map((fix, index) => {
-            const impact = index < 2 ? "High" : "Medium";
-            const impactColor = impact === "High"
-              ? { bg: "#fff7ed", border: "#fed7aa", color: "#d97706" }
-              : { bg: "#fefce8", border: "#fde68a", color: "#d97706" };
-
-            return (
-              <div
-                key={`${fix.section}-${index}`}
-                style={{
-                  background: "#ffffff",
-                  border: "1.5px solid #e5e7eb",
-                  borderRadius: "16px",
-                  padding: "20px",
-                  boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
-                  marginBottom: "16px",
-                }}
-              >
+        {fixes.length > 0 && (
+          <div style={{ marginBottom: "20px" }}>
+            <div
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                color: "#6b7280",
+                textTransform: "uppercase" as const,
+                letterSpacing: "0.07em",
+                marginBottom: "14px",
+              }}
+            >
+              {fixes.length} gap{fixes.length !== 1 ? "s" : ""} identified
+            </div>
+            {fixes.map((fix, index) => {
+              const isHighPriority = index < 2;
+              return (
                 <div
+                  key={`gap-${fix.section}-${index}`}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
+                    background: "#ffffff",
+                    border: "1.5px solid #e5e7eb",
+                    borderRadius: "16px",
+                    padding: "16px 20px",
                     marginBottom: "10px",
-                    gap: "10px",
-                    flexWrap: "wrap",
+                    boxShadow: "0 2px 0 #e5e7eb, 0 4px 8px rgba(0,0,0,0.03)",
                   }}
                 >
                   <div
                     style={{
-                      background: "#eef2ff",
-                      border: "1px solid #c7d2fe",
-                      color: "#4f46e5",
-                      borderRadius: "999px",
-                      padding: "3px 10px",
-                      fontSize: "11px",
-                      fontWeight: 700,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      marginBottom: "8px",
                     }}
                   >
-                    {toTitle(fix.section)}
-                  </div>
-                  <div
-                    style={{
-                      background: impactColor.bg,
-                      border: `1px solid ${impactColor.border}`,
-                      color: impactColor.color,
-                      borderRadius: "999px",
-                      padding: "3px 10px",
-                      fontSize: "11px",
-                      fontWeight: 700,
-                    }}
-                  >
-                    {impact} Impact
-                  </div>
-                </div>
-                <div
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 700,
-                    color: "#111827",
-                    marginBottom: "8px",
-                  }}
-                >
-                  {fix.gap_reason}
-                </div>
-                <div style={{ fontSize: "13px", color: "#4b5563", lineHeight: 1.6 }}>
-                  {fix.rewrite_instruction}
-                </div>
-                {fix.missing_keywords.length > 0 && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "12px" }}>
-                    {fix.missing_keywords.map((keyword) => (
+                    <div
+                      style={{
+                        background: "#eef2ff",
+                        border: "1px solid #c7d2fe",
+                        color: "#4f46e5",
+                        borderRadius: "999px",
+                        padding: "2px 9px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {toTitle(fix.section)}
+                    </div>
+                    {isHighPriority && (
                       <div
-                        key={`${fix.section}-${keyword}`}
                         style={{
-                          background: "#fef2f2",
-                          border: "1px solid #fecaca",
-                          color: "#dc2626",
+                          background: "#fff7ed",
+                          border: "1px solid #fed7aa",
+                          color: "#c2410c",
                           borderRadius: "999px",
-                          padding: "3px 10px",
+                          padding: "2px 9px",
                           fontSize: "11px",
-                          fontWeight: 600,
+                          fontWeight: 700,
                         }}
                       >
-                        {keyword}
+                        High priority
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                  <div
+                    style={{
+                      fontSize: "14px",
+                      fontWeight: 600,
+                      color: "#111827",
+                      lineHeight: 1.5,
+                      marginBottom: fix.missing_keywords?.length > 0 ? "10px" : 0,
+                    }}
+                  >
+                    {fix.gap_reason}
+                  </div>
+                  {fix.missing_keywords?.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                      {fix.missing_keywords.map((kw) => (
+                        <div
+                          key={kw}
+                          style={{
+                            background: "#fef2f2",
+                            border: "1px solid #fecaca",
+                            color: "#dc2626",
+                            borderRadius: "999px",
+                            padding: "2px 9px",
+                            fontSize: "11px",
+                            fontWeight: 600,
+                          }}
+                        >
+                          {kw}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
 
         <div
           style={{
