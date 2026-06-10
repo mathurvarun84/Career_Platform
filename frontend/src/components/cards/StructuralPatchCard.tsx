@@ -30,7 +30,8 @@ export default function StructuralPatchCard({
   const before = handlers.getBeforeText(fix);
   const after = handlers.getAfterText(fix);
   const hasPatchDiff = Boolean(patchDiff?.original.trim() && patchDiff?.replacement.trim());
-  const hasPatch = hasPatchDiff || (after.trim().length > 0 && after !== before);
+  const hasOriginalText = Boolean(fix.original_text?.trim());
+  const hasPatch = hasPatchDiff || (hasOriginalText && after.trim().length > 0 && after !== before);
   const changedSentence = diffSentences(before, after);
   const whyText = fix.fix_rationale?.trim();
   const pts = handlers.scoreDelta(fix);

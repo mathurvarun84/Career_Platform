@@ -684,6 +684,26 @@ export function countActionableFixes(
   analysisResult: AnalysisResult | null,
   options: { suppressedEvidenceGaps?: boolean } = {}
 ): number {
+  if (!analysisResult) return 0;
+
+  // New session with fix_plan: count directly from it
+  const fixPlan = analysisResult.fix_plan;
+  const hasFixPlan = Array.isArray(fixPlan) && fixPlan.length > 0;
+  const isNewSession = (analysisResult.api_version ?? 1) >= 2;
+
+  if (hasFixPlan && isNewSession && fixPlan) {
+    return fixPlan
+      .filter((item) => item.kind !== "info_only")
+      .filter((item) => !options.suppressedEvidenceGaps || item.kind !== "coaching")
+      .length;
+  }
+
+  if (isNewSession && !hasFixPlan) {
+    // New session but empty plan — respect it
+    return 0;
+  }
+
+  // Old session shape — use legacy pipeline
   return buildActionableFixesList(analysisResult, options).length;
 }
 

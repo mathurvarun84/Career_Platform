@@ -21,16 +21,16 @@ import {
   structuralCardHasNoData,
 } from "../utils/fixesCardLogic";
 import {
-  buildActionableFixesList,
   deriveInfoOnlyScopeLabel,
   fixLocationKey,
-  getAfterTextForFix,
-  getBeforeTextForFix,
   inferSectionKey,
   parseInfoOnlyCardParts,
   partitionFixesByCoachingCap,
-  resolvePatchForFix,
 } from "../utils/fixesPipeline";
+import {
+  buildFixesFromPlan,
+  resolvePatchFromPlan,
+} from "../utils/fixPlanAdapter";
 import { isEvidenceGap } from "../utils/roleFitEvidence";
 import type {
   CareerMemoryEntry,
@@ -139,9 +139,29 @@ function renderCard(
   onMemoryCreated: () => void
 ): ReactElement | null {
   const gapType = fix.gap_type ?? "structural";
+
+  // Evidence/coaching items must be checked FIRST — before surface and structural branches.
+  // fix_plan items with gap_type=evidence may also have rewrite_instruction set (A3 always
+  // emits one), which would cause structuralCardHasNoData to return false and route them
+  // to StructuralPatchCard where getPatchDiff falls back to the keyword diff.
+  // requires_user_input=true items (regardless of gap_type) also belong here.
+  if (gapType === "evidence" || fix.requires_user_input) {
+    return (
+      <EvidenceCoachingCard
+        key={fixKey}
+        fix={fix}
+        fixKey={fixKey}
+        sessionId={sessionId}
+        onDone={onCoachingDone}
+        onMemoryCreated={onMemoryCreated}
+      />
+    );
+  }
+
   if (gapType === "surface") {
     return <SurfacePatchCard key={fixKey} fix={fix} fixKey={fixKey} handlers={handlers} />;
   }
+
   if (gapType === "structural") {
     const afterText = handlers.getAfterText(fix);
     const patchDiff = handlers.getPatchDiff(fix);
@@ -167,18 +187,7 @@ function renderCard(
       <StructuralPatchCard key={fixKey} fix={fix} fixKey={fixKey} handlers={handlers} />
     );
   }
-  if (gapType === "evidence") {
-    return (
-      <EvidenceCoachingCard
-        key={fixKey}
-        fix={fix}
-        fixKey={fixKey}
-        sessionId={sessionId}
-        onDone={onCoachingDone}
-        onMemoryCreated={onMemoryCreated}
-      />
-    );
-  }
+
   return null;
 }
 
@@ -237,10 +246,7 @@ export default function ActionableFixes({
     applyAnywayAccepted && analysisResult?.role_fit?.fitness === "underqualified";
 
   const fixes = useMemo(
-    () =>
-      buildActionableFixesList(analysisResult, {
-        suppressedEvidenceGaps,
-      }),
+    () => buildFixesFromPlan(analysisResult, { suppressEvidenceGaps: suppressedEvidenceGaps }),
     [analysisResult, suppressedEvidenceGaps]
   );
 
@@ -248,7 +254,7 @@ export default function ActionableFixes({
 
   const getSectionKey = (fix: PriorityFix) => inferSectionKey(fix.section);
   const getPatchForFix = useCallback(
-    (fix: PriorityFix) => resolvePatchForFix(fix, patches, getSectionKey(fix)),
+    (fix: PriorityFix) => resolvePatchFromPlan(fix, patches),
     [patches]
   );
   const getDisplaySection = (fix: PriorityFix) => toTitleCase(inferSectionKey(fix.section));
@@ -256,23 +262,15 @@ export default function ActionableFixes({
     `${getDisplaySection(fix)}-${fix.entry_id ?? fix.sub_label ?? "main"}-${index}`;
 
   const getBeforeText = useCallback(
-    (fix: PriorityFix): string => {
-      if (!analysisResult) {
-        return "[Original text from your resume]";
-      }
-      return getBeforeTextForFix(analysisResult, fix);
-    },
-    [analysisResult]
+    (fix: PriorityFix): string =>
+      (fix.original_text || "").trim() || "[Original text from your resume]",
+    []
   );
 
   const getAfterText = useCallback(
-    (fix: PriorityFix): string => {
-      if (!analysisResult) {
-        return "";
-      }
-      return getAfterTextForFix(analysisResult, fix, getPatchForFix(fix));
-    },
-    [analysisResult, getPatchForFix]
+    (fix: PriorityFix): string =>
+      (fix.rewrite_instruction || "").trim(),
+    []
   );
 
   const getPatchDiff = useCallback(
@@ -300,12 +298,18 @@ export default function ActionableFixes({
         return { original, replacement };
         }
       }
+      // fix_plan rewrite_block items have before/after text but no patch_id.
+      // Return the full diff so StructuralPatchCard shows the real before/after
+      // text instead of falling through to the keyword one-liner fallback.
+      const before = (fix.original_text || "").trim();
+      const after = (fix.rewrite_instruction || "").trim();
+      if (before && after && after !== before && !isNoChangeReplacement(after)) {
+        return { original: before, replacement: after };
+      }
       const kw = fix.missing_keywords[0];
       if (kw) {
-        return {
-          original: `Missing ${kw}`,
-          replacement: `Added ${kw}`,
-        };
+        console.warn("[ActionableFixes] getPatchDiff: falling back to keyword diff for", fix.sub_label ?? fix.section);
+        return { original: `Missing: ${kw}`, replacement: `Add: ${kw}` };
       }
       return null;
     },

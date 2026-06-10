@@ -22,8 +22,12 @@ import { useResumeStore } from "./store/useResumeStore";
 import { T } from "./tokens";
 import type { AnalysisResult } from "./types";
 import { hydrateWithFallback } from "./utils/analysisFallback";
+import PipelineInspectorPage from "./pages/PipelineInspectorPage";
 
 const queryClient = new QueryClient();
+
+const isDevPipelineInspector =
+  import.meta.env.DEV && window.location.pathname === "/debug/pipeline";
 
 function AppShell() {
   const setSession = useAuthStore((state) => state.setSession);
@@ -352,6 +356,10 @@ function AppShell() {
 }
 
 export default function App() {
+  if (isDevPipelineInspector) {
+    return <PipelineInspectorPage />;
+  }
+
   return (
     <QueryClientProvider client={queryClient}>
       <AppShell />

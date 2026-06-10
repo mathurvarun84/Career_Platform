@@ -123,6 +123,30 @@ export interface ResumeUnderstanding {
   improvement_areas?: string[];
 }
 
+export interface FixPlanItem {
+  fix_id: string;
+  kind: "coaching" | "surgical_patch" | "surface_keyword" | "rewrite_block" | "info_only";
+  section: string;
+  entry_id?: string | null;
+  entry_id_confidence?: "none" | "derived" | "canonical";
+  sub_label?: string | null;
+  section_gap_id?: string | null;
+  issue: string;
+  missing_keywords: string[];
+  patch_id?: string | null;
+  before_text?: string | null;
+  after_text?: string | null;
+  why?: string | null;
+  coaching_question?: string | null;
+  coaching_hints: string[];
+  resume_grounded_hints: string[];
+  requires_user_input: boolean;
+  gap_type: GapType;
+  risk: "safe" | "needs_confirmation";
+  auto_apply: boolean;
+  status: "pending" | "applied" | "rejected";
+}
+
 export interface PriorityFix {
   section: string;
   gap_reason: string;
@@ -139,8 +163,14 @@ export interface PriorityFix {
   sub_label?: string | null;
   entry_id?: string | null;
   suggested_text?: string;
+  original_text?: string;
+  patch_text?: string;
   /** From ResumePatch.fix_rationale when fix is patch-derived. */
   fix_rationale?: string;
+  /** Internal: opaque fix_plan fix_id. Set only by fixPlanAdapter. */
+  _fix_plan_id?: string;
+  /** Internal: pre-resolved patch_id from fix_plan. Set only by fixPlanAdapter. */
+  _patch_id?: string;
 }
 
 export interface CoachingAnswer {
@@ -281,6 +311,8 @@ export interface JDIntelligence {
 
 export interface AnalysisResult {
   job_id: string;
+  /** API version for feature detection (1 = legacy, 2 = with fix_plan). */
+  api_version?: number;
   /** FastAPI job id — same value used for coaching session_id after analyze completes. */
   session_id?: string;
   /** Corpus spine ids — returned after analysis completes. */
@@ -298,6 +330,7 @@ export interface AnalysisResult {
   validation: ValidationSummary | null;
   jd_intelligence?: JDIntelligence | null;
   role_fit?: RoleFit | null;
+  fix_plan?: FixPlanItem[];
 }
 
 export interface SSEProgressEvent {

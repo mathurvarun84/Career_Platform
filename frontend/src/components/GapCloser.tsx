@@ -1,10 +1,7 @@
-import { useState } from "react";
-
-import { applyPatches, rollbackPatch } from "../api/client";
 import { useWindowSize } from "../hooks/useWindowSize";
 import { cardPadding, pageContainerStyle } from "../utils/pageLayout";
 import { useResumeStore } from "../store/useResumeStore";
-import type { PriorityFix, ResumePatch, TabId } from "../types";
+import type { PriorityFix, TabId } from "../types";
 import DataSourceNotice from "./DataSourceNotice";
 
 const toTitle = (value: string): string =>
@@ -28,66 +25,13 @@ const normalizeFixes = (priorityFixes: PriorityFix[] | string[]): PriorityFix[] 
   );
 
 interface GapCloserProps {
-  onTabChange: (tab: TabId) => void;
+  onTabChange: (tab: TabId, deepLink?: string) => void;
 }
 
 export default function GapCloser({ onTabChange }: GapCloserProps) {
   const analysisResult = useResumeStore((s) => s.analysisResult);
-  const jobId = useResumeStore((s) => s.jobId);
   const resetAnalysis = useResumeStore((s) => s.resetAnalysis);
-  const [patches, setPatches] = useState<ResumePatch[]>(analysisResult?.patches || []);
-  const [applying, setApplying] = useState<string | null>(null);
-  const [patchScores, setPatchScores] = useState<Record<string, number | null>>({});
   const { isMobile } = useWindowSize();
-
-  const handleApplyPatch = async (patch: ResumePatch) => {
-    if (patch.risk === "needs_confirmation") {
-      if (!confirm(`This patch may have been invented by AI.\n\n${patch.issue_detected}\n\nConfirm?`)) {
-        return;
-      }
-    }
-    setApplying(patch.patch_id);
-    try {
-      const result = await applyPatches(
-        jobId || analysisResult?.job_id || "",
-        [patch.patch_id],
-        patch.risk === "needs_confirmation"
-      );
-      setPatches((prev) =>
-        prev.map((p) =>
-          p.patch_id === patch.patch_id ? { ...p, status: "applied" } : p
-        )
-      );
-      if (result.score) {
-        setPatchScores((prev) => ({
-          ...prev,
-          [patch.patch_id]: typeof result.score === "number" ? result.score : result.score.score,
-        }));
-      }
-    } catch (error) {
-      alert(`Error applying patch: ${error}`);
-    } finally {
-      setApplying(null);
-    }
-  };
-
-  const handleRollback = async (patchId: string) => {
-    try {
-      await rollbackPatch(jobId || analysisResult?.job_id || "", patchId);
-      setPatches((prev) =>
-        prev.map((p) =>
-          p.patch_id === patchId ? { ...p, status: "rolled_back" } : p
-        )
-      );
-      setPatchScores((prev) => {
-        const newScores = { ...prev };
-        delete newScores[patchId];
-        return newScores;
-      });
-    } catch (error) {
-      alert(`Error rolling back patch: ${error}`);
-    }
-  };
 
   if (!analysisResult) {
     return null;
@@ -152,7 +96,7 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
               onClick={() => resetAnalysis()}
               style={{
                 marginTop: "20px",
-                background: "#6366f1",
+                background: "#5b5fc7",
                 color: "#ffffff",
                 border: "none",
                 borderRadius: "10px",
@@ -160,7 +104,7 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
                 fontSize: "13px",
                 fontWeight: 700,
                 cursor: "pointer",
-                boxShadow: "0 3px 0 #4338ca, 0 5px 12px rgba(99,102,241,0.25)",
+                boxShadow: "0 3px 0 #3a3d9a, 0 5px 12px rgba(91,95,199,0.25)",
               }}
             >
               Re-analyze with JD
@@ -245,7 +189,7 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
               style={{
                 fontSize: "48px",
                 fontWeight: 800,
-                color: "#6366f1",
+                color: "#5b5fc7",
                 lineHeight: 1,
               }}
             >
@@ -264,7 +208,7 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
                 style={{
                   width: `${progressWidth}%`,
                   height: "100%",
-                  background: "linear-gradient(90deg, #6366f1, #7c3aed)",
+                  background: "linear-gradient(90deg, #5b5fc7, #7c3aed)",
                 }}
               />
             </div>
@@ -401,273 +345,6 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
           </div>
         </div>
 
-        {patches.length > 0 && (
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ fontSize: "15px", fontWeight: 700, color: "#111827", marginBottom: "12px" }}>
-              Intelligent Patches
-            </div>
-            <div
-              style={{
-                background: "#f0fdf4",
-                border: "1px solid #bbf7d0",
-                borderRadius: "8px",
-                padding: "10px 12px",
-                fontSize: "12px",
-                color: "#166534",
-                marginBottom: "16px",
-              }}
-            >
-              Applied patches will be included in your downloaded resume. Click Apply to activate fixes.
-              Also available in the Fixes tab while we finish parity there.
-            </div>
-            {patches.map((patch) => (
-              <div
-                key={patch.patch_id}
-                style={{
-                  background: "#ffffff",
-                  border: "1.5px solid #e5e7eb",
-                  borderRadius: "16px",
-                  padding: "16px",
-                  boxShadow: "0 2px 0 #e5e7eb, 0 4px 12px rgba(0,0,0,0.04)",
-                  marginBottom: "12px",
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "flex-start",
-                    justifyContent: "space-between",
-                    marginBottom: "12px",
-                    gap: "12px",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: "13px", fontWeight: 600, color: "#374151", marginBottom: "4px" }}>
-                      {patch.issue_detected}
-                    </div>
-                    <div style={{ fontSize: "12px", color: "#6b7280" }}>
-                      {patch.section} • {patch.op}
-                    </div>
-                  </div>
-                  <div
-                    style={{
-                      background: patch.risk === "safe" ? "#dcfce7" : "#fef3c7",
-                      border: `1px solid ${patch.risk === "safe" ? "#bbf7d0" : "#fcd34d"}`,
-                      color: patch.risk === "safe" ? "#16a34a" : "#d97706",
-                      borderRadius: "6px",
-                      padding: "4px 8px",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {patch.risk === "safe" ? "Safe" : "Needs Review"}
-                    {patch.hallucination_risk ? " ⚠️" : ""}
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: "12px" }}>
-                  <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "4px" }}>
-                    Before (red)
-                  </div>
-                  <div
-                    style={{
-                      background: "#fef2f2",
-                      border: "1px solid #fecaca",
-                      color: "#991b1b",
-                      borderRadius: "6px",
-                      padding: "8px",
-                      fontFamily: "monospace",
-                      fontSize: "12px",
-                      wordBreak: "break-word",
-                      minHeight: "32px",
-                    }}
-                  >
-                    {patch.original_text || "[Empty]"}
-                  </div>
-                </div>
-
-                <div style={{ marginBottom: "12px" }}>
-                  <div style={{ fontSize: "11px", fontWeight: 600, color: "#6b7280", marginBottom: "4px" }}>
-                    After (green)
-                  </div>
-                  <div
-                    style={{
-                      background: "#f0fdf4",
-                      border: "1px solid #bbf7d0",
-                      color: "#166534",
-                      borderRadius: "6px",
-                      padding: "8px",
-                      fontFamily: "monospace",
-                      fontSize: "12px",
-                      wordBreak: "break-word",
-                      minHeight: "32px",
-                    }}
-                  >
-                    {patch.replacement_text}
-                  </div>
-                </div>
-
-                <div style={{ fontSize: "12px", color: "#6b7280", marginBottom: "12px", fontStyle: "italic" }}>
-                  Why: {patch.fix_rationale}
-                </div>
-
-                <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-                  {patch.status === "pending" && (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => handleApplyPatch(patch)}
-                        disabled={applying === patch.patch_id}
-                        style={{
-                          background: "#6366f1",
-                          color: "#ffffff",
-                          border: "none",
-                          borderRadius: "6px",
-                          padding: "8px 12px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          cursor: applying === patch.patch_id ? "not-allowed" : "pointer",
-                          opacity: applying === patch.patch_id ? 0.6 : 1,
-                          boxShadow: "0 2px 0 #4338ca",
-                        }}
-                      >
-                        {applying === patch.patch_id ? "Applying..." : "Apply"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPatches((prev) =>
-                            prev.map((p) =>
-                              p.patch_id === patch.patch_id ? { ...p, status: "rejected" } : p
-                            )
-                          );
-                        }}
-                        style={{
-                          background: "#f3f4f6",
-                          color: "#374151",
-                          border: "1px solid #d1d5db",
-                          borderRadius: "6px",
-                          padding: "8px 12px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Skip
-                      </button>
-                    </>
-                  )}
-                  {patch.status === "applied" && (
-                    <>
-                      <div
-                        style={{
-                          background: "#dcfce7",
-                          border: "1px solid #bbf7d0",
-                          color: "#16a34a",
-                          borderRadius: "6px",
-                          padding: "8px 12px",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                        }}
-                      >
-                        ✓ Applied
-                      </div>
-                      {patchScores[patch.patch_id] != null && (
-                        <div
-                          style={{
-                            background: "#eef2ff",
-                            border: "1px solid #c7d2fe",
-                            color: "#4f46e5",
-                            borderRadius: "6px",
-                            padding: "8px 12px",
-                            fontSize: "11px",
-                            fontWeight: 600,
-                          }}
-                        >
-                          Score: {patchScores[patch.patch_id]}
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => handleRollback(patch.patch_id)}
-                        style={{
-                          background: "#fee2e2",
-                          color: "#991b1b",
-                          border: "1px solid #fecaca",
-                          borderRadius: "6px",
-                          padding: "8px 12px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Undo
-                      </button>
-                    </>
-                  )}
-                  {patch.status === "rejected" && (
-                    <div
-                      style={{
-                        background: "#f3f4f6",
-                        border: "1px solid #d1d5db",
-                        color: "#6b7280",
-                        borderRadius: "6px",
-                        padding: "8px 12px",
-                        fontSize: "11px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      Skipped
-                    </div>
-                  )}
-                  {patch.status === "rolled_back" && (
-                    <>
-                      <div
-                        style={{
-                          background: "#fee2e2",
-                          border: "1px solid #fecaca",
-                          color: "#991b1b",
-                          borderRadius: "6px",
-                          padding: "8px 12px",
-                          fontSize: "11px",
-                          fontWeight: 600,
-                        }}
-                      >
-                        ↺ Rolled Back
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPatches((prev) =>
-                            prev.map((p) =>
-                              p.patch_id === patch.patch_id ? { ...p, status: "pending" } : p
-                            )
-                          );
-                        }}
-                        style={{
-                          background: "#6366f1",
-                          color: "#ffffff",
-                          border: "none",
-                          borderRadius: "6px",
-                          padding: "8px 12px",
-                          fontSize: "12px",
-                          fontWeight: 600,
-                          cursor: "pointer",
-                          boxShadow: "0 2px 0 #4338ca",
-                        }}
-                      >
-                        Re-apply
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
 
         {fixes.length > 0 && (
           <div style={{ marginBottom: "20px" }}>
@@ -824,9 +501,9 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
             </div>
             <button
               type="button"
-              onClick={() => onTabChange("fixes")}
+              onClick={() => onTabChange("fixes", undefined)}
               style={{
-                background: "#6366f1",
+                background: "#5b5fc7",
                 color: "#fff",
                 border: "none",
                 borderRadius: "12px",
@@ -834,7 +511,7 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
                 fontSize: "14px",
                 fontWeight: 700,
                 cursor: "pointer",
-                boxShadow: "0 4px 0 #4338ca",
+                boxShadow: "0 4px 0 #3a3d9a",
                 whiteSpace: "nowrap",
               }}
             >

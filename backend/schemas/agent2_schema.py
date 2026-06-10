@@ -19,6 +19,8 @@ class SeniorityLevel(str, Enum):
     mid = "mid"
     senior = "senior"
     staff = "staff"
+    em = "em"
+    senior_em = "senior_em"
     manager = "manager"
     director = "director"
     vp = "vp"

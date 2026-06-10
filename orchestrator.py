@@ -964,6 +964,7 @@ class Orchestrator:
                 ats_result, resume_und, gate_gap
             )
             early_result = {
+                "api_version": 2,
                 "ats": ats_result,
                 "resume": resume_und,
                 "gap": gate_gap,
@@ -975,6 +976,7 @@ class Orchestrator:
                 "patches": [],
                 "validation": None,
                 "role_fit": role_fit_precheck,
+                "fix_plan": [],
             }
             try:
                 save_full_run_result(uid, run_id, early_result)
@@ -1401,6 +1403,20 @@ class Orchestrator:
                 logging.warning("Patch classification failed: %s", exc)
                 classified_patches = []
 
+        # ── FixPlan — single action contract for the Fixes tab ──────────────
+        fix_plan: list[dict] = []
+        try:
+            from backend.engine.fix_plan_builder import build_fix_plan
+            fix_plan = build_fix_plan(
+                priority_fixes=gap_result.get("priority_fixes") or [],
+                classified_patches=classified_patches,
+                resume_sections=resume_sections,
+            )
+            logging.info("FixPlanBuilder: %d items", len(fix_plan))
+        except Exception as _fp_exc:
+            logging.warning("FixPlanBuilder failed (non-fatal): %s", _fp_exc)
+        # ─────────────────────────────────────────────────────────────────────
+
         final_result = {
             "api_version": 2,
             "session_id": run_id,
@@ -1415,6 +1431,7 @@ class Orchestrator:
             "patches": [p.model_dump() if hasattr(p, "model_dump") else p for p in classified_patches],
             "validation": validation_summary,
             "role_fit": role_fit,
+            "fix_plan": fix_plan,
         }
         # Save full result to session store
         try:

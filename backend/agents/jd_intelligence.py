@@ -90,6 +90,13 @@ _IC_SENIORITY = frozenset({"junior", "mid", "senior", "staff"})
 _MGMT_SENIORITY = frozenset({"em", "senior_em", "director"})
 _LEADERSHIP_LEVELS = frozenset({"manager", "director", "vp", "c-suite"})
 
+# Map IC management bands to JD role levels
+_MGMT_TO_JD_LEVEL = {
+    "em": "manager",
+    "senior_em": "manager",
+    "director": "director",
+}
+
 
 def _guard_seniority_fields(parsed: dict) -> dict:
     """Tiny fallback if the model still puts a leadership title in seniority_expected."""
@@ -110,7 +117,7 @@ def _guard_seniority_fields(parsed: dict) -> dict:
     if exp_key in _MGMT_SENIORITY:
         # Backfill jd_seniority_level when the model left it as unknown.
         if jd in ("", "unknown"):
-            out["jd_seniority_level"] = exp_key
+            out["jd_seniority_level"] = _MGMT_TO_JD_LEVEL.get(exp_key, "manager")
     elif exp in _LEADERSHIP_LEVELS:
         if jd in ("", "unknown") or jd in _IC_SENIORITY or jd.replace("-", "_") in _MGMT_SENIORITY:
             out["jd_seniority_level"] = exp

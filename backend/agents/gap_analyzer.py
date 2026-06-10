@@ -1233,7 +1233,11 @@ def priority_fixes_from_gaps(section_gaps: list[dict]) -> list[dict]:
                 # Do NOT call derive_entry_id on the LLM sub_label — that produces
                 # year-suffixed ids that mismatch A1 ids on the same entry.
                 entry_id = sub.get("entry_id") or sub.get("sub_id") or ""
-                entry_id_confidence = "canonical" if entry_id else "absent"
+                entry_id_confidence = (
+                    "canonical" if entry_id          # A1-stamped by _enrich_section_gaps
+                    else "derived" if sub.get("sub_label")  # has identity but no matched A1 entry
+                    else "absent"                    # truly section-level
+                )
                 fixes.append({
                     "section": gap.get("section", ""),
                     "gap_reason": sub.get("gap_reason") or gap.get("gap_reason", ""),
@@ -1471,7 +1475,13 @@ def enrich_priority_fixes_from_eval_changes(
                 updated["patch_text"] = suggested
             if original:
                 updated["original_text"] = original
-            if original and suggested and len(suggested) > 50:
+            if (
+                original
+                and suggested
+                and len(suggested) > 50
+                and updated.get("gap_type") != GapType.EVIDENCE.value
+                and not updated.get("requires_user_input")
+            ):
                 updated = _apply_gap_type_metadata(updated, GapType.STRUCTURAL.value)
             elif (
                 (updated.get("rewrite_instruction") or "").strip().casefold()
@@ -1941,6 +1951,8 @@ _BUILTIN_EQUIVALENTS: dict[str, list[str]] = {
     "terraform": ["infrastructure as code", "iac", "cloudformation", "pulumi"],
     "redis": ["caching", "cache layer", "memcached"],
     "architecture": ["system design", "architectural", "technical design"],
+    "scale": ["at scale", "high scale", "large scale", "scaled", "scalable", "billions", "millions", "high-throughput", "high throughput"],
+    "metrics": ["quantified", "measured", "₹", "$", "%", "crore", "increase", "growth", "kpi"],
 }
 
 
@@ -2005,6 +2017,10 @@ _SIGNAL_PHRASES = [
     "quantified",
     "metrics",
     "cross-functional",
+    "scale context",
+    "scale and",
+    "at scale",
+    "technical metrics",
 ]
 
 
@@ -2132,15 +2148,15 @@ def _apply_phantom_gap_filter(
     resume_text: str,
 ) -> list[dict]:
     """
-    On qualified matches, suppress experience gaps whose missing keywords
-    are already covered by semantic equivalents in the resume.
+    Suppress experience sub_changes whose missing keywords are already
+    covered by semantic equivalents in the resume (holistic matching).
 
-    Also suppresses gaps when a sub_change's requirement is demonstrated
-    ANYWHERE else in the resume (holistic matching).
+    Sub_change holistic check runs for ALL candidates regardless of role fit.
+    Section-level phantom gap suppression only runs for qualified candidates
+    (to avoid over-suppressing gaps for underqualified applicants).
     """
     role_fit = compute_role_fit(resume_analysis or {}, jd_analysis or {}, {"section_gaps": section_gaps})
-    if role_fit.get("fitness") != "qualified":
-        return section_gaps
+    is_qualified = role_fit.get("fitness") == "qualified"
 
     resume_blob = _resume_text_blob(resume_analysis or {}, resume_text)
     semantic_map = (jd_analysis or {}).get("semantic_skill_map") or {}
@@ -2154,7 +2170,7 @@ def _apply_phantom_gap_filter(
 
         section = (gap.get("section") or "").lower()
 
-        # For experience section, also check sub_changes for global coverage
+        # For experience section, check sub_changes for global coverage (always, not just qualified)
         if section == "experience":
             sub_changes = gap.get("sub_changes") or []
             filtered_subs = []
@@ -2184,21 +2200,25 @@ def _apply_phantom_gap_filter(
                 filtered_subs.append(sub)
 
             gap["sub_changes"] = filtered_subs
-            missing = [str(k) for k in (gap.get("missing_keywords") or []) if str(k).strip()]
-            if (
-                gap.get("needs_change")
-                and missing
-                and all(_keyword_covered_in_resume(kw, resume_blob, semantic_map) for kw in missing)
-                and not any(s.get("needs_change") for s in filtered_subs)
-            ):
-                logging.info(
-                    "GapAnalyzer: phantom experience gap suppressed (qualified match): %s",
-                    gap.get("gap_reason", "")[:80],
-                )
-                gap["needs_change"] = False
-                gap["gap_reason"] = "No change needed — skill covered under equivalent wording"
-                gap["rewrite_instruction"] = ""
-                gap["missing_keywords"] = []
+
+            # Section-level phantom gap suppression: only for qualified candidates
+            if is_qualified:
+                missing = [str(k) for k in (gap.get("missing_keywords") or []) if str(k).strip()]
+                if (
+                    gap.get("needs_change")
+                    and missing
+                    and all(_keyword_covered_in_resume(kw, resume_blob, semantic_map) for kw in missing)
+                    and not any(s.get("needs_change") for s in filtered_subs)
+                ):
+                    logging.info(
+                        "GapAnalyzer: phantom experience gap suppressed (qualified match): %s",
+                        gap.get("gap_reason", "")[:80],
+                    )
+                    gap["needs_change"] = False
+                    gap["gap_reason"] = "No change needed — skill covered under equivalent wording"
+                    gap["rewrite_instruction"] = ""
+                    gap["missing_keywords"] = []
+
             filtered.append(gap)
             continue
 

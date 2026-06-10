@@ -186,6 +186,15 @@ class PatchRisk(str, Enum):
     NEEDS_CONFIRMATION = "needs_confirmation"
 
 
+class FixKind(str, Enum):
+    """Fix action kinds for the single action contract (Fixes tab)."""
+    COACHING = "coaching"
+    SURGICAL_PATCH = "surgical_patch"
+    SURFACE_KEYWORD = "surface_keyword"
+    REWRITE_BLOCK = "rewrite_block"
+    INFO_ONLY = "info_only"
+
+
 class ResumePatch(BaseModel):
     """Surgical patch operation on resume text with rollback capability."""
     patch_id: str = Field(default_factory=lambda: __import__('uuid').uuid4().__str__()[:8])
