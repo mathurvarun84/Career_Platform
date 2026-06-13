@@ -4,6 +4,7 @@ import { startSession, fetchSessionSummary } from "../api/interview";
 import { IS_MOCK } from "../hooks/useMockData";
 import { MOCK_INTERVIEW_QUESTIONS } from "../mocks/mockInterviewData";
 import ModelAnswerCard from "./ModelAnswerCard";
+import { FeaturePulseCard } from "./feedback/FeaturePulseCard";
 import { useResumeStore } from "../store/useResumeStore";
 import { composeResumeText } from "../utils/composeResumeText";
 import { DIMENSIONS } from "../constants/interviewDimensions";
@@ -1561,6 +1562,18 @@ function SummaryScreen({ session, summary, setActiveTab }: SummaryScreenProps) {
   const retryFromQuestion = useResumeStore((s) => s.retryFromQuestion);
   const startInterviewSession = useResumeStore((s) => s.startInterviewSession);
   const pastSessions = useResumeStore((s) => s.interview_history.past_sessions);
+  const feedbackState = useResumeStore((s) => s.feedbackState);
+  const showFeedbackMoment = useResumeStore((s) => s.showFeedbackMoment);
+  const clearActiveMoment = useResumeStore((s) => s.clearActiveMoment);
+
+  useEffect(() => {
+    if (feedbackState?.feature_pulse_interview_done) return;
+    const timer = setTimeout(() => {
+      showFeedbackMoment("feature_pulse_interview");
+    }, 2000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const progressSnapshots: InterviewProgressSnapshot[] = pastSessions.map((s) => {
     const SIGNAL_RANK: Record<string, number> = { weak: 0, developing: 1, strong: 2 };
@@ -2071,6 +2084,15 @@ function SummaryScreen({ session, summary, setActiveTab }: SummaryScreenProps) {
         </div>
         <MiniSparkline snapshots={progressSnapshots} />
       </div>
+
+      {feedbackState?.active_moment === "feature_pulse_interview" ? (
+        <FeaturePulseCard
+          featureName="interview"
+          featureLabel="Mock Interview"
+          question="Were the questions relevant to your target role?"
+          onDismiss={clearActiveMoment}
+        />
+      ) : null}
     </div>
   );
 }

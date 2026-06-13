@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import queue
 import threading
-from typing import Any, Dict, Generator
+from typing import Any, Dict, Generator, Optional
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -55,6 +55,7 @@ from backend.schemas.interview_schema import (
     StartInterviewResponse,
 )
 from backend.api.routes.coaching import configure_coaching_routes, router as coaching_router
+from backend.feedback import router as feedback_router
 
 
 logger = logging.getLogger(__name__)
@@ -126,6 +127,7 @@ def _require_job(job_id: str) -> Dict[str, Any]:
 
 configure_coaching_routes(_require_job, _persist_job)
 app.include_router(coaching_router)
+app.include_router(feedback_router)
 
 
 def _is_stage_payload(entry: Dict[str, Any]) -> bool:
@@ -310,6 +312,8 @@ def _analyze_event_stream(
     resume_hash: str,
     jd_hash: str,
     user_id: str,
+    target_company: Optional[str] = None,
+    jd_source: str = "pasted",
 ) -> Generator[str, None, None]:
     """Worker thread pushes SSE payloads; main generator yields JSON lines."""
 
@@ -429,6 +433,8 @@ def _analyze_event_stream(
             result = orch.run_full_evaluation(
                 resume_text=resume_text,
                 jd_text=jd_text,
+                target_company=target_company,
+                jd_source=jd_source,
                 run_sim=run_sim,
                 progress_cb=lambda _e: None,
                 partial_result_cb=partial_result_cb,
@@ -449,8 +455,8 @@ def _analyze_event_stream(
                     file_name=file_name,
                     resume_und=result.get("resume") or {},
                     jd_text=jd_text,
-                    jd_source="pasted",
-                    target_company=None,
+                    jd_source=jd_source,
+                    target_company=target_company,
                     final_result=merged,
                     elapsed_ms=elapsed_ms,
                 )
@@ -482,7 +488,7 @@ def _analyze_event_stream(
                     file_name=file_name,
                     file_size=file_size,
                     jd_text=jd_text,
-                    target_company=None,
+                    target_company=target_company,
                     target_role=target_role,
                     result=merged,
                 )
@@ -538,6 +544,8 @@ async def analyze(
     resume: UploadFile = File(...),
     jd_text: str = Form(""),
     run_sim: bool = Form(False),
+    target_company: str = Form(""),
+    jd_source: str = Form("pasted"),
     user_id: str = Depends(get_current_user_id),
 ) -> StreamingResponse:
     """Stream analysis progress as SSE; final payload includes full result JSON."""
@@ -553,7 +561,8 @@ async def analyze(
 
     return StreamingResponse(
         _analyze_event_stream(
-            temp_path, resume.filename or "resume.txt", jd_text, run_sim, resume_hash, jd_hash, user_id
+            temp_path, resume.filename or "resume.txt", jd_text, run_sim, resume_hash, jd_hash, user_id,
+            target_company=target_company or None, jd_source=jd_source or "pasted",
         ),
         media_type="text/event-stream",
         headers={

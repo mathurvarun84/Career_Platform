@@ -11,6 +11,7 @@ import { useWindowSize } from "../../hooks/useWindowSize";
 import { supabase } from "../../lib/supabase";
 import { useResumeStore } from "../../store/useResumeStore";
 import { T } from "../../tokens";
+import { FeaturePulseCard } from "../feedback/FeaturePulseCard";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
@@ -118,6 +119,9 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
   );
   const setAnalysisError = useResumeStore((state) => state.setAnalysisError);
   const setCurrentProgress = useResumeStore((state) => state.setCurrentProgress);
+  const feedbackState = useResumeStore((state) => state.feedbackState);
+  const showFeedbackMoment = useResumeStore((state) => state.showFeedbackMoment);
+  const clearActiveMoment = useResumeStore((state) => state.clearActiveMoment);
 
   const validateAndSetFile = (candidate: File | null): void => {
     setSubmitError(null);
@@ -233,6 +237,7 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
       if (data.status === "found" && data.jd_text) {
         setJdText(data.jd_text);
         setJdLoadedFromFetch(true);
+        showFeedbackMoment("feature_pulse_jd_fetch");
       }
     } catch {
       setFetchStatus("error");
@@ -1117,6 +1122,15 @@ Include the full posting for the most accurate analysis — job title, requireme
           uploadsThisMonth={upgradeData.uploadsThisMonth}
           limit={upgradeData.limit}
           onClose={() => setUpgradeModalOpen(false)}
+        />
+      ) : null}
+
+      {feedbackState?.active_moment === "feature_pulse_jd_fetch" ? (
+        <FeaturePulseCard
+          featureName="jd_fetch"
+          featureLabel="JD Auto-Fetch"
+          question="Did we fetch the right job description?"
+          onDismiss={clearActiveMoment}
         />
       ) : null}
     </>

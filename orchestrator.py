@@ -791,6 +791,8 @@ class Orchestrator:
         self,
         resume_text: str,
         jd_text: Optional[str] = None,
+        target_company: Optional[str] = None,
+        jd_source: Optional[str] = None,
         run_sim: bool = False,
         skip_rewrite: bool = False,
         user_id: Optional[str] = None,
@@ -977,6 +979,12 @@ class Orchestrator:
                 "validation": None,
                 "role_fit": role_fit_precheck,
                 "fix_plan": [],
+                "_inputs": {
+                    "resume_text": resume_text,
+                    "jd_text": jd_text or "",
+                    "target_company": target_company or "",
+                    "jd_source": jd_source or "",
+                },
             }
             try:
                 save_full_run_result(uid, run_id, early_result)
@@ -1432,6 +1440,12 @@ class Orchestrator:
             "validation": validation_summary,
             "role_fit": role_fit,
             "fix_plan": fix_plan,
+            "_inputs": {
+                "resume_text": resume_text,
+                "jd_text": jd_text or "",
+                "target_company": target_company or "",
+                "jd_source": jd_source or "",
+            },
         }
         # Save full result to session store
         try:

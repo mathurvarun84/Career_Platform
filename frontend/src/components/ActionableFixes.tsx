@@ -41,6 +41,7 @@ import type {
 } from "../types";
 import { T } from "../tokens";
 import DataSourceNotice from "./DataSourceNotice";
+import { FeaturePulseCard } from "./feedback/FeaturePulseCard";
 import EvidenceCoachingCard from "./cards/EvidenceCoachingCard";
 import StructuralPatchCard from "./cards/StructuralPatchCard";
 import SurfacePatchCard from "./cards/SurfacePatchCard";
@@ -62,6 +63,16 @@ const scoreDeltaByType: Record<GapType, number> = {
 
 const toTitleCase = (s: string): string =>
   s.replace(/\w\S*/g, (t) => t.charAt(0).toUpperCase() + t.slice(1).toLowerCase());
+
+const getDisplaySection = (fix: PriorityFix): string =>
+  toTitleCase(inferSectionKey(fix.section));
+
+/**
+ * Stable per-fix key based on position in the full `fixes` array. Must be computed
+ * from `fixes` indices (not from any partitioned subset) — see fixKeyMap below.
+ */
+const getFixKey = (fix: PriorityFix, index: number): string =>
+  `${getDisplaySection(fix)}-${fix.entry_id ?? fix.sub_label ?? "main"}-${index}`;
 
 function InfoOnlyCard({ fix }: { fix: PriorityFix }): ReactElement {
   const { whatPart } = parseInfoOnlyCardParts(fix.gap_reason);
@@ -203,6 +214,9 @@ export default function ActionableFixes({
   const mergePartialResult = useResumeStore((s) => s.mergePartialResult);
   const baselineAts = useResumeStore((s) => s.baselineAts);
   const applyAnywayAccepted = useResumeStore((s) => s.applyAnywayAccepted);
+  const feedbackState = useResumeStore((s) => s.feedbackState);
+  const showFeedbackMoment = useResumeStore((s) => s.showFeedbackMoment);
+  const clearActiveMoment = useResumeStore((s) => s.clearActiveMoment);
 
   const [applyState, setApplyState] = useState<Record<string, ApplyState>>({});
   const [coachingAppliedCount, setCoachingAppliedCount] = useState(
@@ -250,6 +264,23 @@ export default function ActionableFixes({
     [analysisResult, suppressedEvidenceGaps]
   );
 
+  // Stable per-fix key map, keyed by object identity from `fixes`. Computed once from
+  // the full (unpartitioned) list so the auto-apply effect, "Apply All", and the
+  // render path (which partitions fixes into visible/hidden coaching cards) all agree
+  // on the same key for a given fix — regardless of where it lands after partitioning.
+  const fixKeyMap = useMemo(() => {
+    const map = new Map<PriorityFix, string>();
+    fixes.forEach((fix, index) => {
+      map.set(fix, getFixKey(fix, index));
+    });
+    return map;
+  }, [fixes]);
+  const getStableFixKey = useCallback(
+    (fix: PriorityFix, fallbackIndex: number) =>
+      fixKeyMap.get(fix) ?? getFixKey(fix, fallbackIndex),
+    [fixKeyMap]
+  );
+
   const patches = analysisResult?.patches;
 
   const getSectionKey = (fix: PriorityFix) => inferSectionKey(fix.section);
@@ -257,9 +288,6 @@ export default function ActionableFixes({
     (fix: PriorityFix) => resolvePatchFromPlan(fix, patches),
     [patches]
   );
-  const getDisplaySection = (fix: PriorityFix) => toTitleCase(inferSectionKey(fix.section));
-  const getFixKey = (fix: PriorityFix, index: number) =>
-    `${getDisplaySection(fix)}-${fix.entry_id ?? fix.sub_label ?? "main"}-${index}`;
 
   const getBeforeText = useCallback(
     (fix: PriorityFix): string =>
@@ -340,8 +368,20 @@ export default function ActionableFixes({
         coaching_answers: coachingCountRef.current,
         session_id: coachingSessionId,
       });
+
+      // Trigger Feature Pulse for AI Coach — once per user lifetime
+      if (!feedbackState?.feature_pulse_coach_done) {
+        setTimeout(() => showFeedbackMoment("feature_pulse_coach"), 1500);
+      }
     },
-    [addSnapshot, analysisResult?.ats.score, coachingSessionId, rescore]
+    [
+      addSnapshot,
+      analysisResult?.ats.score,
+      coachingSessionId,
+      rescore,
+      feedbackState?.feature_pulse_coach_done,
+      showFeedbackMoment,
+    ]
   );
 
   const applyLocally = useCallback(
@@ -549,9 +589,9 @@ export default function ActionableFixes({
       const locationKey = fixLocationKey(fix);
       if (autoAppliedRef.current.has(locationKey)) return;
       autoAppliedRef.current.add(locationKey);
-      void onApply(fix, getFixKey(fix, index));
+      void onApply(fix, getStableFixKey(fix, index));
     });
-  }, [fixes, getFixKey, onApply]);
+  }, [fixes, getStableFixKey, onApply]);
 
   if (!analysisResult) {
     return null;
@@ -560,8 +600,7 @@ export default function ActionableFixes({
   const surfaceFixes = fixes.filter((f) => (f.gap_type ?? "structural") === "surface");
   const quickWinPts = surfaceFixes.reduce((sum, f) => sum + scoreDelta(f), 0);
   const appliedSurfaceCount = surfaceFixes.filter((f) => {
-    const idx = fixes.indexOf(f);
-    const fixKey = getFixKey(f, idx);
+    const fixKey = fixKeyMap.get(f) ?? getFixKey(f, fixes.indexOf(f));
     return applyState[fixKey] === "applied";
   }).length;
 
@@ -578,7 +617,7 @@ export default function ActionableFixes({
 
   const handleApplyAll = () => {
     fixes.forEach((fix, index) => {
-      const fixKey = getFixKey(fix, index);
+      const fixKey = getStableFixKey(fix, index);
       if (applyState[fixKey] !== "applied" && applyState[fixKey] !== "loading") {
         void onApply(fix, fixKey);
       }
@@ -733,7 +772,7 @@ export default function ActionableFixes({
                   ...fix,
                   section: getDisplaySection(fix),
                 };
-                const fixKey = getFixKey(fix, index);
+                const fixKey = getStableFixKey(fix, index);
                 return renderCard(
                   displayFix,
                   fixKey,
@@ -751,7 +790,7 @@ export default function ActionableFixes({
                       ...fix,
                       section: getDisplaySection(fix),
                     };
-                    const fixKey = getFixKey(fix, visibleFixes.length + index);
+                    const fixKey = getStableFixKey(fix, visibleFixes.length + index);
                     return renderCard(
                       displayFix,
                       fixKey,
@@ -852,6 +891,11 @@ export default function ActionableFixes({
           hasJd={hasJd}
           jobId={coachingSessionId}
           onSwitchMode={() => {}}
+          onDownloadSuccess={() => {
+            if (!feedbackState?.feature_pulse_rewriter_done) {
+              setTimeout(() => showFeedbackMoment("feature_pulse_rewriter"), 1000);
+            }
+          }}
         />
 
         {/* BOTTOM CTA */}
@@ -929,6 +973,24 @@ export default function ActionableFixes({
         <DataSourceNotice tab="fixes" />
 
       </div>
+
+      {feedbackState?.active_moment === "feature_pulse_coach" ? (
+        <FeaturePulseCard
+          featureName="coach"
+          featureLabel="AI Coach"
+          question="Did the coaching suggestion help?"
+          onDismiss={clearActiveMoment}
+        />
+      ) : null}
+
+      {feedbackState?.active_moment === "feature_pulse_rewriter" ? (
+        <FeaturePulseCard
+          featureName="rewriter"
+          featureLabel="Resume Rewriter"
+          question="Did the rewritten bullets feel true to your experience?"
+          onDismiss={clearActiveMoment}
+        />
+      ) : null}
     </div>
   );
 }

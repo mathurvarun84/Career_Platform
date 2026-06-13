@@ -680,3 +680,45 @@ export interface DownloadState {
   verified: boolean;
   missingCount: number;
 }
+
+// ─── Feedback System ──────────────────────────────────────────────────────────
+
+export type FeedbackMomentType =
+  | 'quick_reaction'
+  | 'feature_pulse_coach'
+  | 'feature_pulse_interview'
+  | 'feature_pulse_rewriter'
+  | 'feature_pulse_gap_analysis'
+  | 'feature_pulse_jd_fetch'
+  | 'pmf_signal'
+  | 'reengagement'
+  | 'product_feedback'
+
+export interface FeedbackState {
+  // Persisted fields (from GET /api/feedback/state)
+  feature_pulse_coach_done: boolean
+  feature_pulse_interview_done: boolean
+  feature_pulse_rewriter_done: boolean
+  feature_pulse_gap_analysis_done: boolean
+  pmf_shown: boolean
+  pmf_skipped: boolean
+  pmf_completed: boolean
+  session_count: number
+  last_reengagement_shown_at: string | null
+  // Local only — not persisted to DB
+  active_moment: FeedbackMomentType | null
+}
+
+export interface FeedbackRequest {
+  run_id?: string
+  session_id?: string
+  moment_type: string
+  feature_name?: string
+  response_value?: string
+  failure_category?: string
+  open_text?: string
+  include_email?: boolean
+  ats_score?: number
+  role_fit_band?: string
+  run_count?: number
+}

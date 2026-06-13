@@ -4,6 +4,7 @@ import { BarChart3 } from "lucide-react";
 import { downloadResumeReport, getDownloadVerification } from "./api/client";
 import type { ATSDimensionDetail, DownloadVerification, PriorityFix } from "./types";
 import DataSourceNotice from "./components/DataSourceNotice";
+import { QuickReactionBanner } from "./components/feedback/QuickReactionBanner";
 import { useWindowSize } from "./hooks/useWindowSize";
 import { pageContainerStyle } from "./utils/pageLayout";
 import { useResumeStore } from "./store/useResumeStore";
@@ -86,6 +87,8 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const selectedStyle = useResumeStore((s) => s.selectedStyle);
   const isLoading = useResumeStore((s) => s.isLoading);
   const resetAnalysis = useResumeStore((s) => s.resetAnalysis);
+  const feedbackState = useResumeStore((s) => s.feedbackState);
+  const clearActiveMoment = useResumeStore((s) => s.clearActiveMoment);
   const { isMobile, isTablet } = useWindowSize();
   const [barsAnimated, setBarsAnimated] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -852,6 +855,10 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
         </div>
 
         <DataSourceNotice tab="overview" />
+
+        {feedbackState?.active_moment === "quick_reaction" ? (
+          <QuickReactionBanner onDismiss={clearActiveMoment} />
+        ) : null}
       </div>
     </div>
   );

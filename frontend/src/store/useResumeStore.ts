@@ -6,6 +6,8 @@ import { hasJobDescription } from "../utils/hasJobDescription";
 import { submitAnswerStream, fetchInterviewSessions, fetchModelAnswer } from "../api/interview";
 import type {
   AnalysisResult,
+  FeedbackMomentType,
+  FeedbackState,
   InterviewSession,
   InterviewSessionState,
   FollowUpQuestion,
@@ -117,6 +119,13 @@ interface ResumeStoreState {
   ) => void;
   retryFromQuestion: (questionIndex: number) => void;
   clearInterviewSession: () => void;
+
+  // ─── Feedback state ──────────────────────────────────────────────────────────
+  feedbackState: FeedbackState | null;
+  setFeedbackState: (state: FeedbackState) => void;
+  showFeedbackMoment: (moment: FeedbackMomentType) => void;
+  clearActiveMoment: () => void;
+  markPMFSkipped: () => void;
 }
 
 const capAtsAtBaseline = (score: number, baseline: number | null): number =>
@@ -165,6 +174,7 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
   model_answer_cards: {},
   interviewPrefill: null,
   _cancelStream: null,
+  feedbackState: null,
 
   setJobId: (jobId) => set({ jobId }),
   setAnalysisJdText: (analysisJdText) => set({ analysisJdText }),
@@ -810,4 +820,32 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
       _cancelStream: null,
     });
   },
+
+  setFeedbackState: (state) => set({ feedbackState: state }),
+
+  showFeedbackMoment: (moment) =>
+    set((s) => ({
+      feedbackState: s.feedbackState
+        ? { ...s.feedbackState, active_moment: moment }
+        : null,
+    })),
+
+  clearActiveMoment: () =>
+    set((s) => ({
+      feedbackState: s.feedbackState
+        ? { ...s.feedbackState, active_moment: null }
+        : null,
+    })),
+
+  markPMFSkipped: () =>
+    set((s) => ({
+      feedbackState: s.feedbackState
+        ? {
+            ...s.feedbackState,
+            pmf_skipped: true,
+            pmf_shown: true,
+            active_moment: null,
+          }
+        : null,
+    })),
 }));

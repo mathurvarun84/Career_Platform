@@ -1,8 +1,11 @@
+import { useEffect } from "react";
+
 import { useWindowSize } from "../hooks/useWindowSize";
 import { cardPadding, pageContainerStyle } from "../utils/pageLayout";
 import { useResumeStore } from "../store/useResumeStore";
 import type { PriorityFix, TabId } from "../types";
 import DataSourceNotice from "./DataSourceNotice";
+import { FeaturePulseCard } from "./feedback/FeaturePulseCard";
 
 const toTitle = (value: string): string =>
   value
@@ -31,7 +34,19 @@ interface GapCloserProps {
 export default function GapCloser({ onTabChange }: GapCloserProps) {
   const analysisResult = useResumeStore((s) => s.analysisResult);
   const resetAnalysis = useResumeStore((s) => s.resetAnalysis);
+  const feedbackState = useResumeStore((s) => s.feedbackState);
+  const showFeedbackMoment = useResumeStore((s) => s.showFeedbackMoment);
+  const clearActiveMoment = useResumeStore((s) => s.clearActiveMoment);
   const { isMobile } = useWindowSize();
+
+  useEffect(() => {
+    if (feedbackState?.feature_pulse_gap_analysis_done) return;
+    const timer = setTimeout(() => {
+      showFeedbackMoment("feature_pulse_gap_analysis");
+    }, 30000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!analysisResult) {
     return null;
@@ -522,6 +537,15 @@ export default function GapCloser({ onTabChange }: GapCloserProps) {
 
         <DataSourceNotice tab="gap" />
       </div>
+
+      {feedbackState?.active_moment === "feature_pulse_gap_analysis" ? (
+        <FeaturePulseCard
+          featureName="gap_analysis"
+          featureLabel="Gap Analysis"
+          question="Did the gaps match what you expected to see?"
+          onDismiss={clearActiveMoment}
+        />
+      ) : null}
     </div>
   );
 }

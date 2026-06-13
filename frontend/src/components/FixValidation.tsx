@@ -19,6 +19,7 @@ interface FixValidationProps {
   hasJd: boolean;
   jobId: string | null;
   onSwitchMode: (mode: FixMode) => void;
+  onDownloadSuccess?: () => void;
 }
 
 function CheckCard({
@@ -77,6 +78,7 @@ export default function FixValidation({
   hasJd,
   jobId,
   onSwitchMode,
+  onDownloadSuccess,
 }: FixValidationProps) {
   const [verificationResult, setVerificationResult] = useState<DownloadVerification | null>(null);
   const noPending = appliedCount === 0;
@@ -109,6 +111,7 @@ export default function FixValidation({
       const verification = await getDownloadVerification(jobId);
       setVerificationResult(verification);
       await downloadResumeReport(jobId, downloadStyleForMode(selectedMode));
+      onDownloadSuccess?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Download failed.";
       window.alert(message);

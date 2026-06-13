@@ -16,6 +16,10 @@ import AnalysisProgress from "./components/upload/AnalysisProgress";
 import LandingPage from "./components/LandingPage";
 import Footer from "./components/Footer";
 import { useProgressStore } from "./hooks/useProgressStore";
+import { useFeedbackOrchestrator } from "./hooks/useFeedbackOrchestrator";
+import { PMFModal } from "./components/feedback/PMFModal";
+import { PMFFollowUpCard } from "./components/feedback/PMFFollowUpCard";
+import { ReengagementBanner } from "./components/feedback/ReengagementBanner";
 import { supabase } from "./lib/supabase";
 import { useAuthStore } from "./store/authStore";
 import { useResumeStore } from "./store/useResumeStore";
@@ -50,6 +54,13 @@ function AppShell() {
   );
   const bumpHistoryRefresh = useResumeStore((state) => state.bumpHistoryRefresh);
   const activeTab = useResumeStore((state) => state.activeTab);
+  const feedbackState = useResumeStore((state) => state.feedbackState);
+  const clearActiveMoment = useResumeStore((state) => state.clearActiveMoment);
+  const [pmfFollowUpVariant, setPmfFollowUpVariant] = useState<
+    "very_disappointed" | "not_disappointed" | null
+  >(null);
+
+  useFeedbackOrchestrator();
   const {
     addCareerEntry,
     addSnapshot,
@@ -172,6 +183,41 @@ function AppShell() {
     !isFullAnalysisReady;
   const showLandingPage = !analysisResult && !showAnalyzingPage && !hasLeftLanding;
 
+  const handlePMFClose = (variant?: "very_disappointed" | "not_disappointed"): void => {
+    clearActiveMoment();
+    if (variant) {
+      setPmfFollowUpVariant(variant);
+    }
+  };
+
+  const globalFeedbackOverlays = (
+    <>
+      {feedbackState?.active_moment === "pmf_signal" ? (
+        <PMFModal onClose={handlePMFClose} />
+      ) : null}
+      {pmfFollowUpVariant ? (
+        <PMFFollowUpCard
+          variant={pmfFollowUpVariant}
+          onDismiss={() => setPmfFollowUpVariant(null)}
+        />
+      ) : null}
+      {feedbackState?.active_moment === "reengagement" ? (
+        <div
+          style={{
+            position: "fixed",
+            top: "72px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: "min(560px, 90vw)",
+            zIndex: 90,
+          }}
+        >
+          <ReengagementBanner onDismiss={clearActiveMoment} />
+        </div>
+      ) : null}
+    </>
+  );
+
   if (showProgressStandalone) {
     return (
       <div className="page-shell min-h-screen" style={{ background: T.bgPage }}>
@@ -188,6 +234,7 @@ function AppShell() {
         {isAuthModalOpen ? (
           <AuthModal onClose={() => setIsAuthModalOpen(false)} />
         ) : null}
+        {globalFeedbackOverlays}
       </div>
     );
   }
@@ -283,6 +330,7 @@ function AppShell() {
         {isAuthModalOpen ? (
           <AuthModal onClose={() => setIsAuthModalOpen(false)} />
         ) : null}
+        {globalFeedbackOverlays}
       </div>
     );
   }
@@ -320,6 +368,7 @@ function AppShell() {
         {isAuthModalOpen ? (
           <AuthModal onClose={() => setIsAuthModalOpen(false)} />
         ) : null}
+        {globalFeedbackOverlays}
       </div>
     );
   }
@@ -335,6 +384,7 @@ function AppShell() {
         {isAuthModalOpen ? (
           <AuthModal onClose={() => setIsAuthModalOpen(false)} />
         ) : null}
+        {globalFeedbackOverlays}
       </div>
     );
   }
@@ -351,6 +401,7 @@ function AppShell() {
       {isAuthModalOpen ? (
         <AuthModal onClose={() => setIsAuthModalOpen(false)} />
       ) : null}
+      {globalFeedbackOverlays}
     </div>
   );
 }

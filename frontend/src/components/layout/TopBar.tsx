@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { downloadResumeReport, getDownloadVerification } from "../../api/client";
+import { FeedbackPanel } from "../feedback/FeedbackPanel";
 import { useWindowSize } from "../../hooks/useWindowSize";
 import { useResumeStore } from "../../store/useResumeStore";
 import { useAuthStore } from "../../store/authStore";
@@ -27,6 +28,8 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
   const [isSignOutHovered, setIsSignOutHovered] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showFeedbackPanel, setShowFeedbackPanel] = useState(false);
+  const [isFeedbackHovered, setIsFeedbackHovered] = useState(false);
   const [isTooltipVisible, setIsTooltipVisible] = useState(false);
   const [verificationResult, setVerificationResult] = useState<DownloadVerification | null>(null);
   const [avatarImgError, setAvatarImgError] = useState(false);
@@ -493,6 +496,58 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
 
                 <button
                   type="button"
+                  onClick={() => {
+                    setShowFeedbackPanel(true);
+                    setIsMenuOpen(false);
+                  }}
+                  onMouseEnter={() => setIsFeedbackHovered(true)}
+                  onMouseLeave={() => setIsFeedbackHovered(false)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    padding: "9px 12px",
+                    borderRadius: "8px",
+                    fontSize: "13px",
+                    color: T.primary,
+                    cursor: "pointer",
+                    background: isFeedbackHovered ? T.bgHover : T.bgCard,
+                    border: "none",
+                    borderTop: `1px solid ${T.bgSubtle}`,
+                    width: "100%",
+                    marginTop: "2px",
+                    fontFamily: "inherit",
+                    textAlign: "left",
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path
+                      d="M2 3.5C2 2.94772 2.44772 2.5 3 2.5H13C13.5523 2.5 14 2.94772 14 3.5V9.5C14 10.0523 13.5523 10.5 13 10.5H8L5 13V10.5H3C2.44772 10.5 2 10.0523 2 9.5V3.5Z"
+                      stroke={T.primary}
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  Give feedback
+                  <span
+                    style={{
+                      marginLeft: "auto",
+                      fontSize: "10px",
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: "100px",
+                      background: T.primaryLight,
+                      color: T.primary,
+                      border: `1px solid ${T.primaryMid}`,
+                    }}
+                  >
+                    new
+                  </span>
+                </button>
+
+                <button
+                  type="button"
                   onClick={() => void handleSignOut()}
                   disabled={isSigningOut}
                   onMouseEnter={() => setIsSignOutHovered(true)}
@@ -564,6 +619,13 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
           </button>
         )}
       </div>
+
+      {showFeedbackPanel ? (
+        <FeedbackPanel
+          onClose={() => setShowFeedbackPanel(false)}
+          userFirstName={firstName}
+        />
+      ) : null}
     </header>
   );
 }
