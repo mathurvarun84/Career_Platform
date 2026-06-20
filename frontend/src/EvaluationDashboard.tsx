@@ -10,6 +10,9 @@ import { pageContainerStyle } from "./utils/pageLayout";
 import { useResumeStore } from "./store/useResumeStore";
 import { hasJobDescription } from "./utils/hasJobDescription";
 import { T } from "./tokens";
+import CompanyReadinessCard from "./components/CompanyReadiness/CompanyReadinessCard";
+import CompanySelector from "./components/CompanyReadiness/CompanySelector";
+import ReadinessBreakdown from "./components/CompanyReadiness/ReadinessBreakdown";
 
 interface EvaluationDashboardProps {
   onTabChange?: (tab: string) => void;
@@ -89,6 +92,10 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const resetAnalysis = useResumeStore((s) => s.resetAnalysis);
   const feedbackState = useResumeStore((s) => s.feedbackState);
   const clearActiveMoment = useResumeStore((s) => s.clearActiveMoment);
+  const companyReadiness = useResumeStore((s) => s.companyReadiness);
+  const showReadinessBreakdown = useResumeStore((s) => s.showReadinessBreakdown);
+  const setShowReadinessBreakdown = useResumeStore((s) => s.setShowReadinessBreakdown);
+  const setActiveTab = useResumeStore((s) => s.setActiveTab);
   const { isMobile, isTablet } = useWindowSize();
   const [barsAnimated, setBarsAnimated] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -699,6 +706,38 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
             </div>
           );
         })()}
+
+        {/* ── Company Readiness Card ── */}
+        {companyReadiness && (
+          <CompanyReadinessCard
+            result={companyReadiness}
+            roleTitle={analysisResult.jd_intelligence?.role_title ?? "Target Role"}
+            onSeeBreakdown={() => setShowReadinessBreakdown(true)}
+            onFixTopGap={() => {
+              if (onTabChange) onTabChange("fixes");
+              else setActiveTab("fixes");
+            }}
+          />
+        )}
+
+        {/* ── Company Selector (always shown when analysis exists, no JD path) ── */}
+        <CompanySelector
+          runId={analysisResult.run_id ?? null}
+        />
+
+        {/* ── Readiness Breakdown modal ── */}
+        {showReadinessBreakdown && companyReadiness && (
+          <ReadinessBreakdown
+            result={companyReadiness}
+            roleTitle={analysisResult.jd_intelligence?.role_title ?? "Target Role"}
+            onClose={() => setShowReadinessBreakdown(false)}
+            onFixGap={() => {
+              setShowReadinessBreakdown(false);
+              if (onTabChange) onTabChange("fixes");
+              else setActiveTab("fixes");
+            }}
+          />
+        )}
 
         {/* ── SECTION 5: Priority Actions ── */}
         <div style={{

@@ -43,6 +43,7 @@ import os
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Optional
 from urllib.parse import urlparse
@@ -98,6 +99,20 @@ _configure_jd_fetcher_logging()
 SERPER_URL = "https://google.serper.dev/search"
 JINA_READER_BASE = "https://r.jina.ai/"
 HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
+# Title-alias data — two separate files, two separate concerns:
+#   role_taxonomy.json      -> role_family + seniority_ladder + generic_title
+#                              (also the source of truth the frontend dropdown
+#                              should be generated from — see jdFetchData.ts)
+#   role_title_aliases.json -> company-specific internal titles per
+#                              (role_family, seniority_rank), used only to
+#                              widen search queries + confidence scoring.
+# Neither file is required for the agent to function — both loaders fail
+# soft to {} so a missing/malformed file degrades to current behavior
+# (literal company/role strings only), never raises.
+_DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+ROLE_TAXONOMY_PATH = _DATA_DIR / "role_taxonomy.json"
+ROLE_ALIASES_PATH = _DATA_DIR / "role_title_aliases.json"
 
 USER_AGENT = "Mozilla/5.0 (compatible; JobBot/2.0)"
 
@@ -215,6 +230,70 @@ def _employer_matches(candidate_employer: str, target_company: str) -> bool:
         t for t in re.split(r"[\s\-_/.,()]+", candidate_employer.lower()) if len(t) >= 3
     ]
     return any(token in target_compact for token in employer_tokens)
+
+
+# --------------------------------------------------------------------------- #
+# Role title aliases (company-specific internal titles)
+# --------------------------------------------------------------------------- #
+@lru_cache(maxsize=1)
+def _load_role_aliases() -> dict[str, Any]:
+    """Load role_title_aliases.json once per process. Never raises — a
+    missing or malformed file just means no alias expansion happens, which
+    is exactly today's behavior."""
+    try:
+        with open(ROLE_ALIASES_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("role_title_aliases load failed path=%s err=%s", ROLE_ALIASES_PATH, exc)
+        return {}
+
+
+def _resolve_company_alias_key(company: str, aliases: dict[str, Any]) -> str:
+    """Map a free-text company name (as typed/selected by the user) to its
+    key in role_title_aliases.json, using the same compacted-string fuzzy
+    match `_employer_matches` already uses elsewhere in this file — so a
+    user-selected 'Amazon' or a slightly different casing/spacing still
+    resolves to the 'amazon' entry."""
+    if not company:
+        return ""
+    target_compact = re.sub(r"[\s\-_/.,]+", "", company.lower())
+    if not target_compact:
+        return ""
+    for key, entry in aliases.items():
+        if key.startswith("_") or not isinstance(entry, dict):
+            continue
+        display = entry.get("display_name", key)
+        display_compact = re.sub(r"[\s\-_/.,]+", "", str(display).lower())
+        key_compact = re.sub(r"[\s\-_/.,]+", "", key.lower())
+        if target_compact in (display_compact, key_compact):
+            return key
+    return ""
+
+
+def _resolve_title_aliases(
+    company: str,
+    role_family: str | None,
+    seniority_rank: str | None,
+) -> list[str]:
+    """Look up company-specific internal titles for (role_family, seniority_rank).
+
+    Returns [] whenever role_family/seniority_rank weren't supplied (e.g. a
+    free-text 'Other' role with no taxonomy match) or the company/family/rank
+    isn't in the table yet — callers treat [] as 'no aliasing, fall back to
+    the literal role string', so an incomplete table never breaks a search
+    that would have worked before this feature existed.
+    """
+    if not role_family or not seniority_rank:
+        return []
+    aliases = _load_role_aliases()
+    company_key = _resolve_company_alias_key(company, aliases)
+    if not company_key:
+        return []
+    family_block = aliases.get(company_key, {}).get(role_family, {})
+    if not isinstance(family_block, dict):
+        return []
+    titles = family_block.get(seniority_rank, [])
+    return [t for t in titles if isinstance(t, str) and t.strip()]
 
 
 # --------------------------------------------------------------------------- #
@@ -340,8 +419,17 @@ class JDFetcherAgent:
         company: str,
         role: str,
         direct_url: str | None = None,
+        role_family: str | None = None,
+        seniority_rank: str | None = None,
     ) -> JDFetchResult:
-        """Main entry point. Returns a JDFetchResult and never raises."""
+        """Main entry point. Returns a JDFetchResult and never raises.
+
+        role_family / seniority_rank are optional — pass them when the
+        caller knows them (e.g. the role came from the TOP_ROLES_BY_GROUP
+        dropdown, which carries both). When omitted (e.g. a free-text
+        'Other' role), behavior is identical to before this feature existed:
+        only the literal `role` string is searched/scored.
+        """
         try:
             if self.anthropic is None:
                 return JDFetchResult(
@@ -352,7 +440,9 @@ class JDFetcherAgent:
                 )
 
             if direct_url:
-                return self._fetch_single_url(direct_url, company, role)
+                return self._fetch_single_url(
+                    direct_url, company, role, role_family, seniority_rank,
+                )
 
             if not self.serper_api_key:
                 return JDFetchResult(
@@ -362,7 +452,7 @@ class JDFetcherAgent:
                     error_message="SERPER_API_KEY not configured",
                 )
 
-            return self._fetch_via_search(company, role)
+            return self._fetch_via_search(company, role, role_family, seniority_rank)
 
         except Exception as exc:  # noqa: BLE001 - top-level safety net
             logger.exception("fetch failed company=%r role=%r", company, role)
@@ -376,11 +466,22 @@ class JDFetcherAgent:
     # ------------------------------------------------------------------ #
     # Direct URL path (used by /api/fetch-jd when caller supplies a URL)
     # ------------------------------------------------------------------ #
-    def _fetch_single_url(self, url: str, company: str, role: str) -> JDFetchResult:
+    def _fetch_single_url(
+        self,
+        url: str,
+        company: str,
+        role: str,
+        role_family: str | None = None,
+        seniority_rank: str | None = None,
+    ) -> JDFetchResult:
         provider = classify_url(url)
         logger.info("direct_url url=%s provider=%s", url, provider.value)
 
-        candidate = self._extract_for_url(url, provider, company, role)
+        aliases = _resolve_title_aliases(company, role_family, seniority_rank)
+        if aliases:
+            logger.info("title_aliases resolved company=%r aliases=%r", company, aliases)
+
+        candidate = self._extract_for_url(url, provider, company, role, aliases)
 
         if candidate is None or not candidate.text:
             logger.info("status=not_found (direct_url, no text extracted) url=%s", url)
@@ -406,7 +507,7 @@ class JDFetcherAgent:
                 role=role,
             )
 
-        rescued = self._rescue(candidate, company, role)
+        rescued = self._rescue(candidate, company, role, aliases)
         if rescued is not None and rescued.score >= CONFIDENCE_THRESHOLD:
             logger.info("status=found (via rescue) url=%s score=%.2f", url, rescued.score)
             return JDFetchResult(
@@ -428,8 +529,18 @@ class JDFetcherAgent:
     # ------------------------------------------------------------------ #
     # Search path
     # ------------------------------------------------------------------ #
-    def _fetch_via_search(self, company: str, role: str) -> JDFetchResult:
-        queries = self._build_queries(company, role)
+    def _fetch_via_search(
+        self,
+        company: str,
+        role: str,
+        role_family: str | None = None,
+        seniority_rank: str | None = None,
+    ) -> JDFetchResult:
+        aliases = _resolve_title_aliases(company, role_family, seniority_rank)
+        if aliases:
+            logger.info("title_aliases resolved company=%r aliases=%r", company, aliases)
+
+        queries = self._build_queries(company, role, aliases)
         seen_urls: set[str] = set()
         best: _Candidate | None = None
 
@@ -454,7 +565,7 @@ class JDFetcherAgent:
                 provider = classify_url(url)
                 logger.info("processing url=%s provider=%s", url, provider.value)
 
-                candidate = self._extract_for_url(url, provider, company, role)
+                candidate = self._extract_for_url(url, provider, company, role, aliases)
                 if candidate is None or not candidate.text:
                     continue
 
@@ -481,7 +592,7 @@ class JDFetcherAgent:
 
         # All extractions came back below threshold (or empty) — try rescue.
         if best is not None and best.text:
-            rescued = self._rescue(best, company, role)
+            rescued = self._rescue(best, company, role, aliases)
             if rescued is not None and rescued.score >= CONFIDENCE_THRESHOLD:
                 logger.info(
                     "status=found (via rescue) url=%s score=%.2f",
@@ -515,6 +626,7 @@ class JDFetcherAgent:
         provider: ATSProvider,
         company: str,
         role: str,
+        aliases: list[str] | None = None,
     ) -> _Candidate | None:
         # Cheap pre-flight guard: the URL host alone tells us the employer for
         # ATS-hosted postings (greenhouse/lever/workday/trakstar/...). If it
@@ -550,7 +662,7 @@ class JDFetcherAgent:
         if not text or not text.strip():
             return None
 
-        score = self._compute_confidence(text, company, role)
+        score = self._compute_confidence(text, company, role, aliases)
         return _Candidate(url=url, text=text, score=score, method=method)
 
     # ------------------------------------------------------------------ #
@@ -691,19 +803,38 @@ class JDFetcherAgent:
     # Query building (ATS-first)
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _build_queries(company: str, role: str) -> list[str]:
+    def _build_queries(
+        company: str,
+        role: str,
+        aliases: list[str] | None = None,
+    ) -> list[str]:
         company_clean = company.strip()
         role_clean = role.strip()
         if company_clean.lower() == "other (type manually)":
             company_clean = role_clean.split("/")[0].strip() or "India"
 
-        return [
+        queries = [
             f'site:jobs.lever.co "{company_clean}" "{role_clean}"',
             f'site:boards.greenhouse.io "{company_clean}" "{role_clean}"',
             f'site:myworkdayjobs.com "{company_clean}" "{role_clean}"',
             f'"{company_clean}" careers "{role_clean}" -recruiter -blog',
             f'"{company_clean}" "{role_clean}" hiring',
         ]
+
+        # Alias expansion: a company's internal title (e.g. Amazon's "SDE 2"
+        # for the dropdown's "Senior Software Engineer") often appears on the
+        # ATS verbatim when the generic dropdown label never does. Bounded to
+        # the single most-canonical alias (first in the list) so a company
+        # with many known variants doesn't multiply Serper call volume.
+        if aliases:
+            alias_title = aliases[0]
+            queries.extend([
+                f'site:jobs.lever.co "{company_clean}" "{alias_title}"',
+                f'site:boards.greenhouse.io "{company_clean}" "{alias_title}"',
+                f'"{company_clean}" "{alias_title}" hiring',
+            ])
+
+        return queries
 
     # ------------------------------------------------------------------ #
     # Haiku extraction + rescue
@@ -736,6 +867,7 @@ class JDFetcherAgent:
         candidate: _Candidate,
         company: str,
         role: str,
+        aliases: list[str] | None = None,
     ) -> _Candidate | None:
         if self.anthropic is None or not candidate.text:
             return None
@@ -761,7 +893,7 @@ class JDFetcherAgent:
         if not rescued_text:
             return None
 
-        score = self._compute_confidence(rescued_text, company, role)
+        score = self._compute_confidence(rescued_text, company, role, aliases)
         logger.info("rescue confidence=%.2f url=%s", score, candidate.url)
         return _Candidate(
             url=candidate.url,
@@ -847,8 +979,23 @@ class JDFetcherAgent:
     # Confidence scoring
     # ------------------------------------------------------------------ #
     @staticmethod
-    def _compute_confidence(jd_text: str, company: str, role: str) -> float:
-        """Heuristic confidence in [0.0, 1.0] for a candidate JD text."""
+    def _compute_confidence(
+        jd_text: str,
+        company: str,
+        role: str,
+        aliases: list[str] | None = None,
+    ) -> float:
+        """Heuristic confidence in [0.0, 1.0] for a candidate JD text.
+
+        `aliases` (company-specific internal titles, e.g. Amazon's 'SDE 2'
+        for a dropdown role of 'Senior Software Engineer') widen the role-
+        match component below so a correctly-found JD doesn't get scored
+        down just because the company never uses the generic dropdown
+        wording. An exact alias phrase match counts as a full role match;
+        otherwise we take whichever of (literal role tokens, alias tokens)
+        scores higher, so this can only help a score, never hurt one
+        relative to pre-alias behavior.
+        """
         if not jd_text:
             return 0.0
 
@@ -873,9 +1020,27 @@ class JDFetcherAgent:
             w for w in re.split(r"[\s/\-_,()]+", role.lower())
             if len(w) >= 3 and not w.isdigit()
         ]
+        role_match_ratio = 0.0
         if role_words:
             matched = sum(1 for w in role_words if w in text_lower)
-            score += 0.20 * (matched / len(role_words))
+            role_match_ratio = matched / len(role_words)
+
+        for alias in aliases or []:
+            alias_lower = alias.strip().lower()
+            if not alias_lower:
+                continue
+            if alias_lower in text_lower:
+                role_match_ratio = 1.0
+                break
+            alias_words = [
+                w for w in re.split(r"[\s/\-_,()]+", alias_lower)
+                if len(w) >= 3 and not w.isdigit()
+            ]
+            if alias_words:
+                alias_matched = sum(1 for w in alias_words if w in text_lower)
+                role_match_ratio = max(role_match_ratio, alias_matched / len(alias_words))
+
+        score += 0.20 * role_match_ratio
 
         company_clean = company.strip().lower()
         if company_clean and company_clean in text_lower:

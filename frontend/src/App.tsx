@@ -56,6 +56,7 @@ function AppShell() {
   const activeTab = useResumeStore((state) => state.activeTab);
   const feedbackState = useResumeStore((state) => state.feedbackState);
   const clearActiveMoment = useResumeStore((state) => state.clearActiveMoment);
+  const fetchScoreJourney = useResumeStore((state) => state.fetchScoreJourney);
   const [pmfFollowUpVariant, setPmfFollowUpVariant] = useState<
     "very_disappointed" | "not_disappointed" | null
   >(null);
@@ -99,6 +100,12 @@ function AppShell() {
       setIsAuthModalOpen(false);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (analysisResult?.run_id) {
+      void fetchScoreJourney();
+    }
+  }, [analysisResult?.run_id]);
 
   const handleBeginAnalysis = useCallback(
     (file: File, jdText: string): void => {

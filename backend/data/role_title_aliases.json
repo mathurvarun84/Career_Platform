@@ -1,0 +1,148 @@
+{
+  "_comment": "Company-specific internal title aliases, keyed by company_key (same slug convention as company_values.json) -> role_family -> seniority_rank -> [aliases]. Used ONLY to expand jd_fetcher search queries and to widen confidence-scoring token matches. Never shown to the user directly. Seed data below is best-effort from public knowledge — verify before relying on it for low-traffic companies, and expect ladder names to drift over time (especially level numbers like Meta's E/M bands).",
+
+  "amazon": {
+    "display_name": "Amazon",
+    "engineering": {
+      "junior": ["SDE 1", "SDE I"],
+      "mid": ["SDE 1", "SDE I"],
+      "senior": ["SDE 2", "SDE II"],
+      "staff": ["SDE 3", "Senior SDE"],
+      "manager": ["Software Development Manager", "SDM"],
+      "senior_manager": ["Senior SDM", "Group SDM"],
+      "director": ["Director, Software Development"]
+    },
+    "data_analytics": {
+      "mid": ["Business Analyst", "BIE I"],
+      "senior": ["Senior Business Analyst", "BIE II"],
+      "staff": ["BIE III", "Principal BIE"]
+    },
+    "product_management": {
+      "mid": ["Product Manager - Tech", "PM-T"],
+      "senior": ["Senior Product Manager - Tech", "Senior PM-T"],
+      "staff": ["Principal Product Manager - Tech"]
+    },
+    "operations": {
+      "mid": ["Operations Manager", "Area Manager"],
+      "senior": ["Senior Operations Manager", "Senior Area Manager"]
+    }
+  },
+
+  "google": {
+    "display_name": "Google",
+    "engineering": {
+      "junior": ["L3 Software Engineer"],
+      "mid": ["L4 Software Engineer"],
+      "senior": ["L5 Software Engineer", "Senior Software Engineer"],
+      "staff": ["L6 Software Engineer", "Staff Software Engineer"],
+      "manager": ["Engineering Manager", "L5 Manager"],
+      "director": ["Director, Engineering"]
+    },
+    "product_management": {
+      "mid": ["L4 Product Manager"],
+      "senior": ["L5 Product Manager", "Senior Product Manager"],
+      "staff": ["L6 Product Manager", "Group Product Manager"]
+    },
+    "data_analytics": {
+      "mid": ["Data Analyst", "L4 Data Analyst"],
+      "senior": ["Senior Data Analyst", "L5 Data Analyst"]
+    }
+  },
+
+  "microsoft": {
+    "display_name": "Microsoft",
+    "engineering": {
+      "mid": ["Software Engineer II", "SDE"],
+      "senior": ["Senior Software Engineer", "SDE II"],
+      "staff": ["Principal Software Engineer"],
+      "manager": ["Engineering Manager", "SDM"],
+      "director": ["Director of Engineering"]
+    },
+    "product_management": {
+      "mid": ["Program Manager II"],
+      "senior": ["Senior Program Manager", "Senior PM"],
+      "staff": ["Principal Program Manager"]
+    }
+  },
+
+  "meta": {
+    "display_name": "Meta",
+    "engineering": {
+      "junior": ["E3 Software Engineer"],
+      "mid": ["E4 Software Engineer"],
+      "senior": ["E5 Software Engineer", "Senior Software Engineer"],
+      "staff": ["E6 Software Engineer", "Staff Software Engineer"],
+      "manager": ["Engineering Manager", "M1"],
+      "director": ["Director of Engineering", "M2"]
+    },
+    "product_management": {
+      "senior": ["Senior Product Manager", "PM, M5"]
+    }
+  },
+
+  "flipkart": {
+    "display_name": "Flipkart",
+    "engineering": {
+      "mid": ["SDE 2"],
+      "senior": ["SDE 3", "Senior SDE"],
+      "manager": ["Engineering Manager", "EM"],
+      "director": ["Director of Engineering"]
+    },
+    "product_management": {
+      "mid": ["Product Manager"],
+      "senior": ["Senior Product Manager", "SPM"],
+      "staff": ["Group Product Manager", "GPM"]
+    },
+    "data_analytics": {
+      "mid": ["Business Analyst"],
+      "senior": ["Senior Business Analyst", "Data Scientist II"]
+    }
+  },
+
+  "swiggy": {
+    "display_name": "Swiggy",
+    "engineering": {
+      "mid": ["SDE 2"],
+      "senior": ["SDE 3", "Senior SDE"],
+      "manager": ["Engineering Manager"]
+    },
+    "product_management": {
+      "senior": ["Senior Product Manager", "SPM"]
+    },
+    "operations": {
+      "mid": ["City Manager", "Operations Manager"]
+    }
+  },
+
+  "zomato": {
+    "display_name": "Zomato",
+    "engineering": {
+      "mid": ["SDE 2"],
+      "senior": ["SDE 3", "Senior SDE"]
+    },
+    "operations": {
+      "mid": ["City Lead", "Operations Manager"]
+    }
+  },
+
+  "razorpay": {
+    "display_name": "Razorpay",
+    "engineering": {
+      "mid": ["SDE 2"],
+      "senior": ["SDE 3", "Senior SDE"],
+      "manager": ["Engineering Manager"]
+    },
+    "product_management": {
+      "senior": ["Senior Product Manager"]
+    }
+  },
+
+  "phonepe": {
+    "display_name": "PhonePe",
+    "engineering": {
+      "mid": ["Member of Technical Staff 2", "MTS 2"],
+      "senior": ["Member of Technical Staff 3", "MTS 3", "Senior SDE"],
+      "manager": ["Engineering Manager"]
+    }
+  }
+}

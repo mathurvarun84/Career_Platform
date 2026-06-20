@@ -56,6 +56,8 @@ from backend.schemas.interview_schema import (
 )
 from backend.api.routes.coaching import configure_coaching_routes, router as coaching_router
 from backend.feedback import router as feedback_router
+from backend.api.score_journey import router as score_journey_router
+from backend.api.company_readiness import router as company_readiness_router
 
 
 logger = logging.getLogger(__name__)
@@ -128,6 +130,8 @@ def _require_job(job_id: str) -> Dict[str, Any]:
 configure_coaching_routes(_require_job, _persist_job)
 app.include_router(coaching_router)
 app.include_router(feedback_router)
+app.include_router(score_journey_router)
+app.include_router(company_readiness_router)
 
 
 def _is_stage_payload(entry: Dict[str, Any]) -> bool:
@@ -645,6 +649,8 @@ async def fetch_jd(req: FetchJDRequest):
         company=req.company,
         role=req.role,
         direct_url=req.direct_url,
+        **({"role_family": req.role_family} if req.role_family else {}),
+        **({"seniority_rank": req.seniority_rank} if req.seniority_rank else {}),
     )
     return FetchJDResponse(**result.model_dump())
 

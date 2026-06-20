@@ -1,17 +1,18 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 // @ts-nocheck
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import type { ChangeEvent, DragEvent } from "react";
 
 import { fetchUsageLimit } from "../../api/analyze";
 import UpgradeModal from "../auth/UpgradeModal";
-import { TOP_COMPANIES, TOP_ROLES_BY_GROUP } from "../../constants/jdFetchData";
+import { TOP_COMPANIES, TOP_ROLES_BY_GROUP, findRoleEntry } from "../../constants/jdFetchData";
 import type { FetchJDResult } from "../../types";
 import { useWindowSize } from "../../hooks/useWindowSize";
 import { supabase } from "../../lib/supabase";
 import { useResumeStore } from "../../store/useResumeStore";
 import { T } from "../../tokens";
 import { FeaturePulseCard } from "../feedback/FeaturePulseCard";
+import UploadReturnBanner from "../UploadReturnBanner";
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024;
 const ACCEPTED_EXTENSIONS = [".pdf", ".docx", ".txt"];
@@ -82,6 +83,7 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
   >("idle");
   const [fetchResult, setFetchResult] = useState<FetchJDResult | null>(null);
   const [jdLoadedFromFetch, setJdLoadedFromFetch] = useState(false);
+  const [fetchStepIndex, setFetchStepIndex] = useState(0);
   const [upgradeModalOpen, setUpgradeModalOpen] = useState(false);
   const [upgradeData, setUpgradeData] = useState<{
     uploadsThisMonth: number;
@@ -104,6 +106,27 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
   }, [pendingAnalyseRole, setPendingAnalyseRole]);
 
   const jdFetchUrl = `${import.meta.env.VITE_API_URL ?? ""}/api/fetch-jd`;
+
+  const JD_FETCH_STEPS = [
+    "Searching the web…",
+    "Found a job posting…",
+    "Reading job page…",
+    "Extracting JD content…",
+    "Almost there…",
+  ];
+
+  useEffect(() => {
+    if (fetchStatus !== "loading") {
+      setFetchStepIndex(0);
+      return;
+    }
+    setFetchStepIndex(0);
+    const interval = setInterval(() => {
+      setFetchStepIndex((prev) => (prev + 1) % JD_FETCH_STEPS.length);
+    }, 2200);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
   const _loadingSteps = [
     "Analyzing your resume...",
     "Running recruiter simulation...",
@@ -225,10 +248,16 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
     setJdLoadedFromFetch(false);
 
     try {
+      const selectedEntry = role !== "other" && role !== "" ? findRoleEntry(role) : null;
+      const payload: Record<string, string> = { company: requestedCompany, role: requestedRole };
+      if (selectedEntry) {
+        payload.role_family = selectedEntry.role_family;
+        payload.seniority_rank = selectedEntry.rank;
+      }
       const response = await fetch(jdFetchUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company: requestedCompany, role: requestedRole }),
+        body: JSON.stringify(payload),
       });
       const data = (await response.json()) as FetchJDResult;
       setFetchResult(data);
@@ -237,6 +266,7 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
       if (data.status === "found" && data.jd_text) {
         setJdText(data.jd_text);
         setJdLoadedFromFetch(true);
+        setJdTab("paste");
         showFeedbackMoment("feature_pulse_jd_fetch");
       }
     } catch {
@@ -331,6 +361,7 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
 
         {/* Upload Card */}
         <div style={{ maxWidth: "1200px", margin: "0 auto", padding: isMobile ? "0 20px 60px" : "0 40px 80px" }}>
+          <UploadReturnBanner />
           <div
             style={{
               maxWidth: 900,
@@ -658,6 +689,31 @@ export default function UploadZone({ onBeginAnalysis }: UploadZoneProps) {
                 {/* Paste Tab */}
                 {jdTab === "paste" && (
                   <>
+                    {jdLoadedFromFetch && fetchResult?.fetched_at && (
+                      <div
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: T.radiusMd,
+                          background: T.emeraldLight,
+                          border: `1px solid ${T.emeraldBorder}`,
+                          fontSize: 12,
+                          color: T.emerald,
+                          marginBottom: 10,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
+                      >
+                        <span>✓ JD auto-fetched from {fetchResult.source_url ? _extractDomain(fetchResult.source_url) ?? "web" : "web"}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setJdText(""); setJdLoadedFromFetch(false); }}
+                          style={{ background: "none", border: "none", fontSize: 11, color: T.emerald, cursor: "pointer", fontFamily: "inherit", textDecoration: "underline" }}
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    )}
                     {/* Textarea */}
                     <textarea
                   value={jdText}
@@ -747,6 +803,9 @@ Include the full posting for the most accurate analysis — job title, requireme
                         gridTemplateColumns: "1fr 1fr",
                         gap: 12,
                         marginBottom: 16,
+                        opacity: fetchStatus === "loading" ? 0.55 : 1,
+                        pointerEvents: fetchStatus === "loading" ? "none" : "auto",
+                        transition: "opacity 0.2s",
                       }}
                     >
                       <div>
@@ -838,10 +897,14 @@ Include the full posting for the most accurate analysis — job title, requireme
                             }}
                           >
                             <option value="">Select role...</option>
-                            {TOP_ROLES_BY_GROUP.map((r) => (
-                              <option key={r} value={r}>
-                                {r}
-                              </option>
+                            {TOP_ROLES_BY_GROUP.map((group) => (
+                              <optgroup key={group.label} label={group.label}>
+                                {group.roles.map((r) => (
+                                  <option key={`${r.role_family}_${r.rank}`} value={r.generic_title}>
+                                    {r.generic_title}
+                                  </option>
+                                ))}
+                              </optgroup>
                             ))}
                             <option value="other">Other...</option>
                           </select>
@@ -870,36 +933,93 @@ Include the full posting for the most accurate analysis — job title, requireme
                       </div>
                     </div>
 
+                    <style>{`
+                      @keyframes rip-spin { to { transform: rotate(360deg); } }
+                      @keyframes rip-pulse-dot { 0%,100% { opacity: 0.3; } 50% { opacity: 1; } }
+                      @keyframes rip-step-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+                    `}</style>
+
                     <button
                       onClick={() => handleFetchJD()}
                       disabled={!canFetch || fetchStatus === "loading"}
                       style={{
                         width: "100%",
-                        padding: "8px 12px",
+                        padding: "10px 12px",
                         borderRadius: T.radiusMd,
                         fontSize: 13,
                         fontWeight: 600,
-                        background:
-                          canFetch && fetchStatus !== "loading"
-                            ? T.primary
-                            : T.bgSubtle,
-                        color:
-                          canFetch && fetchStatus !== "loading"
-                            ? "#ffffff"
-                            : T.textDisabled,
+                        background: canFetch ? T.primary : T.bgSubtle,
+                        color: canFetch ? "#ffffff" : T.textDisabled,
                         border: "none",
-                        cursor:
-                          canFetch && fetchStatus !== "loading"
-                            ? "pointer"
-                            : "not-allowed",
+                        cursor: canFetch && fetchStatus !== "loading" ? "pointer" : "not-allowed",
                         fontFamily: "inherit",
-                        marginBottom: 12,
+                        marginBottom: fetchStatus === "loading" ? 8 : 12,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: 8,
+                        opacity: fetchStatus === "loading" ? 0.88 : 1,
+                        transition: "opacity 0.2s",
                       }}
                     >
-                      {fetchStatus === "loading"
-                        ? "Fetching JD..."
-                        : "Fetch JD"}
+                      {fetchStatus === "loading" && (
+                        <span
+                          style={{
+                            width: 14,
+                            height: 14,
+                            border: "2px solid rgba(255,255,255,0.35)",
+                            borderTopColor: "#ffffff",
+                            borderRadius: "50%",
+                            display: "inline-block",
+                            animation: "rip-spin 0.75s linear infinite",
+                            flexShrink: 0,
+                          }}
+                        />
+                      )}
+                      {fetchStatus === "loading" ? "Fetching JD" : "Fetch JD"}
                     </button>
+
+                    {fetchStatus === "loading" && (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 7,
+                          padding: "9px 12px",
+                          borderRadius: T.radiusMd,
+                          background: T.primaryLight,
+                          border: `1px solid ${T.primaryMid}`,
+                          marginBottom: 12,
+                        }}
+                      >
+                        <span style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                          {[0, 1, 2].map((i) => (
+                            <span
+                              key={i}
+                              style={{
+                                width: 5,
+                                height: 5,
+                                borderRadius: "50%",
+                                background: T.primary,
+                                display: "inline-block",
+                                animation: `rip-pulse-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
+                              }}
+                            />
+                          ))}
+                        </span>
+                        <span
+                          key={fetchStepIndex}
+                          style={{
+                            fontSize: 12,
+                            fontWeight: 600,
+                            color: T.primary,
+                            animation: "rip-step-in 0.3s ease",
+                          }}
+                        >
+                          {JD_FETCH_STEPS[fetchStepIndex]}
+                        </span>
+                      </div>
+                    )}
 
                     {fetchStatus === "found" && fetchResult?.jd_text && (
                       <div

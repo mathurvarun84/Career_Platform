@@ -176,6 +176,9 @@ def save_analysis(
     except Exception as exc:
         logger.warning("increment_upload_count RPC failed: %s", exc)
 
+    # Company Readiness persistence — non-fatal
+    _insert_company_readiness(user_id, result.get("run_id") or upload_id, result)
+
     logger.info(
         "Analysis saved: user=%s upload_id=%s ats=%s",
         user_id,
@@ -183,3 +186,32 @@ def save_analysis(
         denormalized.get("ats_score"),
     )
     return upload_id
+
+
+def _insert_company_readiness(user_id: str, run_id: str, result: Dict[str, Any]) -> None:
+    """
+    Write one row to company_readiness_results if company readiness was computed for
+    this run. No-op when final_result["company_readiness"] is None or missing.
+    Failures are caught and logged — never raised to caller.
+    """
+    cr = result.get("company_readiness")
+    if not cr:
+        return
+    try:
+        db = get_db()
+        db.table("company_readiness_results").insert({
+            "run_id":               run_id,
+            "user_id":              user_id,
+            "company_key":          cr.get("company_key", ""),
+            "company_display":      cr.get("company_display_name"),
+            "readiness_score":      cr.get("readiness_score", 0),
+            "readiness_label":      cr.get("readiness_label"),
+            "dimensions_passing":   cr.get("dimensions_passing"),
+            "dimensions_total":     cr.get("dimensions_total"),
+            "dimensions_json":      cr.get("dimensions"),
+            "target_ctc_min":       cr.get("target_ctc_min"),
+            "target_ctc_max":       cr.get("target_ctc_max"),
+            "ctc_delta_min":        cr.get("ctc_delta_min"),
+        }).execute()
+    except Exception as e:
+        logger.warning("Failed to write company_readiness_results for run %s: %s", run_id, e)

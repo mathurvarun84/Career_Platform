@@ -6,22 +6,28 @@ import { hasJobDescription } from "../utils/hasJobDescription";
 import { submitAnswerStream, fetchInterviewSessions, fetchModelAnswer } from "../api/interview";
 import type {
   AnalysisResult,
+  CompanyReadinessResult,
   FeedbackMomentType,
   FeedbackState,
   InterviewSession,
   InterviewSessionState,
   FollowUpQuestion,
   InterviewHistoryState,
+  MilestoneEvent,
   ModelAnswer,
   ModelAnswerCardState,
   PerQuestionFeedback,
   QuestionMode,
   RewriteStyle,
+  ScoreJourneyResult,
   SectionRewrite,
   SSEProgressEvent,
   SessionSummary,
   TabId,
 } from "../types";
+import { fetchCompanyReadinessFromApi } from "../api/companyReadiness";
+import { fetchScoreJourneyFromApi } from "../api/scoreJourney";
+import { supabase } from "../lib/supabase";
 
 interface ResumeStoreState {
   jobId: string | null;
@@ -126,6 +132,24 @@ interface ResumeStoreState {
   showFeedbackMoment: (moment: FeedbackMomentType) => void;
   clearActiveMoment: () => void;
   markPMFSkipped: () => void;
+
+  // ─── Score Journey slice ─────────────────────────────────────────────────────
+  scoreJourney: ScoreJourneyResult | null;
+  scoreJourneyLoading: boolean;
+  scoreJourneyError: string | null;
+  activeMilestone: MilestoneEvent | null;
+  fetchScoreJourney: () => Promise<void>;
+  setScoreJourney: (result: ScoreJourneyResult) => void;
+  dismissMilestone: () => void;
+
+  // ─── Company Readiness slice ─────────────────────────────────────────────────
+  companyReadiness: CompanyReadinessResult | null;
+  companyReadinessLoading: boolean;
+  companyReadinessError: string | null;
+  showReadinessBreakdown: boolean;
+  fetchCompanyReadiness: (runId: string, companyKey: string, seniorityOverride?: string) => Promise<void>;
+  setCompanyReadiness: (result: CompanyReadinessResult) => void;
+  setShowReadinessBreakdown: (v: boolean) => void;
 }
 
 const capAtsAtBaseline = (score: number, baseline: number | null): number =>
@@ -175,6 +199,14 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
   interviewPrefill: null,
   _cancelStream: null,
   feedbackState: null,
+  scoreJourney: null,
+  scoreJourneyLoading: false,
+  scoreJourneyError: null,
+  activeMilestone: null,
+  companyReadiness: null,
+  companyReadinessLoading: false,
+  companyReadinessError: null,
+  showReadinessBreakdown: false,
 
   setJobId: (jobId) => set({ jobId }),
   setAnalysisJdText: (analysisJdText) => set({ analysisJdText }),
@@ -184,6 +216,7 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
       baselineAts: analysisResult?.ats.score ?? null,
       sectionOverrides: {},
       applyAnywayAccepted: false,
+      companyReadiness: analysisResult?.company_readiness ?? null,
     }),
   setIsFullAnalysisReady: (ready) => set({ isFullAnalysisReady: ready }),
   mergePartialResult: (partial) =>
@@ -848,4 +881,57 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
           }
         : null,
     })),
+
+  // ─── Score Journey actions ────────────────────────────────────────────────────
+  fetchScoreJourney: async () => {
+    set({ scoreJourneyLoading: true, scoreJourneyError: null });
+    try {
+      const data = await fetchScoreJourneyFromApi();
+      const latestMilestone =
+        data.total_sessions > 1 && data.milestones.length > 0
+          ? data.milestones[data.milestones.length - 1]
+          : null;
+      set({ scoreJourney: data, scoreJourneyLoading: false, activeMilestone: latestMilestone });
+    } catch {
+      // Score Journey is non-critical — degrade gracefully to empty state
+      // rather than showing a hard error card. Sets journey to zero-sessions
+      // so the tab renders the "run your first analysis" prompt instead.
+      const empty: ScoreJourneyResult = {
+        sessions: [],
+        total_sessions: 0,
+        first_score: 0,
+        latest_score: 0,
+        score_delta: 0,
+        first_tier: null,
+        latest_tier: null,
+        tier_changed: false,
+        first_ctc_min: null,
+        latest_ctc_min: null,
+        ctc_delta_min: null,
+        milestones: [],
+      };
+      set({ scoreJourney: empty, scoreJourneyLoading: false, scoreJourneyError: null });
+    }
+  },
+  setScoreJourney: (result) => set({ scoreJourney: result }),
+  dismissMilestone: () => set({ activeMilestone: null }),
+
+  // ─── Company Readiness actions ───────────────────────────────────────────────
+  fetchCompanyReadiness: async (runId, companyKey, seniorityOverride) => {
+    set({ companyReadinessLoading: true, companyReadinessError: null });
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const token = sessionData.session?.access_token;
+      const data = await fetchCompanyReadinessFromApi(token, runId, companyKey, seniorityOverride);
+      set({ companyReadiness: data, companyReadinessLoading: false });
+    } catch (err) {
+      set({
+        companyReadinessLoading: false,
+        companyReadinessError: err instanceof Error ? err.message : "Failed to load company readiness",
+      });
+    }
+  },
+
+  setCompanyReadiness: (result) => set({ companyReadiness: result }),
+  setShowReadinessBreakdown: (v) => set({ showReadinessBreakdown: v }),
 }));

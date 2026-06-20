@@ -331,6 +331,7 @@ export interface AnalysisResult {
   jd_intelligence?: JDIntelligence | null;
   role_fit?: RoleFit | null;
   fix_plan?: FixPlanItem[];
+  company_readiness?: CompanyReadinessResult | null;
 }
 
 export interface SSEProgressEvent {
@@ -610,7 +611,90 @@ export type TabId =
   | "recruiter"
   | "gap"
   | "progress"
-  | "mock_interview";
+  | "mock_interview"
+  | "score_journey";
+
+export interface SessionSnapshot {
+  run_id: string;
+  user_id: string;
+  created_at: string;
+  ats_score: number;
+  jd_match_score: number | null;
+  composite_score: number;
+  percentile_value: number | null;
+  percentile_label: string | null;
+  current_tier: string | null;
+  current_tier_label: string | null;
+  current_ctc_min: number | null;
+  current_ctc_max: number | null;
+  seniority: string | null;
+  role_family: string | null;
+  jd_company: string | null;
+  jd_role_title: string | null;
+  ats_keyword_match: number | null;
+  ats_formatting: number | null;
+  ats_readability: number | null;
+  ats_impact_metrics: number | null;
+}
+
+export interface MilestoneEvent {
+  run_id: string;
+  type: "tier_unlock" | "percentile_band" | "first_analysis";
+  label: string;
+  from_value: string;
+  to_value: string;
+}
+
+export interface ScoreJourneyResult {
+  sessions: SessionSnapshot[];
+  total_sessions: number;
+  first_score: number;
+  latest_score: number;
+  score_delta: number;
+  first_tier: string | null;
+  latest_tier: string | null;
+  tier_changed: boolean;
+  first_ctc_min: number | null;
+  latest_ctc_min: number | null;
+  ctc_delta_min: number | null;
+  milestones: MilestoneEvent[];
+}
+
+export type ReadinessSignalStrength = "strong" | "developing" | "weak";
+
+export interface DimensionResult {
+  dimension_id: string;
+  label: string;
+  company_expectation: string;
+  resume_evidence: string;
+  signal_strength: ReadinessSignalStrength;
+  passes: boolean;
+  fix_hint: string | null;
+  display_label?: string;
+}
+
+export interface CompanyReadinessResult {
+  company_key: string;
+  company_display_name: string;
+  readiness_score: number;
+  readiness_label: string;
+  readiness_pct_string: string;
+  dimensions: DimensionResult[];
+  dimensions_passing: number;
+  dimensions_total: number;
+  ats_component: number;
+  jd_component: number | null;
+  seniority_component: number;
+  company_signal_component: number;
+  current_ctc_min: number | null;
+  current_ctc_max: number | null;
+  target_ctc_min: number | null;
+  target_ctc_max: number | null;
+  ctc_delta_min: number | null;
+  ctc_delta_max: number | null;
+  top_fix: DimensionResult | null;
+  disclaimer?: string;
+}
 
 export interface TopBarProps {
   onOpenAuthModal: () => void;

@@ -1447,6 +1447,28 @@ class Orchestrator:
                 "jd_source": jd_source or "",
             },
         }
+        # Company Readiness — auto-compute if JD company is in known set
+        final_result["company_readiness"] = None
+        try:
+            from backend.engine.company_readiness import compute_readiness_score, load_company_keys
+            company_name = (jd_intel or {}).get("company")
+            if company_name:
+                company_key = company_name.lower().strip().replace(" ", "")
+                if company_key in load_company_keys():
+                    seniority = str((resume_und or {}).get("seniority") or "mid")
+                    cr = compute_readiness_score(
+                        run_id=run_id,
+                        resume_und=resume_und or {},
+                        gap_result=gap_result or {},
+                        ats_result=ats_result or {},
+                        company_key=company_key,
+                        seniority=seniority,
+                    )
+                    if cr:
+                        final_result["company_readiness"] = cr.model_dump()
+        except Exception as _cr_exc:
+            logging.warning("Company readiness computation failed (non-fatal): %s", _cr_exc)
+
         # Save full result to session store
         try:
             save_full_run_result(uid, run_id, final_result)

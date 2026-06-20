@@ -1,0 +1,135 @@
+{
+  "_comment": "Source of truth for the JD-fetch role dropdown (TOP_ROLES_BY_GROUP) and for resolving a user's role_family + seniority_rank before search. role_family keys mirror backend.schemas RoleFamily (CAREER_PIVOT_MODE_SPEC). seniority_rank keys are internal join keys only — never shown to the user. generic_title is what renders in the dropdown and is what gets sent to Serper when no company-specific alias exists.",
+  "role_families": {
+    "engineering": {
+      "label": "Engineering",
+      "seniority_ladder": [
+        { "rank": "junior", "generic_title": "Junior Software Engineer" },
+        { "rank": "mid", "generic_title": "Software Engineer" },
+        { "rank": "senior", "generic_title": "Senior Software Engineer" },
+        { "rank": "staff", "generic_title": "Staff Engineer" },
+        { "rank": "manager", "generic_title": "Engineering Manager" },
+        { "rank": "senior_manager", "generic_title": "Senior Engineering Manager" },
+        { "rank": "director", "generic_title": "Director of Engineering" },
+        { "rank": "vp", "generic_title": "VP of Engineering" }
+      ]
+    },
+    "product_management": {
+      "label": "Product Management",
+      "seniority_ladder": [
+        { "rank": "junior", "generic_title": "Associate Product Manager" },
+        { "rank": "mid", "generic_title": "Product Manager" },
+        { "rank": "senior", "generic_title": "Senior Product Manager" },
+        { "rank": "staff", "generic_title": "Group Product Manager" },
+        { "rank": "manager", "generic_title": "Director of Product" },
+        { "rank": "senior_manager", "generic_title": "Senior Director of Product" },
+        { "rank": "director", "generic_title": "VP of Product" },
+        { "rank": "vp", "generic_title": "Chief Product Officer" }
+      ]
+    },
+    "data_analytics": {
+      "label": "Data & Analytics",
+      "seniority_ladder": [
+        { "rank": "junior", "generic_title": "Junior Data Analyst" },
+        { "rank": "mid", "generic_title": "Data Analyst" },
+        { "rank": "senior", "generic_title": "Senior Data Analyst" },
+        { "rank": "staff", "generic_title": "Lead Data Analyst" },
+        { "rank": "manager", "generic_title": "Analytics Manager" },
+        { "rank": "senior_manager", "generic_title": "Senior Analytics Manager" },
+        { "rank": "director", "generic_title": "Director of Data & Analytics" },
+        { "rank": "vp", "generic_title": "VP of Data" }
+      ]
+    },
+    "design": {
+      "label": "Design",
+      "seniority_ladder": [
+        { "rank": "junior", "generic_title": "Junior UX/UI Designer" },
+        { "rank": "mid", "generic_title": "UX/UI Designer" },
+        { "rank": "senior", "generic_title": "Senior UX/UI Designer" },
+        { "rank": "staff", "generic_title": "Lead Designer" },
+        { "rank": "manager", "generic_title": "Design Manager" },
+        { "rank": "senior_manager", "generic_title": "Senior Design Manager" },
+        { "rank": "director", "generic_title": "Director of Design" },
+        { "rank": "vp", "generic_title": "VP of Design" }
+      ]
+    },
+    "marketing": {
+      "label": "Marketing",
+      "seniority_ladder": [
+        { "rank": "junior", "generic_title": "Marketing Associate" },
+        { "rank": "mid", "generic_title": "Marketing Manager" },
+        { "rank": "senior", "generic_title": "Senior Marketing Manager" },
+        { "rank": "staff", "generic_title": "Marketing Lead" },
+        { "rank": "manager", "generic_title": "Associate Director of Marketing" },
+        { "rank": "senior_manager", "generic_title": "Director of Marketing" },
+        { "rank": "director", "generic_title": "Senior Director of Marketing" },
+        { "rank": "vp", "generic_title": "VP of Marketing" }
+      ]
+    },
+    "operations": {
+      "label": "Operations",
+      "seniority_ladder": [
+        { "rank": "junior", "generic_title": "Operations Associate" },
+        { "rank": "mid", "generic_title": "Operations Manager" },
+        { "rank": "senior", "generic_title": "Senior Operations Manager" },
+        { "rank": "staff", "generic_title": "Operations Lead" },
+        { "rank": "manager", "generic_title": "Associate Director of Operations" },
+        { "rank": "senior_manager", "generic_title": "Director of Operations" },
+        { "rank": "director", "generic_title": "Senior Director of Operations" },
+        { "rank": "vp", "generic_title": "VP of Operations" }
+      ]
+    },
+    "consulting": {
+      "label": "Consulting",
+      "seniority_ladder": [
+        { "rank": "junior", "generic_title": "Business Analyst" },
+        { "rank": "mid", "generic_title": "Consultant" },
+        { "rank": "senior", "generic_title": "Senior Consultant" },
+        { "rank": "staff", "generic_title": "Engagement Manager" },
+        { "rank": "manager", "generic_title": "Manager" },
+        { "rank": "senior_manager", "generic_title": "Senior Manager" },
+        { "rank": "director", "generic_title": "Principal" },
+        { "rank": "vp", "generic_title": "Partner" }
+      ]
+    },
+    "finance": {
+      "label": "Finance",
+      "seniority_ladder": [
+        { "rank": "junior", "generic_title": "Financial Analyst" },
+        { "rank": "mid", "generic_title": "Senior Financial Analyst" },
+        { "rank": "senior", "generic_title": "Finance Manager" },
+        { "rank": "staff", "generic_title": "Senior Finance Manager" },
+        { "rank": "manager", "generic_title": "Associate Director of Finance" },
+        { "rank": "senior_manager", "generic_title": "Director of Finance" },
+        { "rank": "director", "generic_title": "VP of Finance" },
+        { "rank": "vp", "generic_title": "Chief Financial Officer" }
+      ]
+    },
+    "hr": {
+      "label": "Human Resources",
+      "seniority_ladder": [
+        { "rank": "junior", "generic_title": "HR Associate" },
+        { "rank": "mid", "generic_title": "HR Business Partner" },
+        { "rank": "senior", "generic_title": "Senior HR Business Partner" },
+        { "rank": "staff", "generic_title": "HR Lead" },
+        { "rank": "manager", "generic_title": "Associate Director of HR" },
+        { "rank": "senior_manager", "generic_title": "Director of HR" },
+        { "rank": "director", "generic_title": "VP of HR" },
+        { "rank": "vp", "generic_title": "Chief Human Resources Officer" }
+      ]
+    },
+    "sales": {
+      "label": "Sales",
+      "seniority_ladder": [
+        { "rank": "junior", "generic_title": "Sales Development Representative" },
+        { "rank": "mid", "generic_title": "Account Executive" },
+        { "rank": "senior", "generic_title": "Senior Account Executive" },
+        { "rank": "staff", "generic_title": "Key Account Manager" },
+        { "rank": "manager", "generic_title": "Sales Manager" },
+        { "rank": "senior_manager", "generic_title": "Senior Sales Manager" },
+        { "rank": "director", "generic_title": "Director of Sales" },
+        { "rank": "vp", "generic_title": "VP of Sales" }
+      ]
+    }
+  }
+}
