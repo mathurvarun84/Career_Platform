@@ -169,6 +169,84 @@ def test_unknown_company_returns_none():
     assert result is None
 
 
+def test_no_jd_path_score_reaches_100_and_ownership_not_always_weak():
+    """No-JD path: score must not be capped at 70, ownership must use text fallback."""
+    resume = {
+        "seniority": "senior",
+        "has_metrics": True,
+        "sections_present": ["experience", "certifications"],
+        "resume_health": {},  # empty — simulates no resume_health in DB
+        "resume_sections": {
+            "experience": {
+                "full_text": (
+                    "I owned the checkout API serving 2M+ users. "
+                    "I drove the migration to microservices reducing latency by 40%. "
+                    "I led the on-call rotation and I delivered reliability improvements."
+                ),
+            },
+        },
+    }
+    gap_no_jd: dict = {}  # no keys at all — simulates no JD analyzed
+    result = compute_readiness_score(
+        run_id="run-nojd",
+        resume_und=resume,
+        gap_result=gap_no_jd,
+        ats_result={"score": 80, "breakdown": {"impact_metrics": 20}},
+        company_key="amazon",
+        seniority="senior",
+    )
+    assert result is not None
+    assert result.jd_component is None
+    # Score must be normalized to 100-based scale, not capped at 70
+    assert result.readiness_score > 70, f"Score {result.readiness_score} is capped — normalization not applied"
+    # Ownership must use text fallback, not return "weak" due to empty resume_health
+    ownership_dims = [d for d in result.dimensions if d.dimension_id == "ownership"]
+    if ownership_dims:
+        assert ownership_dims[0].signal_strength in ("developing", "strong"), (
+            f"Ownership returned 'weak' despite strong text signals: {ownership_dims[0].resume_evidence}"
+        )
+    # Problem-solving must be "developing" (no data), not "strong" (false positive)
+    ps_dims = [d for d in result.dimensions if d.dimension_id == "problem_solving"]
+    if ps_dims:
+        assert ps_dims[0].signal_strength == "developing", (
+            f"Problem-solving should be 'developing' with no JD, got '{ps_dims[0].signal_strength}'"
+        )
+
+
+def test_conflict_resolution_dimension_returns_real_label_and_evidence():
+    """Atlassian IC includes conflict_resolution — must not surface snake_case or Unknown dimension."""
+    resume = {
+        "seniority": "senior",
+        "has_metrics": True,
+        "sections_present": ["experience"],
+        "resume_health": {"expected_signals": []},
+        "resume_sections": {
+            "experience": {
+                "full_text": (
+                    "Resolved a cross-team API contract dispute between platform and mobile. "
+                    "Negotiated scope with product and design to hit the launch deadline. "
+                    "Mediated a disagreement between two engineers on the technical approach."
+                ),
+            },
+        },
+    }
+    result = compute_readiness_score(
+        run_id="run-cr",
+        resume_und=resume,
+        gap_result={"jd_match_score_before": 60, "priority_fixes": []},
+        ats_result={"score": 65, "breakdown": {"impact_metrics": 18}},
+        company_key="atlassian",
+        seniority="senior",
+    )
+    assert result is not None
+    cr_dims = [d for d in result.dimensions if d.dimension_id == "conflict_resolution"]
+    assert len(cr_dims) == 1, "conflict_resolution dimension not found in Atlassian IC result"
+    dim = cr_dims[0]
+    assert dim.label == "Conflict Resolution", f"Expected 'Conflict Resolution', got '{dim.label}'"
+    assert "Unknown dimension" not in dim.resume_evidence
+    assert dim.signal_strength in ("weak", "developing", "strong")
+
+
 def test_display_labels_not_pass_fail():
     result = compute_readiness_score(
         run_id="run-y",

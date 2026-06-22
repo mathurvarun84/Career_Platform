@@ -1,288 +1,588 @@
-# RIP V2 — CLAUDE.md (Compressed)
+# RIP V2 — CLAUDE.md
 
 ## Identity
-Resume Intelligence Platform V2 | Zenteiq Aitech | Bengaluru
+**Resume Intelligence Platform V2** | Zenteiq Aitech | Bengaluru
 Target: Indian SWEs 22–40, fresher–staff level
+Production: `https://resumeevaluatortool-production.up.railway.app`
 
-## Backend Stack
-Python 3.9+ | Pydantic v2 | Typer/Rich CLI | FastAPI (web) | python-docx | pdfplumber | python-dotenv
+---
 
-## Models (Optimized June 2026)
-| Agent | Provider | Model | max_tokens | Rationale | $/session |
-|---|---|---|---|---|---|
-| A1 Resume Understanding | OpenAI | gpt-4o-mini | 4000 | Extraction, classification | ~$0.0001 |
-| A2 JD Intelligence | OpenAI | **gpt-4.1-mini** | 4000 | 1M context, extraction task, 6× cheaper than 4o | **~$0.0003** |
-| A3 Gap Analyzer | OpenAI | **gpt-4.1** | 4000 | Better instruction-following, 1M context, cheaper than 4o | **~$0.010** |
-| A4 Rewriter | OpenAI | **gpt-4.1-mini** | 6000 | 50% cheaper than gpt-4o-mini, handles surgical rewrites | **~$0.0005** |
-| A5 Coach Agent | Anthropic | claude-haiku-4.5 | 4000 | Classification, routing, extraction well-handled | ~$0.002 |
-| **A6 Interview Agent** | Anthropic | **claude-sonnet-4.6** | 8000 | **NEW: Evaluator-optimizer loop + anti-pattern detection** | **~$0.06** |
-| Orchestrator | OpenAI | gpt-4o-mini | 4000 | Orchestration, routing | ~$0.0001 |
+## Claude Code Workflow (READ THIS FIRST)
 
-**Cost per session:** ~$0.0735 (down from ~$0.25 with GPT-4o for A2/A3)
-**Margin at $5/analysis:** 67× (excellent for self-funding)
+### Model Strategy — Plan with Sonnet, Code with Haiku
 
-Never hardcode model strings outside agent `__init__`. Never swap providers.
-- **OpenAI keys** → A1, A2, A3, A4, Orchestrator
-- **Anthropic keys** → A5, A6
-- Both from .env only. NO hardcoded credentials.
+**Every non-trivial task must follow this two-phase protocol:**
 
-## Folder Structure
-```
-resume_platform/
-├── main.py            # CLI (evaluate, close-gaps, simulate, history, agent)
-├── orchestrator.py    # sequences agents, ThreadPoolExecutor parallelism
-├── parser.py          # PDF/DOCX/TXT → clean text
-├── gap_session.py     # interactive diff + .docx export
-├── renderer.py        # rich terminal rendering
-├── backend/schemas/   # Pydantic models (agent1–5_schema.py, common.py, jd_fetch_schema.py)
-├── backend/agents/    # base_agent.py + A1–A5 + jd_fetcher.py
-├── engine/            # ats_scorer.py (NO LLM), percentile.py (NO LLM)
-├── memory/            # session_store.py, style_extractor.py
-└── data/benchmarks.json
-```
+| Phase | Model | Action |
+|---|---|---|
+| 1. Plan | `claude-sonnet-4-6` (default) | Understand the task, read relevant files, reason about the approach, write a plan |
+| 2. Code | Switch to `claude-haiku-4-5` | Execute the plan — write/edit files, run commands, verify |
 
-## Schemas (critical shapes)
+**How to apply:**
+- Before writing a single line of code, Sonnet reads the relevant files and produces a written plan (files to touch, approach, edge cases, risks).
+- Once the plan is clear, switch model to Haiku to execute. Haiku follows the plan exactly and does not re-derive architecture decisions.
+- If Haiku hits a blocker that requires architectural reasoning, pause and re-engage Sonnet.
+- This saves ~60–70% of token cost on implementation tasks.
 
-**common.py enums:** `Seniority` (junior/mid/senior/staff) | `CompanyType` (faang/product-unicorn/funded-startup/enterprise/service-based/unknown) | `RewriteStyle` (balanced/aggressive/top_1_percent)
+**When Sonnet stays active (no switch):**
+- Debugging a subtle runtime bug
+- Reviewing a PR or analyzing a diff
+- Writing the plan document itself
+- Any task where the implementation IS the reasoning (e.g., designing a new schema)
 
-**A1 out:** experience_years, seniority, tech_stack[], domains[], has_metrics, has_summary, sections_present[], resume_sections{}
+### Session Start Protocol
 
-**A2 out:** role_title, must_have_skills[], nice_to_have_skills[], hidden_signals[], semantic_skill_map{}, seniority_expected, company_type
+At the start of every session, before doing any work:
 
-**A3 out:** jd_match_score(0-100), gaps[]{section, missing_keywords[], rewrite_hint}, missing_keywords[], priority_fixes[]
-
-**A4 out:** rewrites{section: {balanced, aggressive, top_1_percent}}
-
-**A5 out:** personas[10]{persona, first_impression, noticed[], ignored[], rejection_reason, shortlist_decision}, shortlist_rate(0-1), consensus_strengths[], consensus_weaknesses[], most_critical_fix
-
-**A6 out (Interview Agent):** per_question_feedback[]{dimension_score, anti_patterns_fired[], level_signal, executive_presence}, session_summary{dimension_scorecard[], anti_pattern_report[], top_strength, top_gap}
-
-## Agent contract
-```python
-class Agent(BaseAgent):
-    def run(self, input_dict: dict) -> dict:
-        inp = InputModel(**input_dict)       # validate input
-        raw = self._call_llm(SYS, inp.x)
-        out = OutputModel(**self._parse_json(raw))  # validate output
-        return out.model_dump()
-```
-- Agents never import each other. Orchestrator is sole caller.
-- Raw dicts only at LLM boundary. Use `.model_dump()` between agents.
-
-## Orchestrator order
-1. ATS score (deterministic)
-2. A1 + A2 parallel (ThreadPoolExecutor, max_workers=2) — if JD provided
-3. A3 sequential (needs 1+2)
-4. Memory load + fingerprint
-5. A4 + A5 + A6 parallel (if requested) — A6 only on interview flow
-6. Percentile (deterministic)
-7. Memory update
-8. Return combined dict + career_positioning
-
-**Graceful degradation:** A6/A5/A4/memory fail → warn+continue. A1/A2/A3 fail → raise.
-
-**A6 (Interview Agent) integration:**
-- Triggered separately from /analyze flow (different endpoint: /mock-interview)
-- Runs after user answers interview questions (session-based, not analysis-based)
-- Cost: ~$0.06/interview session (vs ~$0.074 for full analysis)
-
-## Key rules
-- `response_format={"type":"json_object"}` on ALL OpenAI calls
-- 1 auto-retry on JSON parse failure
-- Style fingerprint: hard cap 200 tokens / 900 chars
-- Max 50 runs per user in memory
-- No `asyncio` — use ThreadPoolExecutor
-- No `print()` in CLI — use `rich.console.Console`
-- No LLM in engine/ats_scorer.py or engine/percentile.py
-- Functions >40 lines need docstring. Google-style docstrings everywhere.
-
-## Anti-hallucination (A4 rewriter — enforced in prompt)
-Never invent: companies, degrees, institutions, years of experience, specific metrics, project names.
-Missing metrics → use placeholders: [X%] [N users] [Xms] [₹X Cr ARR]
-
-## ATS scoring (deterministic, 0-100)
-keyword_match(25) + formatting(25) + readability(25) + impact_metrics(25)
-Composite = ats×0.4 + jd_match×0.6
-
-## Benchmarks (data/benchmarks.json)
-junior: avg48 | mid: avg55 | senior: avg63 | staff: avg70
-
-## docx export styling
-Name: H1 16pt bold centered | Contact: Normal centered | Section: H2 teal(0,128,128) 13pt bold ALLCAPS | Bullets: ListBullet | Other: Normal
-
-## Memory schema
-```json
-{"user_id":"","created_at":"","runs":[{"timestamp":"","ats_score":0,"match_score":0,"accepted_sections":[],"rejected_sections":[]}],"style_decisions":{"accepted":[],"rejected":[]}}
-```
-
-## Testing gates
 ```bash
-python -c "from engine.ats_scorer import score_resume; from engine.percentile import get_percentile; from backend.agents.base_agent import BaseAgent; from parser import parse_resume; print('OK')"
-python -c "from orchestrator import Orchestrator; print('OK')"
-python -c "from gap_session import run_gap_session; print('OK')"
-# Schema gate:
-python -c "from backend.schemas.common import *; from backend.schemas.agent1_schema import *; print('All schemas OK')"
+# 1. Check current state
+git status && git log --oneline -5
+
+# 2. Check session timeline for recent context (if needed)
+cat Handoff/SESSION_TIMELINE.md | head -50
+
+# 3. Check what handoff files exist
+ls Handoff/ | tail -5
+
+# 4. Read the most recent handoff doc (if relevant)
+cat Handoff/<most-recent>.md
 ```
 
-## Session fixes applied (Merged Fix Set)
-- parser.py: 6-pass _clean_text()
-- rewriter.py: COMPANY_HEADER markers, _ensure_experience_markers(), _resolve_sub_text() 4-level fallback
-- resume_builder.py: structure-aware build_final_docx(), _write_experience() with markers+heuristic
-- orchestrator.py: sectioner removed, resume_sections from A1, progress_cb(6 points), career_positioning in return
-- career_positioning.py: get_positioning_statement() — no LLM
-- LLM calls per run: 4 (was 5). Latency: ~14-18s (was 18-22s)
+Then re-read any files explicitly named in the handoff before proceeding.
 
-**Key invariant:** ALL original resume sections preserved in output docx. Experience: company BOLD, role italic, bullets ListBullet. Unchanged sections: verbatim, never placeholder. Placeholder guard: [.*] pattern never written.
+### Task Execution Rules
+
+- **Read before edit** — always read a file before editing it.
+- **Plan before implement** — for any task touching >2 files, write the plan as a bullet list before touching code.
+- **Verify after every change** — run the relevant test or build check immediately after each file change, not at the end.
+- **Never assume file contents** — `grep` or `Read` to confirm, never guess function signatures or imports.
+- **One concern per commit** — don't bundle unrelated changes.
 
 ---
 
-## Model Optimization (June 2026)
+## Dev Setup
 
-**Cost reduction:** ~$0.25 → ~$0.074 per analysis (67% cost savings)
+### Prerequisites
+- Python 3.11+ (`runtime.txt` pins `python-3.11.9`)
+- Node.js 18+
+- `.env` file at repo root (see schema below)
 
-### Migration Log
-- **A2 (JD Intelligence):** gpt-4o → **gpt-4.1-mini** (line 148 in jd_intelligence.py)
-  - Rationale: Extraction task, 1M context, 6× cheaper
-  - Cost delta: -$0.0007/session
-  
-- **A3 (Gap Analyzer):** gpt-4o → **gpt-4.1** (line 2019 in gap_analyzer.py)
-  - Rationale: Better instruction-following, 1M context
-  - Cost delta: -$0.015/session
-  
-- **A4 (Rewriter):** claude-haiku-4.5 → **gpt-4.1-mini** (line 579 in rewriter.py)
-  - Rationale: 50% cheaper than gpt-4o-mini, handles surgical rewrites well
-  - Cost delta: -$0.0005/session (even cheaper than haiku now)
-  
-- **A5 (Coach Agent):** claude-haiku-4.5 → **KEEP** (no change)
-  - Cost: ~$0.002/session
-  
-- **A6 (Interview Agent):** claude-sonnet-4-20250514 → **claude-sonnet-4.6** (line 620 in interview_agent.py)
-  - Rationale: Evaluator-optimizer loop + anti-pattern detection
-  - Cost: ~$0.06/interview session
+### Start Backend
+```bash
+# From repo root
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+Backend runs at `http://localhost:8000`. Docs at `http://localhost:8000/docs`.
 
-All models hardcoded in `__init__` methods. API keys remain OPENAI_API_KEY + ANTHROPIC_API_KEY from .env.
+### Start Frontend
+```bash
+cd frontend
+npm install       # first time only
+npm run dev
+```
+Frontend runs at `http://localhost:5173`.
+
+### Environment Variables
+
+**Repo-root `.env` (backend):**
+```
+OPENAI_API_KEY=...                    # Required: A1, A2, A3, A4
+ANTHROPIC_API_KEY=...                 # Required: A5, A5b, A6, JDFetcher
+SERPER_API_KEY=...                    # Required: JD fetcher (Serper search API)
+SUPABASE_URL=https://your.supabase.co # Required: DB + auth
+SUPABASE_JWT_SECRET=...               # Required: JWT verification (HS256 fallback)
+SUPABASE_SERVICE_ROLE_KEY=...         # Required: server-side DB writes
+
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://localhost:3000
+FREE_TIER_MONTHLY_LIMIT=3             # Default: 3 analyses/user/month
+STAGE_CACHE_TTL_SECONDS=3600          # 0 = disabled, 300 = fast dev cycle
+```
+
+**`frontend/.env.development` (Vite — never commit real keys):**
+```
+VITE_API_URL=http://localhost:8000
+VITE_SUPABASE_URL=https://your.supabase.co
+VITE_SUPABASE_ANON_KEY=...
+VITE_USE_MOCK=true                    # MUST be true during dev; false in prod build
+```
+
+**`frontend/.env.production`:**
+```
+VITE_API_URL=https://resumeevaluatortool-production.up.railway.app
+VITE_USE_MOCK=false                   # CRITICAL — never ship with mock=true
+```
 
 ---
 
-# Frontend — Claude Code Agreement
+## Architecture Overview
 
-## Stack
-React 18 + TypeScript + Vite | Tailwind CSS | Zustand | React Query | Axios | Recharts
-Backend: FastAPI http://localhost:8000 (CORS configured)
+Full-stack web app:
+- **Backend**: FastAPI (`backend/main.py`) — Python 3.11, Pydantic v2, port 8000
+- **Frontend**: React 18 + TypeScript + Vite — port 5173
+- **Auth**: Supabase JWT (ES256 + JWKS) — `backend/auth.py` + `frontend/src/lib/supabase.ts`
+- **DB**: Supabase Postgres — `backend/db.py` (service role key, bypasses RLS)
+- **Orchestration**: `orchestrator.py` (repo root) — `ThreadPoolExecutor`, no `asyncio`
+- **Resume parsing**: `parser.py` (repo root) — PDF/DOCX/TXT → clean text
+- **Deployment**: Railway (`railway.toml`) — `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
 
-## Source of truth
-frontend/API_CONTRACT.md | frontend/src/types/index.ts | frontend/src/mocks/mockData.ts | frontend/src/store/useResumeStore.ts
+> `resume_platform/` at repo root is a **legacy CLI prototype** — not the main app. Do not modify it.
 
-## Non-negotiable rules
-1. **Mock-first**: every component renders with mockData before touching real API
-2. Only `useMockData.ts` hook switches mock/real — never direct Axios in components
-3. All data reads from Zustand store — no prop drilling
-4. `VITE_USE_MOCK=true` in .env.development during all dev
-5. No `any` TypeScript types. No TODO comments. No inline styles (except dynamic %).
-6. All 5 tabs rendered in DOM simultaneously, toggled via CSS `display:none`
-7. **No global h1/h2 font-size rules in index.css** (breaks Tailwind arbitrary values)
-8. `<h1>` tags → use `<div>` to avoid global CSS overrides
+---
 
-## Self-verification (run IN ORDER before declaring done)
+## Backend Folder Structure
+
 ```
-V1: cd frontend && npx tsc --noEmit          → 0 errors required
-V2: cd frontend && npm run build             → "built in Xs" required
-V3: Mock render — no console errors, all props typed, optional chaining
-V4: Wireframe pixel-check — colors, layout, data fields
-V5: Store wiring — reads store only, loading/error states handled
-V6: Tab isolation — renders with null other-tab state
+backend/
+├── main.py                   # FastAPI app; all route includes + inline endpoint defs
+├── agents/
+│   ├── base_agent.py         # BaseAgent._call_llm, _parse_json, 1 auto-retry
+│   ├── resume_understanding.py  # A1 — gpt-4o-mini
+│   ├── jd_intelligence.py    # A2 — gpt-4.1-mini
+│   ├── gap_analyzer.py       # A3 — gpt-4.1
+│   ├── rewriter.py           # A4 — gpt-4.1-mini (legacy; surgical patching now primary)
+│   ├── recruiter_sim.py      # A5 — claude-haiku-4-5-20251001
+│   ├── interview_agent.py    # A6 — claude-sonnet-4.6
+│   ├── coaching_agent.py     # A5b — claude-haiku-4-5-20251001 (per-gap Q&A)
+│   ├── jd_fetcher.py         # Serper search + Haiku extraction
+│   ├── ats_classifier.py
+│   └── sectioner_agent.py
+├── api/
+│   ├── company_readiness.py  # Router prefix: /api/company-readiness
+│   ├── score_journey.py      # Router prefix: /api/score-journey
+│   └── routes/
+│       └── coaching.py       # Router prefix: /api/coaching
+├── engine/
+│   ├── company_readiness.py  # Deterministic readiness scoring (no LLM)
+│   ├── fix_plan_builder.py   # Builds FixPlanItem[] from A3 output
+│   ├── milestone_detector.py # Tier/percentile milestone detection
+│   └── patch_engine.py       # Surgical patch apply/rollback
+├── models/
+│   ├── interview_session.py
+│   ├── readiness.py
+│   └── score_journey.py
+├── schemas/
+│   ├── agent1_schema.py … agent5_schema.py  # Pydantic I/O per agent
+│   ├── common.py             # Seniority, CompanyType, RewriteStyle enums
+│   ├── interview_schema.py
+│   ├── career_memory.py
+│   └── jd_fetch_schema.py
+├── persistence.py            # save_analysis → Supabase (uploads table)
+├── interview_persistence.py  # interview_sessions table
+├── corpus_persistence.py     # corpus_runs, patch_decisions tables
+├── coaching_persistence.py   # coaching_answers table
+├── auth.py                   # get_current_user_id via Supabase JWKS
+├── db.py                     # Supabase client (service role — bypasses RLS)
+├── feedback.py               # Router: /api/feedback
+├── limit_checker.py          # Monthly upload cap (FREE_TIER_MONTHLY_LIMIT)
+├── role_fit.py               # RoleFit band: qualified/stretch/underqualified
+├── email_service.py
+├── few_shot_prompts.py
+├── surgical_debug.py
+├── seniority_from_titles.py
+├── services/
+│   └── serper_client.py      # Serper Google Search API wrapper
+├── constants/
+│   └── jd_fetch_data.py
+└── utils/
+    └── question_ledger.py    # Per-resume interview question deduplication
+
+# Root-level shared modules (imported by both backend and orchestrator)
+engine/
+├── ats_scorer.py             # Deterministic ATS — NO LLM
+├── percentile.py             # Percentile lookup — NO LLM
+├── career_positioning.py     # Tier/CTC bands — NO LLM
+├── resume_builder.py         # build_final_docx (python-docx)
+├── patch_engine.py           # Root-level patch engine (shared)
+├── ats_semantic_booster.py
+├── surgical_export.py
+└── llm_trace.py
+orchestrator.py               # Sequences A1–A5, fix_plan, percentile, persistence
+parser.py                     # PDF/DOCX/TXT → clean text (pdfplumber, python-docx)
+validator/
+└── rewriter_validator.py
 ```
 
-## Colours
+---
+
+## API Endpoints
+
 ```
-Primary:     #6c47ff   Card bg:  #f7f5ff
-Success:     #16a34a   Border:   #c4b5fd
-Error:       #dc2626   Dark bg:  #1a1a2e
-Warning:     #d97706   Score num: #6c47ff 42px 800w
-Tab active:  border-b-2 border-[#6c47ff]
+# Core
+GET  /health
+GET  /api/usage-limit
+POST /api/analyze                              → {job_id}
+GET  /api/stream/{job_id}                      → SSE: {step, label, pct, status, error?, partial_result?}
+GET  /api/result/{job_id}                      → AnalysisResult
+POST /api/gap-close                            → {docx_id}
+GET  /api/download/{job_id}                    → binary .docx
+POST /api/fetch-jd                             → FetchJDResponse
+POST /api/reset-limit
+GET  /api/session/{session_id}/rescore
+GET  /api/session/{session_id}/download
+
+# Patches
+POST /api/patches/apply                        → PatchApplyResult[]
+POST /api/patches/rollback
+
+# Interview (A6)
+POST /api/interview/questions                  → InterviewQuestionsResponse
+POST /api/interview/session/start              → StartInterviewResponse
+POST /api/interview/session/{id}/answer        → SubmitAnswerResponse
+POST /api/interview/session/{id}/answer/stream → SSE feedback stream
+POST /api/interview/session/{id}/summary       → SessionSummary
+POST /api/interview/session/{id}/model-answer/{q_id} → ModelAnswer
+GET  /api/interview/sessions                   → PastSessionSummary[]
+POST /api/interview/evaluate
+POST /api/interview/follow-up
+
+# Coaching (backend/api/routes/coaching.py)
+POST /api/coaching/answer                      → CoachingAnswer (generate bullet)
+GET  /api/coaching/answers/{session_id}        → CoachingAnswer[]
+POST /api/coaching/apply                       → apply bullet to docx
+
+# Score Journey (backend/api/score_journey.py)
+GET  /api/score-journey                        → ScoreJourneyResult
+
+# Company Readiness (backend/api/company_readiness.py)
+GET  /api/company-readiness                    → CompanyReadinessResult
+
+# Feedback (backend/feedback.py)
+GET  /api/feedback/state                       → FeedbackState
+POST /api/feedback/submit                      → 204
 ```
 
-## API endpoints
-```
-POST /api/analyze     → {job_id}
-GET  /api/stream/{id} → SSE {step,label,pct,status,error?}
-GET  /api/result/{id} → AnalysisResult
-POST /api/gap-close   → {docx_id, updated_result}
-GET  /api/download/{id} → binary docx
-GET  /api/history     → {runs:[]}
-```
+Source of truth for request/response shapes: `frontend/src/types/index.ts` + `frontend/API_CONTRACT.md`.
 
-## Key types (frontend/src/types/index.ts)
-```typescript
-AnalysisResult { ats, resume, gap, rewrites, sim, percentile, positioning }
-ATSResult { score, breakdown:{keyword_match,formatting,readability,impact_metrics}, ats_issues[] }
-SimResult { personas[10], shortlist_rate, consensus_strengths[], consensus_weaknesses[], most_critical_fix }
-PersonaVerdict { persona, first_impression, noticed[], ignored[], rejection_reason, shortlist_decision }
-RewriteStyle = 'balanced'|'aggressive'|'top_1_percent'
-TabId = 'overview'|'fixes'|'recruiter'|'gap'|'progress'
-```
+---
 
-## File structure (current state)
+## Frontend Folder Structure
+
 ```
 frontend/src/
-  App.tsx                         # 3 views: Upload/Progress/Dashboard
-  types/index.ts                  # all interfaces
-  mocks/mockData.ts               # MOCK_ANALYSIS_RESULT (ats=68,jd=73,10 personas,shortlist=0.6)
-  store/useResumeStore.ts         # jobId,analysisResult,selectedStyle,activeTab,isAnalyzing
-  hooks/useMockData.ts            # IS_MOCK + useAnalysisResult + useHistory
-  hooks/useSSE.ts                 # EventSource lifecycle + mock simulation
-  api/client.ts                   # Axios instance + typed functions
-  components/layout/TopBar.tsx    ✅
-  components/layout/TabNav.tsx    ✅
-  components/upload/UploadZone.tsx       ✅ (h1→div fix applied)
-  components/upload/AnalysisProgress.tsx ✅
-  components/upload/VerdictBanner.tsx    ✅
-  components/upload/CareerPositioning.tsx ✅
-  # Days 2-7 tabs: placeholder text only
+├── App.tsx                          # Root shell: Supabase auth, view switching (Landing/Upload/Progress/Dashboard)
+├── EvaluationDashboard.tsx          # Overview tab
+├── tokens.ts                        # Design tokens (T.primary, T.success, etc.)
+├── main.tsx
+├── index.css                        # Minimal global CSS — see guard rules below
+├── types/index.ts                   # ← SOURCE OF TRUTH for all TS interfaces
+├── store/
+│   ├── useResumeStore.ts            # Main Zustand store
+│   └── authStore.ts                 # Supabase session + UserProfile
+├── lib/
+│   └── supabase.ts                  # Supabase browser client
+├── api/
+│   ├── client.ts                    # Axios instance (VITE_API_URL base)
+│   ├── analyze.ts
+│   ├── interview.ts
+│   ├── companyReadiness.ts
+│   └── scoreJourney.ts
+├── hooks/
+│   ├── useMockData.ts               # IS_MOCK flag; useAnalysisResult wraps mock/real
+│   ├── useSSE.ts                    # EventSource lifecycle + mock simulation
+│   ├── useFeedbackOrchestrator.ts
+│   ├── useFeedbackSubmit.ts
+│   ├── useProgressStore.ts
+│   ├── useRescore.ts
+│   ├── useUsageLimits.ts
+│   ├── useUserHistory.ts
+│   └── useWindowSize.ts
+├── mocks/
+│   ├── mockData.ts                  # MOCK_ANALYSIS_RESULT
+│   ├── mockInterviewData.ts
+│   ├── mockReadinessData.ts
+│   └── mockScoreJourneyData.ts
+├── components/
+│   ├── layout/TopBar.tsx, TabNav.tsx
+│   ├── upload/
+│   │   ├── UploadZone.tsx           # Use <div> not <h1>
+│   │   ├── AnalysisProgress.tsx
+│   │   ├── VerdictBanner.tsx
+│   │   └── CareerPositioning.tsx
+│   ├── auth/
+│   │   ├── AuthGateScreen.tsx, AuthModal.tsx, RequireAuth.tsx, UpgradeModal.tsx
+│   ├── cards/
+│   │   ├── EvidenceCoachingCard.tsx
+│   │   ├── StructuralPatchCard.tsx
+│   │   ├── SurfacePatchCard.tsx
+│   │   └── cardTypes.ts
+│   ├── CompanyReadiness/            # CompanyReadinessCard, CompanySelector, CTCImplicationBlock,
+│   │                                #   DimensionBadge, DimensionCard, ReadinessBreakdown,
+│   │                                #   ReadinessMeter, ReadinessPaywallModal
+│   ├── ScoreJourney/               # ScoreJourneyTab, TimelineChart, SessionCard,
+│   │                                #   MilestoneBanner, ProgressSummary, WhatChangedPanel
+│   ├── feedback/                   # FeedbackPanel, FeaturePulseCard, PMFModal,
+│   │                                #   PMFFollowUpCard, ReengagementBanner
+│   ├── ActionableFixes.tsx          # Tab: fixes
+│   ├── GapCloser.tsx                # Tab: gap
+│   ├── MockInterview.tsx            # Tab: mock_interview
+│   ├── RecruiterSimulation.tsx      # Tab: recruiter
+│   ├── ProgressTracking.tsx         # Tab: progress
+│   ├── LandingPage.tsx, ResumeUpload.tsx, ModeSelector.tsx
+│   ├── CareerPathPanel.tsx, CareerRecordPanel.tsx, QualifiedRolesPanel.tsx
+│   ├── RoleFitBanner.tsx, ModelAnswerCard.tsx, FixValidation.tsx
+│   ├── DataSourceNotice.tsx, UploadReturnBanner.tsx, ErrorBoundary.tsx, Footer.tsx
+├── engine/
+│   └── atsScorer.ts                 # Client-side live ATS rescoring after patches
+├── utils/
+│   ├── actionableFixes.ts, analysisFallback.ts, coachingQuestions.ts
+│   ├── coachingSession.ts, composeResumeText.ts, fixesCardLogic.ts
+│   ├── fixesPipeline.ts, fixPlanAdapter.ts, hasJobDescription.ts
+│   ├── modeScores.ts, overviewFixes.ts, pageLayout.ts
+│   ├── progressStorage.ts, roleFitEvidence.ts
+├── constants/
+│   ├── interviewDimensions.ts
+│   └── jdFetchData.ts
+└── pages/
+    └── PipelineInspectorPage.tsx    # Dev-only at /debug/pipeline
 ```
 
-## Day build order
-- ✅ Day 0: Foundation files
-- ✅ Day 1: Upload shell + App shell + SSE + TopBar + TabNav (index.css bug fixed)
-- ⬜ Day 2: Overview (ScoreCards, RecruiterScan, PriorityActions, ATSBars, VerdictBanner, CareerPositioning)
-- ⬜ Day 3: Actionable Fixes (BeforeAfterCard, 3-style toggle, accept/keep)
-- ⬜ Day 4: Recruiter View (10 CompanyCards, StatCards, StrategicInsight)
-- ⬜ Day 5: Gap Closer (HeroScore, SkillsGrid, ExpRequirements, ActionPlan)
-- ⬜ Day 6: Progress (ScoreChart/Recharts, MetricCards, Timeline, download wiring)
+---
 
-## Day prompt wrapper
-```
-[Read CLAUDE.md] [Read frontend/src/types/index.ts] [Read frontend/src/mocks/mockData.ts]
-Day N: [task]
-Deliver: 1)files read 2)write files 3)run V1-V6 4)fix errors immediately 5)final report
+## Tab System (7 tabs)
+
+```typescript
+type TabId = 'overview' | 'fixes' | 'recruiter' | 'gap' | 'progress' | 'mock_interview' | 'score_journey'
 ```
 
-## index.css must NOT contain
-h1/h2 font-size rules | #root text-align:center | :root font:18px | width constraints on #root
-Audit: `cat frontend/src/index.css | grep -E "h1|h2|text-align.*center|56px|1126px"` → no matches
+| TabId | Component | What it shows |
+|---|---|---|
+| overview | EvaluationDashboard.tsx | ATS scores, recruiter scan, positioning, company readiness |
+| fixes | ActionableFixes.tsx | Surgical/surface/evidence patch cards |
+| recruiter | RecruiterSimulation.tsx | 10 persona verdicts (A5) |
+| gap | GapCloser.tsx | Gap close + coaching Q&A (A5b) |
+| progress | ProgressTracking.tsx | Score history + career record |
+| mock_interview | MockInterview.tsx | A6 interview session |
+| score_journey | ScoreJourney/ScoreJourneyTab.tsx | Multi-run timeline + milestones |
 
-## Wireframe UI Validation Checklist
+All 7 tabs rendered in DOM simultaneously. Toggled via CSS `display:none`. Never unmount tabs.
 
-After writing or modifying ANY component, Claude Code must run this
-self-check before reporting done:
+---
 
-### Upload Screen (UploadZone + TopBar)
-- [ ] TopBar: horizontal flex row, brand LEFT, button RIGHT, NOT stacked
-- [ ] Brand icon: 38×38 purple (#6c47ff) square, not invisible
-- [ ] Hero title: 28px (use div not h1 to avoid global CSS override)
-- [ ] Upload box: dashed border (#c4b5fd), NOT raw browser file input
-- [ ] file input has className="hidden"
-- [ ] Browse Files button: inside upload box, purple
-- [ ] Demo mode badge: pill shape, below upload box, only if IS_MOCK
-- [ ] JD textarea + Analyze button: flex row (not stacked)
+## Key Types (frontend/src/types/index.ts)
 
-### Global CSS rules that MUST NOT exist in index.css
-- NO h1 { font-size: ... } (overrides Tailwind text-[Xpx] classes)
-- NO h2 { font-size: ... }
-- NO #root { text-align: center } (breaks TopBar flex alignment)
-- NO :root { font: 18px ... } (overrides body font)
-- NO width constraint on #root (breaks full-width layout)
+```typescript
+// Top-level result
+AnalysisResult {
+  job_id, session_id, run_id, resume_id, jd_id, api_version,
+  ats: ATSResult, resume: ResumeUnderstanding, gap: GapResult|null,
+  rewrites: Record<string,SectionRewrite>|null, sim: SimResult|null,
+  percentile: PercentileResult|null, positioning: PositioningResult|null,
+  patches: ResumePatch[], validation: ValidationSummary|null,
+  jd_intelligence: JDIntelligence|null, role_fit: RoleFit|null,
+  fix_plan: FixPlanItem[], company_readiness: CompanyReadinessResult|null
+}
 
-### Before every Day prompt, verify
-  cat frontend/src/index.css | grep -E "h1|h2|text-align.*center|56px|1126px"
-  Expected: no matches
+// Critical discriminated unions
+GapType = "surface" | "structural" | "evidence"
+PatchOp = "replace_text" | "insert_keyword" | "shorten_bullet" | "reorder_bullets" | "add_metric" | "add_bullet"
+PatchStatus = "pending" | "applied" | "rejected" | "rolled_back"
+PatchRisk = "safe" | "needs_confirmation"
+FitnessBand = "qualified" | "stretch" | "underqualified"
+TabId = 'overview'|'fixes'|'recruiter'|'gap'|'progress'|'mock_interview'|'score_journey'
+RewriteStyle = "balanced" | "aggressive" | "top_1_percent"
+QuestionMode = "behavioral" | "scenario" | "mixed"
+SignalStrength = "weak" | "developing" | "strong"
+
+// Key shapes
+FixPlanItem { fix_id, kind, section, entry_id, patch_id, before_text, after_text,
+              requires_user_input, gap_type, risk, auto_apply, status }
+ResumePatch  { patch_id, op, original_text, replacement_text, risk, status, score_delta }
+SectionGap   { section, gap_type, sub_changes[], coaching_question, auto_apply }
+RoleFit      { fitness: FitnessBand, score, experience_gap, recommended_roles[] }
+```
+
+---
+
+## Zustand Store (useResumeStore.ts)
+
+Manages: `analysisResult`, `interviewSession`, `feedbackState`, `companyReadiness` (via `fetchCompanyReadiness`), `scoreJourney` (via `fetchScoreJourney`), `activeTab`, `isAnalyzing`, `isFullAnalysisReady`, `userId`, `sectionOverrides`, `acceptedSections`, `baselineAts`, `docxId`, `analysisJdText`, `applyAnywayAccepted`.
+
+Auth state lives in `authStore.ts` (Supabase session + UserProfile). Never merge auth into the resume store.
+
+---
+
+## Frontend Rules (Non-Negotiable)
+
+1. **Mock-first** — every component renders with mockData before real API. Add to the relevant `mocks/*.ts` first.
+2. Only `useMockData.ts` switches mock/real — never raw Axios in components.
+3. All data reads from Zustand store — no prop drilling, no local fetch in components.
+4. `VITE_USE_MOCK=true` in `.env.development`. `VITE_USE_MOCK=false` in prod.
+5. No `any` TypeScript types. No TODO comments. No inline styles (except dynamic `%` values).
+6. `<h1>` tags → use `<div>` to avoid global CSS overrides.
+7. All 7 tabs rendered simultaneously, toggled by `display:none` — never conditionally mount/unmount.
+
+### Self-Verification (run IN ORDER before declaring done)
+```bash
+V1: cd frontend && npx tsc --noEmit          # 0 errors required
+V2: cd frontend && npm run build             # "built in Xs" required
+V3: Mock render check — no console errors, all props typed
+V4: Layout check — colours, spacing, data fields match design
+V5: Store wiring — reads from store only, loading/error states handled
+V6: Tab isolation — renders correctly with null sibling-tab state
+```
+
+---
+
+## Colours
+
+```
+Primary:      #6c47ff    Card bg:    #f7f5ff
+Success:      #16a34a    Border:     #c4b5fd
+Error:        #dc2626    Dark bg:    #1a1a2e
+Warning:      #d97706    Score num:  #6c47ff, 42px, font-weight 800
+Tab active:   border-b-2 border-[#6c47ff]
+```
+
+---
+
+## What NOT To Do (Consolidated)
+
+### Backend
+- No `asyncio` anywhere — use `ThreadPoolExecutor` for concurrency.
+- No `print()` — use `logging.getLogger(__name__)`.
+- No LLM calls in `engine/ats_scorer.py`, `engine/percentile.py`, `engine/career_positioning.py`.
+- Agents never import each other — Orchestrator is the sole caller.
+- Never hardcode model strings outside `__init__` / `super().__init__`.
+- Never hardcode API keys — `.env` only.
+- A4 rewriter must never invent: companies, degrees, institutions, years, metrics, project names. Missing metrics → placeholders: `[X%]` `[N users]` `[Xms]` `[₹X Cr ARR]`.
+
+### Frontend
+- No `any` types, no TODO comments, no prop drilling.
+- No direct Axios calls in components — always via hooks/store actions.
+- No `display:none` removal or tab unmounting.
+- No `h1`/`h2` font-size rules in `index.css`.
+- Never ship with `VITE_USE_MOCK=true`.
+
+---
+
+## ATS Scoring (Deterministic, No LLM)
+
+```
+keyword_match(25) + formatting(25) + readability(25) + impact_metrics(25) = 100
+Composite = ats_score × 0.4 + jd_match_score × 0.6
+```
+
+Benchmarks: junior avg 48 | mid avg 55 | senior avg 63 | staff avg 70
+
+---
+
+## Testing
+
+### Backend
+```bash
+# Unit tests (from repo root)
+pytest backend/tests/ -v
+
+# Single test file
+pytest backend/tests/test_company_readiness.py -v
+
+# Integration tests (requires real API keys)
+pytest backend/tests/integration/ -v
+```
+
+### Frontend
+```bash
+cd frontend
+npx vitest run                         # unit tests (fixesCardLogic, fixesPipeline)
+npx tsc --noEmit                       # type check
+npm run build                          # production build check
+```
+
+### Smoke test
+```bash
+python smoke_test.py                   # end-to-end: upload → analyze → result
+```
+
+---
+
+## Deployment
+
+- **Platform**: Railway
+- **Start command**: `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`
+- **Runtime**: Python 3.11.9 (`runtime.txt`)
+- **Restart policy**: ON_FAILURE, max 5 retries (`railway.toml`)
+- **Prod URL**: `https://resumeevaluatortool-production.up.railway.app`
+- All env vars injected via Railway environment (same names as `.env` schema above)
+- Frontend is a separate static deploy (not Railway) — `VITE_API_URL` points to Railway URL
+
+---
+
+## Commit & Branch Conventions
+
+```
+Branch naming:
+  feat/<slug>       # new feature
+  fix/<slug>        # bug fix
+  refactor/<slug>   # no behaviour change
+  chore/<slug>      # tooling, deps, config
+
+Commit format (imperative, 50 char subject):
+  feat: add score journey timeline chart
+  fix: coaching agent retry on empty response
+  refactor: extract fix_plan_builder from orchestrator
+
+Rules:
+- One concern per commit — no bundling unrelated changes
+- Never commit directly to main without review
+- Run V1+V2 (tsc + build) before every frontend commit
+- Run pytest before every backend commit
+```
+
+---
+
+## Handoff Log Protocol
+
+After completing any **major piece of work**, create a markdown file in `Handoff/`:
+
+### Naming
+```
+Handoff/YYYY-MM-DD_<short-slug>.md
+```
+
+### Template
+```markdown
+# <Title>
+**Date:** YYYY-MM-DD
+**Files changed:** path — one-line reason (repeat per file)
+
+## What was built / changed
+2–5 bullet summary of what was delivered.
+
+## Why
+The problem this solved.
+
+## Key decisions
+Non-obvious choices, trade-offs, constraints.
+
+## How to verify
+Commands or steps to confirm it works.
+
+## Known gaps / follow-ups
+Deferred work specific to this deliverable.
+```
+
+> **Scope rule:** Handoff docs describe what was **completed** — not current state or what the next session should do. Those live in `Handoff/SESSION_TIMELINE.md`.
+
+### When to write
+- New API endpoint or router
+- New agent or model change
+- New tab or major component
+- Schema/type changes across multiple files
+- Bug fix requiring non-obvious root-cause work
+- Any session where >5 files were modified
+
+### When NOT to write
+- Typo / copy fixes
+- Single-file style tweaks
+- CLAUDE.md-only updates
+
+---
+
+## index.css Guard
+
+Must NOT contain: `h1/h2 font-size` | `#root text-align:center` | `:root font:18px` | width constraints on `#root`
+
+```bash
+grep -E "h1|h2|text-align.*center|56px|1126px" frontend/src/index.css
+# Expected: no output
+```

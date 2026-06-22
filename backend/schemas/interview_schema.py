@@ -8,6 +8,8 @@ class StartInterviewRequest(BaseModel):
     company: str
     seniority: str
     question_mode: str = "mixed"
+    run_id: str | None = None
+    resume_id: str | None = None
 
 
 class StartInterviewResponse(BaseModel):

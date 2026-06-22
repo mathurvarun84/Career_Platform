@@ -58,6 +58,11 @@ export default function ReadinessBreakdown({
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
+  const STRENGTH_ORDER: Record<string, number> = { weak: 0, developing: 1, strong: 2 }
+  const sortedDimensions = [...result.dimensions].sort(
+    (a, b) => STRENGTH_ORDER[a.signal_strength] - STRENGTH_ORDER[b.signal_strength]
+  )
+
   const compositionRows = [
     { label: 'ATS Match', value: result.ats_component, muted: false },
     {
@@ -176,6 +181,22 @@ export default function ReadinessBreakdown({
           {result.disclaimer}
         </div>
 
+        {result.jd_component === null && (
+          <div
+            style={{
+              background: '#fef9ec',
+              border: '1px solid #fde68a',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              fontSize: '13px',
+              color: '#92400e',
+              marginBottom: '20px',
+              lineHeight: 1.5,
+            }}
+          >
+            <strong>No JD provided</strong> — score is based on resume signals only. Add a job description during analysis for a full readiness picture.
+          </div>
+        )}
         <div style={{ marginBottom: '28px' }}>
           <div
             style={{
@@ -238,7 +259,7 @@ export default function ReadinessBreakdown({
           >
             {`Dimension Breakdown (${result.company_display_name}-specific)`}
           </div>
-          {result.dimensions.map((dimension) => (
+          {sortedDimensions.map((dimension) => (
             <DimensionCard
               key={dimension.dimension_id}
               dimension={dimension}

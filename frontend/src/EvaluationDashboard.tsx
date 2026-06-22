@@ -93,6 +93,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const feedbackState = useResumeStore((s) => s.feedbackState);
   const clearActiveMoment = useResumeStore((s) => s.clearActiveMoment);
   const companyReadiness = useResumeStore((s) => s.companyReadiness);
+  const companyReadinessSeniority = useResumeStore((s) => s.companyReadinessSeniority);
   const showReadinessBreakdown = useResumeStore((s) => s.showReadinessBreakdown);
   const setShowReadinessBreakdown = useResumeStore((s) => s.setShowReadinessBreakdown);
   const setActiveTab = useResumeStore((s) => s.setActiveTab);
@@ -125,6 +126,19 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   const hasPositioning = Boolean(analysisResult.positioning);
   const targetRoleTitle =
     analysisResult.jd_intelligence?.role_title ?? "Target role";
+
+  const SENIORITY_DISPLAY: Record<string, string> = {
+    junior: "Junior",
+    mid: "Mid-level",
+    senior: "Senior",
+    staff: "Staff / Lead",
+    em: "Engineering Manager",
+    senior_em: "Senior Engineering Manager",
+    director: "Director",
+  };
+  const companyRoleTitle = companyReadinessSeniority
+    ? (SENIORITY_DISPLAY[companyReadinessSeniority] ?? companyReadinessSeniority)
+    : (analysisResult.jd_intelligence?.role_title ?? "Target Role");
 
   const bd = analysisResult.ats.breakdown;
   const atsDetails = getDimensionDetails(analysisResult.ats.details, bd);
@@ -711,7 +725,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
         {companyReadiness && (
           <CompanyReadinessCard
             result={companyReadiness}
-            roleTitle={analysisResult.jd_intelligence?.role_title ?? "Target Role"}
+            roleTitle={companyRoleTitle}
             onSeeBreakdown={() => setShowReadinessBreakdown(true)}
             onFixTopGap={() => {
               if (onTabChange) onTabChange("fixes");
@@ -729,7 +743,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
         {showReadinessBreakdown && companyReadiness && (
           <ReadinessBreakdown
             result={companyReadiness}
-            roleTitle={analysisResult.jd_intelligence?.role_title ?? "Target Role"}
+            roleTitle={companyRoleTitle}
             onClose={() => setShowReadinessBreakdown(false)}
             onFixGap={() => {
               setShowReadinessBreakdown(false);

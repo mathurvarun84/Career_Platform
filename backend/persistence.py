@@ -200,18 +200,23 @@ def _insert_company_readiness(user_id: str, run_id: str, result: Dict[str, Any])
     try:
         db = get_db()
         db.table("company_readiness_results").insert({
-            "run_id":               run_id,
-            "user_id":              user_id,
-            "company_key":          cr.get("company_key", ""),
-            "company_display":      cr.get("company_display_name"),
-            "readiness_score":      cr.get("readiness_score", 0),
-            "readiness_label":      cr.get("readiness_label"),
-            "dimensions_passing":   cr.get("dimensions_passing"),
-            "dimensions_total":     cr.get("dimensions_total"),
-            "dimensions_json":      cr.get("dimensions"),
-            "target_ctc_min":       cr.get("target_ctc_min"),
-            "target_ctc_max":       cr.get("target_ctc_max"),
-            "ctc_delta_min":        cr.get("ctc_delta_min"),
+            "run_id":                  run_id,
+            "user_id":                 user_id,
+            "company_key":             cr.get("company_key", ""),
+            "company_display":         cr.get("company_display_name"),
+            "readiness_score":         cr.get("readiness_score", 0),
+            "readiness_label":         cr.get("readiness_label"),
+            "dimensions_passing":      cr.get("dimensions_passing"),
+            "dimensions_total":        cr.get("dimensions_total"),
+            "dimensions_json":         cr.get("dimensions"),
+            "target_ctc_min":          cr.get("target_ctc_min"),
+            "target_ctc_max":          cr.get("target_ctc_max"),
+            "ctc_delta_min":           cr.get("ctc_delta_min"),
+            "ats_component":           cr.get("ats_component"),
+            "jd_component":            cr.get("jd_component"),
+            "seniority_component":     cr.get("seniority_component"),
+            "company_signal_component": cr.get("company_signal_component"),
+            "ctc_delta_max":           cr.get("ctc_delta_max"),
         }).execute()
     except Exception as e:
         logger.warning("Failed to write company_readiness_results for run %s: %s", run_id, e)

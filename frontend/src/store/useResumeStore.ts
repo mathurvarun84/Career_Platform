@@ -146,6 +146,7 @@ interface ResumeStoreState {
   companyReadiness: CompanyReadinessResult | null;
   companyReadinessLoading: boolean;
   companyReadinessError: string | null;
+  companyReadinessSeniority: string | null;
   showReadinessBreakdown: boolean;
   fetchCompanyReadiness: (runId: string, companyKey: string, seniorityOverride?: string) => Promise<void>;
   setCompanyReadiness: (result: CompanyReadinessResult) => void;
@@ -206,6 +207,7 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
   companyReadiness: null,
   companyReadinessLoading: false,
   companyReadinessError: null,
+  companyReadinessSeniority: null,
   showReadinessBreakdown: false,
 
   setJobId: (jobId) => set({ jobId }),
@@ -923,7 +925,7 @@ export const useResumeStore = create<ResumeStoreState>((set) => ({
       const { data: sessionData } = await supabase.auth.getSession();
       const token = sessionData.session?.access_token;
       const data = await fetchCompanyReadinessFromApi(token, runId, companyKey, seniorityOverride);
-      set({ companyReadiness: data, companyReadinessLoading: false });
+      set({ companyReadiness: data, companyReadinessLoading: false, companyReadinessSeniority: seniorityOverride ?? null });
     } catch (err) {
       set({
         companyReadinessLoading: false,

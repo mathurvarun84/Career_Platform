@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from backend.agents.coaching_agent import CoachingAgent, bullet_is_meaningful
 from backend.agents.gap_analyzer import _fuzzy_match_label
+from backend.coaching_persistence import approve_coaching_entry, save_coaching_entry
 from backend.schemas.career_memory import CareerMemoryEntry, career_memory_store
 
 logger = logging.getLogger(__name__)
@@ -175,6 +176,7 @@ def generate_bullet(req: GenerateBulletRequest) -> GenerateBulletResponse:
             sub_label=req.sub_label,
         )
         career_memory_store.add(entry)
+        save_coaching_entry(entry)
         _sync_legacy_job_answer(job, entry)
         if _persist_job:
             _persist_job(req.session_id)
@@ -205,6 +207,8 @@ def add_bullet(req: AddBulletRequest) -> AddBulletResponse:
 
     job = _require_job(req.session_id)
     approved = career_memory_store.approve(req.session_id, req.career_memory_id)
+    if approved:
+        approve_coaching_entry(req.career_memory_id)
 
     legacy = job.get("coaching_answers", {}).get(req.career_memory_id)
     bullet_text = (req.bullet_text or "").strip()

@@ -25,6 +25,11 @@ export default function CompanyReadinessCard({
   onSeeBreakdown,
   onFixTopGap,
 }: CompanyReadinessCardProps) {
+  const STRENGTH_ORDER: Record<string, number> = { weak: 0, developing: 1, strong: 2 }
+  const sortedDimensions = [...result.dimensions].sort(
+    (a, b) => STRENGTH_ORDER[a.signal_strength] - STRENGTH_ORDER[b.signal_strength]
+  )
+
   return (
     <div
       style={{
@@ -46,16 +51,21 @@ export default function CompanyReadinessCard({
           marginBottom: '24px',
         }}
       >
-        <div
-          style={{
-            fontSize: '12px',
-            fontWeight: 700,
-            color: '#5b5fc7',
-            textTransform: 'uppercase',
-            letterSpacing: '0.05em',
-          }}
-        >
-          ✦ Company Readiness
+        <div>
+          <div
+            style={{
+              fontSize: '12px',
+              fontWeight: 700,
+              color: '#5b5fc7',
+              textTransform: 'uppercase',
+              letterSpacing: '0.05em',
+            }}
+          >
+            ✦ Company Readiness
+          </div>
+          <div style={{ fontSize: '12px', color: '#8888aa', marginTop: '2px' }}>
+            How well your resume signals match what this company interviews for
+          </div>
         </div>
         <div style={{ fontSize: '14px', fontWeight: 700, color: '#0d0d1a' }}>
           {`${result.company_display_name} · ${roleTitle}`}
@@ -75,7 +85,7 @@ export default function CompanyReadinessCard({
 
         <div style={{ flex: 1, minWidth: '220px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {result.dimensions.map((dimension) => {
+            {sortedDimensions.map((dimension) => {
               const { icon, color } = dimensionIcon(dimension)
               return (
                 <div

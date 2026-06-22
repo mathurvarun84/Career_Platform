@@ -1049,6 +1049,8 @@ async def start_interview_session(
         seniority=request.seniority,
         question_mode=request.question_mode,
         questions=result["questions"],
+        run_id=request.run_id,
+        resume_id=request.resume_id,
     )
 
     return StartInterviewResponse(

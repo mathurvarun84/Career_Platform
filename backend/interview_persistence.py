@@ -23,6 +23,8 @@ def insert_interview_session(
     seniority: str,
     question_mode: str,
     questions: list[dict],
+    run_id: str | None = None,
+    resume_id: str | None = None,
 ) -> None:
     """Create a new in-progress interview session row."""
     try:
@@ -39,6 +41,8 @@ def insert_interview_session(
                 "feedback": [],
                 "summary": None,
                 "model_answers": None,
+                "run_id": run_id,
+                "resume_id": resume_id,
                 "created_at": _utc_now_iso(),
                 "completed_at": None,
             }

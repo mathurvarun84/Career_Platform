@@ -32,6 +32,9 @@ def _rebuild_resume_und(run_row: dict, resume_row: dict | None) -> dict:
         resume_und["has_metrics"] = (
             (run_row.get("ats_result") or {}).get("breakdown", {}).get("impact_metrics", 0) >= 18
         )
+        resume_und["resume_health"] = resume_row.get("resume_health_data") or {}
+        resume_und["domains"] = list(resume_row.get("domains") or [])
+        resume_und["role_family"] = resume_row.get("role_family") or None
     return resume_und
 
 

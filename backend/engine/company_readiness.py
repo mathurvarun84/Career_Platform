@@ -25,6 +25,7 @@ DIMENSION_LABELS = {
     "growth_mindset": "Growth Mindset",
     "cross_functional": "Cross-Functional Scope",
     "consumer_intuition": "Consumer Intuition",
+    "conflict_resolution": "Conflict Resolution",
 }
 
 IC_SENIORITY_LEVELS = {"junior", "mid", "senior", "staff"}
@@ -56,6 +57,59 @@ DATA_TERMS = {
 CONSUMER_TERMS = {
     "user research", "nps", "feedback", "usability", "customer interview",
     "user interview", "a/b test", "retention", "churn", "dau", "mau",
+}
+
+CONFLICT_RESOLUTION_TERMS = {
+    "resolved", "negotiated", "aligned conflicting", "mediated", "reconciled",
+}
+
+OWNERSHIP_TERMS = {
+    "owned", "i built", "i drove", "i led", "dri", "accountable",
+    "responsible for", "i shipped", "i designed", "i architected",
+    "i delivered", "i launched", "i created", "i established", "i managed",
+}
+
+DIMENSION_FIX_HINTS: dict[str, str] = {
+    "ownership": (
+        "Add ownership language to your bullets: 'I owned X end-to-end', 'I was the DRI for Y', "
+        "'I drove Z from design to production'. Show outcomes you controlled, not just tasks you completed."
+    ),
+    "impact_and_scale": (
+        "Quantify impact in at least 3 bullets — add numbers: users served, % improvement, latency reduction, "
+        "or revenue impact. E.g. 'reduced p99 latency by 40%' or 'served 2M+ daily active users'."
+    ),
+    "problem_solving": (
+        "Add a bullet describing a hard technical problem you decomposed: what options you considered, "
+        "what you chose, and why. Show structured reasoning — not just the solution."
+    ),
+    "influence_without_authority": (
+        "Add a bullet where you aligned teams without using authority: 'collaborated with product and design to…', "
+        "'drove cross-team consensus on…', 'built alignment across engineering and ops on…'."
+    ),
+    "collaboration": (
+        "Add a Projects section, or add cross-team language to your bullets: 'partnered with', "
+        "'worked with design and product on…', 'aligned across teams to deliver…'."
+    ),
+    "data_driven": (
+        "Add at least one data-driven bullet: mention A/B tests, SQL queries, analytics dashboards, "
+        "experiment results, funnels, cohorts, or metrics you tracked and acted on."
+    ),
+    "growth_mindset": (
+        "Add a Certifications section, or mention a new domain you picked up: "
+        "'upskilled in X to solve Y', 'completed Z and applied it to…', 'self-taught and shipped…'."
+    ),
+    "cross_functional": (
+        "Add bullets showing cross-functional work: reference stakeholders, product, design, or ops "
+        "in at least 2 different bullets to demonstrate scope beyond your immediate team."
+    ),
+    "consumer_intuition": (
+        "Add consumer-facing signal: user research, NPS, retention, DAU/MAU, or churn data. "
+        "Show you used direct user feedback to drive a product or technical decision."
+    ),
+    "conflict_resolution": (
+        "Add a bullet where you resolved a disagreement: 'resolved a conflict between teams on…', "
+        "'negotiated scope with product to…', 'mediated between engineering and design on…'."
+    ),
 }
 
 _COMPANY_VALUES_CACHE: dict | None = None
@@ -122,20 +176,28 @@ def _score_ownership(resume_und: dict) -> _DimScore:
         present = sig.get("present", False)
         strength = (sig.get("strength") or "").lower()
         if present and strength == "strong":
-            return _DimScore("strong", "Ownership signals found in resume_health.")
+            return _DimScore("strong", "Strong ownership language detected in your resume.")
         if present:
-            return _DimScore("developing", "Ownership signal present but not strong.")
-    return _DimScore("weak", "No ownership signal found in resume_health expected_signals.")
+            return _DimScore("developing", "Some ownership language found, but not prominent enough for this company's bar.")
+    # Fallback: text-based scan (used when resume_health not available — e.g. no-JD path)
+    text = _resume_text(resume_und)
+    sentences = [s.strip() for s in re.split(r"[.\n•–-]", text) if s.strip()]
+    ownership_count = sum(1 for s in sentences if any(t in s for t in OWNERSHIP_TERMS))
+    if ownership_count >= 3:
+        return _DimScore("strong", f"Strong ownership language detected across {ownership_count} bullets.")
+    if ownership_count >= 1:
+        return _DimScore("developing", f"Some ownership language found ({ownership_count} bullet(s)).")
+    return _DimScore("weak", "No ownership language detected. Add phrases like 'I owned', 'I drove', or 'I was the DRI for'.")
 
 
 def _score_impact_and_scale(resume_und: dict, ats_impact_subscore: int | None) -> _DimScore:
     has_metrics = _has_impact_metrics(resume_und)
     subscore_ok = (ats_impact_subscore or 0) >= 18
     if has_metrics and subscore_ok:
-        return _DimScore("strong", "Impact metrics present and ATS sub-score ≥ 18.")
+        return _DimScore("strong", "Quantified impact found — your bullets show measurable results with good breadth.")
     if has_metrics:
-        return _DimScore("developing", "Impact metrics present but ATS sub-score < 18.")
-    return _DimScore("weak", "No quantified impact metrics found.")
+        return _DimScore("developing", "Some impact metrics found, but not enough breadth — most bullets still lack numbers.")
+    return _DimScore("weak", "No quantified impact metrics found. Add numbers to your bullets: users, %, latency, or revenue.")
 
 
 def _gap_text(item) -> str:
@@ -151,13 +213,16 @@ def _gap_text(item) -> str:
 
 
 def _score_problem_solving(gap_result: dict) -> _DimScore:
-    fixes = gap_result.get("priority_fixes") or []
+    fixes = gap_result.get("priority_fixes")
+    if fixes is None:
+        # gap_result has no keys at all → no JD was analyzed; cannot evaluate
+        return _DimScore("developing", "No JD provided — technical depth gaps could not be evaluated against a specific role.")
     depth_gaps = sum(1 for f in fixes if "technical depth" in _gap_text(f))
     if depth_gaps == 0:
-        return _DimScore("strong", "No technical depth gaps flagged.")
+        return _DimScore("strong", "No technical depth gaps flagged against the JD.")
     if depth_gaps == 1:
-        return _DimScore("developing", "One technical depth gap flagged.")
-    return _DimScore("weak", f"{depth_gaps} technical depth gaps flagged.")
+        return _DimScore("developing", "One technical depth gap flagged — review the Actionable Fixes tab.")
+    return _DimScore("weak", f"{depth_gaps} technical depth gaps flagged — review the Actionable Fixes tab.")
 
 
 def _score_influence(resume_und: dict) -> _DimScore:
@@ -211,6 +276,20 @@ def _score_cross_functional(resume_und: dict) -> _DimScore:
     return _score_influence(resume_und)
 
 
+def _score_conflict_resolution(resume_und: dict) -> _DimScore:
+    text = _resume_text(resume_und)
+    sentences = [s.strip() for s in re.split(r"[.\n•–-]", text) if s.strip()]
+    rich_count = sum(
+        1 for s in sentences
+        if any(t in s for t in CONFLICT_RESOLUTION_TERMS)
+    )
+    if rich_count >= 3:
+        return _DimScore("strong", f"{rich_count} conflict resolution signals found.")
+    if rich_count >= 1:
+        return _DimScore("developing", f"{rich_count} conflict resolution signal(s) found.")
+    return _DimScore("weak", "No conflict resolution signals found.")
+
+
 def _score_consumer_intuition(resume_und: dict) -> _DimScore:
     text = _resume_text(resume_und)
     found = {t for t in CONSUMER_TERMS if t in text}
@@ -237,10 +316,12 @@ def _score_single_dimension(
         "growth_mindset": lambda: _score_growth_mindset(resume_und),
         "cross_functional": lambda: _score_cross_functional(resume_und),
         "consumer_intuition": lambda: _score_consumer_intuition(resume_und),
+        "conflict_resolution": lambda: _score_conflict_resolution(resume_und),
     }
     fn = dispatch.get(dim_id)
     if fn is None:
-        return _DimScore("weak", f"Unknown dimension: {dim_id}")
+        logger.warning("No scorer implemented for dimension: %s", dim_id)
+        return _DimScore("developing", "Not enough signal to evaluate this yet — treated as neutral.")
     return fn()
 
 
@@ -299,20 +380,21 @@ def compute_readiness_score(
         if seniority_str in MGMT_SENIORITY_LEVELS
         else company.get("ic_focus_dimensions", [])
     )
-    expectations = company.get("readiness_expectations", {})
+    what_they_evaluate = company.get("what_they_evaluate", {})
     fix_hints = company.get("fix_hints", {})
 
     dimensions: list[DimensionResult] = []
     for dim_id in focus_dims:
         result = _score_single_dimension(dim_id, resume_und, gap_result, ats_impact_subscore)
+        company_fix = fix_hints.get(dim_id) or (DIMENSION_FIX_HINTS.get(dim_id) if result.strength != "strong" else None)
         dimensions.append(DimensionResult(
             dimension_id=dim_id,
-            label=DIMENSION_LABELS.get(dim_id, dim_id),
-            company_expectation=expectations.get(dim_id, ""),
+            label=DIMENSION_LABELS.get(dim_id, dim_id.replace("_", " ").title()),
+            company_expectation=what_they_evaluate.get(dim_id, ""),
             resume_evidence=result.evidence,
             signal_strength=result.strength,
             passes=result.strength == "strong",
-            fix_hint=fix_hints.get(dim_id) if result.strength != "strong" else None,
+            fix_hint=company_fix,
             display_label=_DISPLAY_LABELS.get(result.strength, "Signal Not Found"),
         ))
 
@@ -323,13 +405,21 @@ def compute_readiness_score(
         if dimensions_total > 0 else 0
     )
 
-    jd_weight_score = (jd_component or 0) * 0.30
-    readiness_score = int(
-        ats_component * 0.20
-        + jd_weight_score
-        + seniority_component * 0.20
-        + company_signal_component * 0.30
-    )
+    # When no JD: redistribute its 30% weight proportionally across the other three factors
+    # (2:2:3 → 2/7 : 2/7 : 3/7) so the score still reaches 100 for a strong resume.
+    if jd_component is None:
+        readiness_score = int(
+            ats_component * (2 / 7)
+            + seniority_component * (2 / 7)
+            + company_signal_component * (3 / 7)
+        )
+    else:
+        readiness_score = int(
+            ats_component * 0.20
+            + jd_component * 0.30
+            + seniority_component * 0.20
+            + company_signal_component * 0.30
+        )
     readiness_score = max(0, min(100, readiness_score))
     readiness_label = _readiness_label(readiness_score)
 

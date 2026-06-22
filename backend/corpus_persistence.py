@@ -162,6 +162,12 @@ def save_corpus_run(
                     "skills_mentioned": skills,
                     "companies_worked_at": _extract_companies(resume_und),
                     "highest_education": _extract_highest_education(resume_und),
+                    "resume_health_data": resume_und.get("resume_health") or None,
+                    "domains": list(resume_und.get("domains") or []),
+                    "has_metrics": bool(resume_und.get("has_metrics")),
+                    "has_summary": bool(resume_und.get("has_summary")),
+                    "keyword_density_verdict": resume_und.get("keyword_density_verdict") or None,
+                    "role_family": resume_und.get("role_family") or None,
                 }
             )
             .execute()
@@ -209,6 +215,11 @@ def save_corpus_run(
         and final_result.get("rewrites") is None
     )
 
+    sim_result = final_result.get("sim") or None
+    shortlist_rate = (sim_result or {}).get("shortlist_rate") if sim_result else None
+    jd_match_score = gap_result.get("jd_match_score_before") or gap_result.get("jd_match_score")
+    missing_keywords = list(gap_result.get("missing_keywords") or [])
+
     try:
         db.table("analysis_runs").insert(
             {
@@ -233,6 +244,14 @@ def save_corpus_run(
                 "evidence_gap_count": evidence_count,
                 "run_duration_ms": elapsed_ms,
                 "early_exit": early_exit,
+                "sim_result": sim_result,
+                "shortlist_rate": shortlist_rate,
+                "jd_match_score": jd_match_score,
+                "estimated_score_after": gap_result.get("estimated_score_after"),
+                "missing_keywords": missing_keywords,
+                "role_family": resume_und.get("role_family") or None,
+                "company_type": _enum_value(jd_intel.get("company_type")) or None,
+                "seniority_expected": _enum_value(jd_intel.get("seniority_expected")) or None,
             }
         ).execute()
     except Exception as exc:
