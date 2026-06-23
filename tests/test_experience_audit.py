@@ -1,4 +1,10 @@
-"""Tests for experience_audit ground-truth backfill and rebuild."""
+"""Tests for experience_audit ground-truth backfill and rebuild.
+
+A1 trust hierarchy (experience entry count):
+  - When A1 returns N > 0 sub_entries and regex detects M != N: A1 wins (regex logged only)
+  - When N = 0 and M > 0: regex backfills
+  - When both are 0: error state
+"""
 
 from __future__ import annotations
 

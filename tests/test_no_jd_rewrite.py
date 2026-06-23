@@ -308,6 +308,33 @@ def test_no_jd_actionable_fixes_tab_has_content():
         )
 
 
+def test_no_jd_fix_plan_kinds_are_all_valid():
+    """fix_plan items in no-JD mode must include actionable kinds, not all info_only."""
+    from backend.engine.fix_plan_builder import build_fix_plan
+    from orchestrator import Orchestrator
+
+    orch = Orchestrator()
+    resume_sections = _make_resume_sections(A1_OUTPUT_NO_SUMMARY)
+    built = orch._build_no_jd_gaps(A1_OUTPUT_NO_SUMMARY, resume_sections)
+    overview_strings = (
+        list(A1_OUTPUT_NO_SUMMARY.get("improvement_areas") or [])
+        + list(A1_OUTPUT_NO_SUMMARY.get("weaknesses") or [])
+    )
+    result = orch._apply_gap_classification(
+        built,
+        "",
+        structured_priority_fixes=True,
+        overview_strings=overview_strings,
+    )
+
+    priority_fixes = result.get("priority_fixes", [])
+    fix_plan = build_fix_plan(priority_fixes, [])
+    actionable = [f for f in fix_plan if f["kind"] != "info_only"]
+    assert len(actionable) > 0, (
+        f"No actionable fixes in no-JD fix_plan. Kinds: {[f['kind'] for f in fix_plan]}"
+    )
+
+
 def test_resume_only_keeps_priority_fixes_when_overlapping_overview():
     """Overview dedupe must not empty priority_fixes in resume-only mode."""
     from orchestrator import Orchestrator

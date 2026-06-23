@@ -45,3 +45,20 @@ def test_strip_ungrounded_tech_removes_invented_kafka_line() -> None:
     assert "Kafka" not in cleaned
     assert len(stripped) == 1
     assert "Python" in cleaned
+
+
+def test_strip_ungrounded_multiple_invented_tech() -> None:
+    """A4 might invent multiple technologies. Strip all invented ones, keep grounded ones."""
+    source_text = "Led Java Spring microservices development"
+    rewrite = "\n".join([
+        "• Architected Java Spring Boot microservices handling 15k QPS",
+        "• Built Kafka streaming pipeline for real-time processing",
+        "• Implemented Redis caching layer reducing latency by 40%",
+        "• Migrated legacy system to Kubernetes orchestration",
+    ])
+    cleaned_text, stripped = _strip_ungrounded_tech_lines(rewrite, source_text)
+    assert "Java Spring Boot" in cleaned_text, "Grounded tech should be preserved"
+    assert "Kafka" not in cleaned_text, "Invented Kafka should be stripped"
+    assert "Redis" not in cleaned_text, "Invented Redis should be stripped"
+    assert "Kubernetes" not in cleaned_text, "Invented K8s should be stripped"
+    assert len(stripped) == 3

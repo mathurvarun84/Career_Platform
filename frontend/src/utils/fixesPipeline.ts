@@ -623,7 +623,7 @@ export function buildActionableFixesList(
  * requires_user_input is true (structural cards with no patch data also land here).
  * This mirrors the renderCard() dispatch logic in ActionableFixes.
  */
-function isCoachingCard(fix: PriorityFix): boolean {
+export function isCoachingCard(fix: PriorityFix): boolean {
   return fix.gap_type === "evidence" || fix.requires_user_input === true;
 }
 

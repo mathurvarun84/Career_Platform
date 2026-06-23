@@ -1,6 +1,10 @@
 """Tests for FixPlanBuilder — contract tests for the single action contract."""
 import pytest
-from backend.engine.fix_plan_builder import build_fix_plan
+from backend.engine.fix_plan_builder import (
+    _resolve_after_text,
+    _resolve_kind,
+    build_fix_plan,
+)
 from backend.schemas.common import FixKind
 
 
@@ -159,3 +163,53 @@ class TestSectionGapIdPropagation:
         fix["section_gap_id"] = "experience|0"
         plan = build_fix_plan([fix], [])
         assert plan[0]["section_gap_id"] == "experience|0"
+
+
+class TestRegressionLocks:
+    """Regression locks for bugs 1, 2, 4 and generic-echo detection."""
+
+    def test_evidence_item_after_text_is_none_even_with_patch(self):
+        """coaching/evidence items must never resolve after_text, even if a patch exists."""
+        from unittest.mock import MagicMock
+
+        fix = {
+            "section": "experience",
+            "gap_type": "evidence",
+            "requires_user_input": True,
+            "gap_reason": "Missing team size evidence",
+            "coaching_question": "How large was the team you managed?",
+            "rewrite_instruction": "some instruction",
+        }
+        patch = MagicMock()
+        patch.op = "replace_text"
+        patch.original_text = "Led a team"
+        patch.replacement_text = "Led a team of 12 engineers"
+
+        after = _resolve_after_text(fix, patch)
+        assert after is None, f"Expected None for evidence item, got: {after!r}"
+
+    def test_sub_entry_id_matches_derive_entry_id_for_same_label(self):
+        """sub_entry_id on patches must use derive_entry_id — deterministic slug contract."""
+        from backend.utils.entry_id import derive_entry_id
+
+        label = "Flipkart — Engineering Manager | 2020–2023"
+        slug_a = derive_entry_id(label)
+        slug_b = derive_entry_id(label)
+        assert slug_a, "derive_entry_id must produce a non-empty slug"
+        assert slug_a == slug_b, "Same label must always produce the same entry_id"
+        assert "flipkart" in slug_a
+        assert "2020" in slug_a
+
+    def test_generic_echo_becomes_info_only(self):
+        """When rewrite_instruction == gap_reason, after_text is None → info_only kind."""
+        fix = {
+            "gap_reason": "Add more quantified metrics to your experience",
+            "rewrite_instruction": "Add more quantified metrics to your experience",
+            "gap_type": "structural",
+            "requires_user_input": False,
+        }
+        after_text = _resolve_after_text(fix, None)
+        assert after_text is None, f"Generic echo should yield None after_text, got: {after_text!r}"
+
+        kind = _resolve_kind(fix, None, after_text)
+        assert kind == FixKind.INFO_ONLY.value, f"Generic echo should be info_only, got: {kind!r}"

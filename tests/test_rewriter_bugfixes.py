@@ -76,6 +76,44 @@ def test_strip_unfilled_placeholders() -> None:
     assert "Owned end-to-end" in cleaned
 
 
+def test_download_blocked_when_placeholder_in_patched_doc() -> None:
+    """
+    Placeholder tokens in export text must be detected before download sign-off.
+    """
+    test_cases = [
+        ("• Led [N users] through migration", True),
+        ("• Reduced latency by [X%]", True),
+        ("• Managed [feature/module] deployment", True),
+        ("• Led 12 engineers through migration", False),
+        ("• Reduced latency by 40%", False),
+    ]
+    for text, should_match in test_cases:
+        has_placeholder = bool(_PLACEHOLDER_RE.search(text))
+        assert has_placeholder == should_match, (
+            f"{'Should' if should_match else 'Should NOT'} detect placeholder in: {text!r}"
+        )
+
+
+def test_infosys_client_walmart_company_marker_is_infosys() -> None:
+    """
+    Service company resumes often have 'Client: Walmart' in the experience block.
+    The ##COMPANY## marker must always be the employer (Infosys), not the client.
+    """
+    verbatim = (
+        "Infosys — Senior Software Engineer\n"
+        "Jan 2019 – Mar 2022\n"
+        "Client: Walmart Inc.\n"
+        "• Designed inventory allocation system handling 15k QPS\n"
+        "• Reduced batch processing time by 40%"
+    )
+    result = _ensure_experience_markers(
+        verbatim, "Infosys — Senior Software Engineer"
+    )
+    company_part = result.split(COMPANY_HEADER_START)[1].split(COMPANY_ROLE_START)[0]
+    assert "Infosys" in company_part, f"Expected Infosys as company, got: {company_part!r}"
+    assert "Walmart" not in company_part, f"Client leaked into company field: {company_part!r}"
+
+
 def test_placeholder_bleed_strips_from_all_styles() -> None:
     variants = {
         "balanced": "Solid rewrite with metrics.",

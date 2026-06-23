@@ -40,7 +40,7 @@ export function fixPlanItemToPriorityFix(item: FixPlanItem): PriorityFix {
  * Check if a converted fix has adequate data for proper card rendering.
  * Returns false only when data is genuinely missing for the item kind.
  */
-function hasAdequateData(fix: PriorityFix, item: FixPlanItem): boolean {
+export function hasAdequateData(fix: PriorityFix, item: FixPlanItem): boolean {
   if (item.kind === "coaching") {
     // coaching_question is ideal but absence doesn't mean bad data — EvidenceCoachingCard
     // can display gap_reason as the question. A null coaching_question from a single item
@@ -131,7 +131,7 @@ export function resolvePatchFromPlan(
   fix: PriorityFix,
   patches: ResumePatch[] | undefined
 ): ResumePatch | undefined {
-  const patchId = (fix as any)._patch_id as string | undefined;
+  const patchId = fix._patch_id;
   if (!patchId || !patches?.length) return undefined;
   return patches.find((p) => p.patch_id === patchId);
 }
