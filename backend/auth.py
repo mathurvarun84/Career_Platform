@@ -175,3 +175,24 @@ def get_current_user_id(authorization: str | None = Header(default=None)) -> str
         raise HTTPException(status_code=401, detail="Invalid token payload")
 
     return sub
+
+
+class AuthenticatedUser:
+    """Minimal user object for optional auth dependencies."""
+
+    def __init__(self, user_id: str) -> None:
+        self.id = user_id
+
+
+async def get_current_user_optional(
+    authorization: str | None = Header(default=None),
+) -> AuthenticatedUser | None:
+    """Returns None instead of raising 401 when no valid JWT is present."""
+    if not authorization:
+        return None
+    try:
+        return AuthenticatedUser(get_current_user_id(authorization))
+    except HTTPException:
+        return None
+    except Exception:
+        return None

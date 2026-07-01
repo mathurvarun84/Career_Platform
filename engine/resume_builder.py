@@ -276,18 +276,67 @@ def _render_experience_heuristic(doc, content: str) -> None:
                 current_bullet_para = None
 
 
-def _write_experience_unified(doc, content: str) -> None:
+def _heuristic_confidence(content: str) -> float:
+    """Fraction of non-bullet lines that look like a real role/company/date line.
+
+    Low confidence means the flat text doesn't actually follow the
+    role|company—location date pattern the heuristic renderer assumes,
+    so guessing from it (e.g. treating "Engineering Manager" as a company)
+    is more likely to misrender than help.
+    """
+    year_re = re.compile(r"\b(19|20)\d{2}\b|[Pp]resent")
+    bullet_markers = ("•", "-", "*")
+    lines = [
+        line.strip() for line in content.splitlines()
+        if line.strip() and not line.strip().startswith(bullet_markers)
+    ]
+    if not lines:
+        return 0.0
+    confident = sum(1 for line in lines if "|" in line and year_re.search(line))
+    return confident / len(lines)
+
+
+def _write_experience_unified(doc, content: str, structured: dict | None = None) -> None:
     """
     Single authoritative experience renderer.
 
     Dispatch:
       1. ##COMPANY## markers present → marker-based rendering.
-      2. Otherwise → heuristic rendering with Indian resume pattern handling.
+      2. Flat text with a confident role|company—location date pattern → heuristic rendering.
+      3. Otherwise, if structured experience entries are available → render those
+         (already has title/company/location/dates as separate fields, no guessing).
+      4. Last resort → heuristic rendering anyway.
     """
     if COMPANY_HEADER_START in content:
         _render_experience_from_markers(doc, content)
-    else:
+        return
+    if _heuristic_confidence(content) >= 0.3:
         _render_experience_heuristic(doc, content)
+        return
+    exp = _get_structured_value(structured, "experience") if structured else None
+    if isinstance(exp, list) and exp:
+        _render_experience(doc, exp)
+        return
+    nested_sections = (
+        structured.get("resume_sections") or structured.get("sections") or {}
+        if isinstance(structured, dict) else {}
+    )
+    exp_section = nested_sections.get("experience") if isinstance(nested_sections, dict) else None
+    sub_entries = exp_section.get("sub_entries") if isinstance(exp_section, dict) else None
+    if sub_entries:
+        from parser import _parse_experience_entries
+
+        parsed_entries = _parse_experience_entries(
+            "\n\n".join(
+                str(sub.get("verbatim_text") or "").strip()
+                for sub in sub_entries
+                if isinstance(sub, dict) and str(sub.get("verbatim_text") or "").strip()
+            )
+        )
+        if parsed_entries:
+            _render_experience(doc, parsed_entries)
+            return
+    _render_experience_heuristic(doc, content)
 
 
 def merge_structured_with_parsed_header(structured: dict | None, resume_text: str) -> dict:
@@ -363,6 +412,29 @@ def build_final_docx(
     def _is_placeholder(t):
         return _is_placeholder_text(t)
 
+    foreign_section_headers = {
+        sec: {
+            alias.lower()
+            for alias, canon in SECTION_NAME_MAP.items()
+            if canon != sec
+        } | {
+            other.lower() for other in SECTION_ORDER if other != sec
+        }
+        for sec in SECTION_ORDER
+    }
+
+    def _has_foreign_section_header(section_name: str, text: str) -> bool:
+        if not isinstance(text, str) or not text.strip():
+            return False
+        forbidden = foreign_section_headers.get(section_name, set())
+        for line in text.splitlines():
+            stripped = line.strip().rstrip(":").lower()
+            normalized = _normalize_key(stripped)
+            underscored = _normalize_key(stripped.replace(" ", "_"))
+            if stripped in forbidden or normalized in forbidden or underscored in forbidden:
+                return True
+        return False
+
     def _hdr(text):
         """Section header with bottom border, brand blue."""
         p = doc.add_paragraph()
@@ -385,9 +457,12 @@ def build_final_docx(
     _MARKER_TOKENS = ("##COMPANY##", "##ROLE##", "##END_HEADER##")
 
     def _get_content(section_name):
-        """Return rewrite content, balanced fallback, then structured original."""
-        from parser import _clean_text
+        """Return rewrite content, balanced fallback, then structured original.
 
+        Rewrite content is LLM output and structured content already passed
+        through _clean_text() once at parse time — re-running it here corrupts
+        clean text (e.g. splits "LangGraph" -> "Lang Graph").
+        """
         rw = rewrites.get(section_name, {})
         if not rw:
             for key, value in rewrites.items():
@@ -405,6 +480,8 @@ def build_final_docx(
             if candidate and len(candidate.strip()) >= 10 and not _is_placeholder(candidate.strip()):
                 val = candidate
                 break
+        if val and section_name in {"summary", "skills"} and _has_foreign_section_header(section_name, val):
+            val = ""
         if section_name == "experience" and val:
             rewrite_bullets = val.count("•")
             fallback_text = _extract_section_content(structured, section_name)
@@ -412,13 +489,8 @@ def build_final_docx(
             if fallback_bullets > 0 and rewrite_bullets < fallback_bullets * 0.4:
                 val = ""
         if val:
-            if any(tok in val for tok in _MARKER_TOKENS):
-                return val
-            return _clean_text(val)
-        fallback = _extract_section_content(structured, section_name).strip()
-        if any(tok in fallback for tok in _MARKER_TOKENS):
-            return fallback
-        return _clean_text(fallback)
+            return val
+        return _extract_section_content(structured, section_name).strip()
 
     for sec_name in SECTION_ORDER:
         content = _get_content(sec_name)
@@ -426,7 +498,7 @@ def build_final_docx(
             continue
         _hdr(sec_name)
         if sec_name == "experience":
-            _write_experience_unified(doc, content)
+            _write_experience_unified(doc, content, structured)
         elif sec_name == "summary":
             p = doc.add_paragraph()
             r = p.add_run(content.strip())

@@ -1,6 +1,8 @@
 import { useState } from "react";
 
 import { downloadResumeReport, getDownloadVerification } from "../api/client";
+import { useResumeStore } from "../store/useResumeStore";
+import { track } from "../utils/analytics";
 import type { FixMode } from "../utils/modeScores";
 import { downloadStyleForMode } from "../utils/modeScores";
 import type { DownloadVerification } from "../types";
@@ -80,6 +82,7 @@ export default function FixValidation({
   onSwitchMode,
   onDownloadSuccess,
 }: FixValidationProps) {
+  const docxId = useResumeStore((state) => state.docxId);
   const [verificationResult, setVerificationResult] = useState<DownloadVerification | null>(null);
   const noPending = appliedCount === 0;
   const coachingOnly =
@@ -108,6 +111,9 @@ export default function FixValidation({
       return;
     }
     try {
+      track("download_triggered", {
+        properties: { docx_id: docxId ?? null },
+      });
       const verification = await getDownloadVerification(jobId);
       setVerificationResult(verification);
       await downloadResumeReport(jobId, downloadStyleForMode(selectedMode));

@@ -71,6 +71,11 @@ _SECTION_HEADER_RE = re.compile(
     r')\s*:?\s*$'
 )
 
+_CONTACT_ARTIFACT_RE = re.compile(
+    r'(@|\+?\d[\d\-\s]{7,}|linkedin\.com|github\.com|medium\.com|https?://|www\.)',
+    re.IGNORECASE,
+)
+
 _DATE_RANGE_RE = re.compile(
     r'(\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+)?'
     r'(\d{4})\s*(?:–|—|-|to)\s*'
@@ -125,6 +130,7 @@ _COLLAPSED_SECTION_KEYWORDS: frozenset[str] = frozenset(
     alias.replace(' ', '')
     for aliases in SECTION_ALIASES.values()
     for alias in aliases
+    if ' ' not in alias
 )
 
 
@@ -189,6 +195,40 @@ def _extract_all_sections_from_text(resume_text: str) -> dict[str, str]:
                 sections[current_canon] = body
 
     return sections
+
+
+def _section_has_foreign_header(section_name: str, section_text: str) -> bool:
+    """Return True when a section body contains another canonical section header."""
+    if not section_text.strip():
+        return False
+
+    for line in section_text.splitlines():
+        stripped = _normalize_spaced_heading(line).strip().rstrip(':').lower()
+        if not stripped:
+            continue
+        canon = _ALIAS_TO_CANONICAL.get(stripped)
+        if canon and canon != section_name:
+            return True
+    return False
+
+
+def _strip_leading_contact_artifacts(section_text: str) -> str:
+    """Drop leaked contact/header lines from the start of a section body."""
+    if not section_text.strip():
+        return section_text
+
+    lines = section_text.splitlines()
+    kept_from = 0
+    while kept_from < len(lines):
+        stripped = lines[kept_from].strip()
+        if not stripped:
+            kept_from += 1
+            continue
+        if _CONTACT_ARTIFACT_RE.search(stripped):
+            kept_from += 1
+            continue
+        break
+    return "\n".join(lines[kept_from:]).strip()
 
 
 def _empty_section(section_name: str) -> dict[str, Any]:
@@ -1466,13 +1506,17 @@ class ResumeUnderstandingValidator:
         skills_text = skills_data.get('full_text', '') if isinstance(skills_data, dict) else ''
         tech_stack = output.get('tech_stack', [])
         skills_anomalies = _validate_skills_section(skills_text, tech_stack)
+        skills_contaminated = _section_has_foreign_header('skills', skills_text)
+        if skills_contaminated:
+            skills_anomalies.append(
+                "skills: full_text contains another section header — text is contaminated"
+            )
 
         if skills_anomalies:
             all_anomalies.extend(skills_anomalies)
-            # If full_text empty, inject from raw detected
             detected_secs = _extract_all_sections_from_text(resume_text)
             raw_skills = detected_secs.get('skills', '')
-            if not skills_text.strip() and raw_skills:
+            if raw_skills and (not skills_text.strip() or skills_contaminated):
                 if isinstance(skills_data, dict):
                     skills_data['full_text'] = raw_skills
                 else:
@@ -1486,11 +1530,25 @@ class ResumeUnderstandingValidator:
 
         if has_summary:
             summary_anomalies = _validate_summary_section(summary_text)
+            summary_first_line = next(
+                (line.strip() for line in summary_text.splitlines() if line.strip()),
+                '',
+            )
+            summary_contaminated = bool(
+                (summary_first_line and _CONTACT_ARTIFACT_RE.search(summary_first_line))
+                or _section_has_foreign_header('summary', summary_text)
+            )
+            if summary_contaminated:
+                summary_anomalies.append(
+                    "summary: full_text is contaminated by contact/header bleed"
+                )
             if summary_anomalies:
                 all_anomalies.extend(summary_anomalies)
                 detected_secs = _extract_all_sections_from_text(resume_text)
-                raw_summary = detected_secs.get('summary', '')
-                if not summary_text.strip() and raw_summary:
+                raw_summary = _strip_leading_contact_artifacts(
+                    detected_secs.get('summary', '')
+                )
+                if raw_summary and (not summary_text.strip() or summary_contaminated):
                     if isinstance(summary_data, dict):
                         summary_data['full_text'] = raw_summary
                     else:

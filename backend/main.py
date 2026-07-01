@@ -16,12 +16,12 @@ import queue
 import threading
 from typing import Any, Dict, Generator, Optional
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from backend.auth import get_current_user_id
+from backend.auth import get_current_user_id, get_current_user_optional
 from backend.agents.jd_fetcher import JDFetcherAgent
 from backend.agents.interview_agent import InterviewAgent
 from backend.db import get_db
@@ -303,6 +303,18 @@ class RollbackRequest(BaseModel):
     patch_id: str = "all"
 
 
+class AnalyticsEventRequest(BaseModel):
+    event_name: str
+    session_id: str
+    run_id: Optional[str] = None
+    properties: Optional[dict[str, Any]] = {}
+    ats_score: Optional[int] = None
+    jd_match_score: Optional[int] = None
+    role_fit_band: Optional[str] = None
+    has_jd: Optional[bool] = None
+    seniority: Optional[str] = None
+
+
 def _json_event(payload: dict) -> str:
     """Serialize one SSE data event."""
     return f"data: {json.dumps(payload, default=str)}\n\n"
@@ -318,6 +330,7 @@ def _analyze_event_stream(
     user_id: str,
     target_company: Optional[str] = None,
     jd_source: str = "pasted",
+    browser_session_id: str = "unknown",
 ) -> Generator[str, None, None]:
     """Worker thread pushes SSE payloads; main generator yields JSON lines."""
 
@@ -445,6 +458,7 @@ def _analyze_event_stream(
                 cached_stage_data=cached_stage_data,
                 stage_cache_cb=stage_cache_cb,
                 sse_step_cb=sse_step_cb,
+                browser_session_id=browser_session_id,
             )
             merged = dict(result)
             merged["job_id"] = job_id
@@ -501,6 +515,19 @@ def _analyze_event_stream(
 
             q.put({"action": "stop"})
         except Exception as exc:
+            # ── Analytics: analysis_failed ────────────────────────────────────────
+            try:
+                from backend.analytics import track
+                track(
+                    "analysis_failed",
+                    user_id=user_id,
+                    session_id=browser_session_id,
+                    run_id=job_id,
+                    properties={"error": str(exc)[:200]},
+                )
+            except Exception:
+                pass
+            # ─────────────────────────────────────────────────────────────────────
             logger.exception("Streaming analysis failed for job %s", job_id)
             if job_id in job_store:
                 job_store[job_id]["status"] = "error"
@@ -543,8 +570,39 @@ def usage_limit(user_id: str = Depends(get_current_user_id)) -> dict:
     return get_upload_usage(db, user_id)
 
 
+@app.post("/api/analytics")
+async def post_analytics_event(
+    payload: AnalyticsEventRequest,
+    request: Request,
+    current_user=Depends(get_current_user_optional),
+):
+    """
+    Receives frontend analytics events.
+    Never returns an error to the client — swallows all exceptions.
+    """
+    try:
+        from backend.analytics import track
+        user_id = current_user.id if current_user else None
+        track(
+            event_name=payload.event_name,
+            user_id=user_id,
+            session_id=payload.session_id,
+            run_id=payload.run_id,
+            properties=payload.properties,
+            ats_score=payload.ats_score,
+            jd_match_score=payload.jd_match_score,
+            role_fit_band=payload.role_fit_band,
+            has_jd=payload.has_jd,
+            seniority=payload.seniority,
+        )
+    except Exception as exc:
+        logger.warning("Analytics endpoint error (non-fatal): %s", exc)
+    return {"ok": True}
+
+
 @app.post("/api/analyze")
 async def analyze(
+    request: Request,
     resume: UploadFile = File(...),
     jd_text: str = Form(""),
     run_sim: bool = Form(False),
@@ -554,6 +612,7 @@ async def analyze(
 ) -> StreamingResponse:
     """Stream analysis progress as SSE; final payload includes full result JSON."""
     print(f"analyze user_id={user_id}", flush=True)
+    browser_session_id = request.headers.get("X-Session-ID", "unknown")
     suffix = os.path.splitext(resume.filename or "resume.txt")[1] or ".txt"
     resume_bytes = await resume.read()
     fd, temp_path = tempfile.mkstemp(suffix=suffix)
@@ -567,6 +626,7 @@ async def analyze(
         _analyze_event_stream(
             temp_path, resume.filename or "resume.txt", jd_text, run_sim, resume_hash, jd_hash, user_id,
             target_company=target_company or None, jd_source=jd_source or "pasted",
+            browser_session_id=browser_session_id,
         ),
         media_type="text/event-stream",
         headers={

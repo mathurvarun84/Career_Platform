@@ -4,6 +4,7 @@ import { downloadResumeReport, getDownloadVerification } from "../../api/client"
 import { FeedbackPanel } from "../feedback/FeedbackPanel";
 import { useWindowSize } from "../../hooks/useWindowSize";
 import { useResumeStore } from "../../store/useResumeStore";
+import { track } from "../../utils/analytics";
 import { useAuthStore } from "../../store/authStore";
 import { T } from "../../tokens";
 import type { DownloadVerification, TopBarProps } from "../../types";
@@ -11,6 +12,7 @@ import type { DownloadVerification, TopBarProps } from "../../types";
 export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps) {
   const analysisResult = useResumeStore((state) => state.analysisResult);
   const jobId = useResumeStore((state) => state.jobId);
+  const docxId = useResumeStore((state) => state.docxId);
   const selectedStyle = useResumeStore((state) => state.selectedStyle);
   const isLoading = useResumeStore((state) => state.isLoading);
   const baselineAts = useResumeStore((state) => state.baselineAts);
@@ -131,6 +133,9 @@ export default function TopBar({ onOpenAuthModal, onViewProgress }: TopBarProps)
 
     setIsDownloading(true);
     try {
+      track("download_triggered", {
+        properties: { docx_id: docxId ?? null },
+      });
       await downloadResumeReport(downloadJobId, selectedStyle);
       setIsMenuOpen(false);
     } catch (error) {

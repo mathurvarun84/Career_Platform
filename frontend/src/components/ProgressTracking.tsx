@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import ScoreJourneyTab from "./ScoreJourney/ScoreJourneyTab";
 
+import { useTabEngagement } from "../hooks/useTabEngagement";
 import { getCareerMemory } from "../api/client";
 import { IS_MOCK } from "../hooks/useMockData";
 import { useWindowSize } from "../hooks/useWindowSize";
@@ -44,6 +45,8 @@ export default function ProgressTracking({
   careerRecord,
   addCareerEntry,
 }: ProgressTrackingProps) {
+  useTabEngagement("progress");
+
   const { isMobile } = useWindowSize();
   const resetAnalysis = useResumeStore((state) => state.resetAnalysis);
   const setActiveTab = useResumeStore((state) => state.setActiveTab);
@@ -135,7 +138,7 @@ export default function ProgressTracking({
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: "#ffffff" }}>
+    <div id="tab-content-scroll" style={{ minHeight: "100vh", background: "#ffffff" }}>
       <div style={containerStyle}>
         <div style={{ fontSize: "22px", fontWeight: 800, color: "#111827", marginBottom: "16px" }}>
           Progress Tracking

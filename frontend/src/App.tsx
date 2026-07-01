@@ -26,6 +26,7 @@ import { useResumeStore } from "./store/useResumeStore";
 import { T } from "./tokens";
 import type { AnalysisResult } from "./types";
 import { hydrateWithFallback } from "./utils/analysisFallback";
+import { track } from "./utils/analytics";
 import PipelineInspectorPage from "./pages/PipelineInspectorPage";
 
 const queryClient = new QueryClient();
@@ -80,6 +81,30 @@ function AppShell() {
   const [hasLeftLanding, setHasLeftLanding] = useState(false);
 
   useEffect(() => {
+    const FIRST_SEEN_KEY = "rip_v2_first_seen";
+    const now = Date.now();
+    const firstSeen = localStorage.getItem(FIRST_SEEN_KEY);
+
+    if (!firstSeen) {
+      localStorage.setItem(FIRST_SEEN_KEY, String(now));
+      track("session_start", {
+        properties: {
+          is_returning: false,
+          days_since_first: 0,
+        },
+      });
+    } else {
+      const daysSinceFirst = Math.floor((now - Number(firstSeen)) / 86400000);
+      track("session_start", {
+        properties: {
+          is_returning: true,
+          days_since_first: daysSinceFirst,
+        },
+      });
+    }
+  }, []);
+
+  useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session));
 
     const {
@@ -109,6 +134,19 @@ function AppShell() {
 
   const handleBeginAnalysis = useCallback(
     (file: File, jdText: string): void => {
+      if (useResumeStore.getState().analysisResult !== null) {
+        track("second_analysis_run", {
+          properties: {
+            previous_ats_score:
+              useResumeStore.getState().analysisResult?.ats?.score ?? null,
+          },
+        });
+      }
+      if (jdText && jdText.trim().length > 0) {
+        track("jd_uploaded", {
+          properties: { jd_length_chars: jdText.trim().length },
+        });
+      }
       setStreamInputs({ file, jdText });
       setAnalysisJdText(jdText.trim() || null);
       setJobId(null);

@@ -17,6 +17,7 @@ from memory.session_store import (
     save_agent_output,
     save_full_run_result,
 )
+from backend.analytics import track
 from backend.agents.gap_analyzer import (
     GapAnalyzerAgent,
     build_complete_priority_fixes,
@@ -801,12 +802,24 @@ class Orchestrator:
         cached_stage_data: Optional[Dict[str, Any]] = None,
         stage_cache_cb: Optional[callable] = None,
         sse_step_cb: Optional[Callable[[int, str], None]] = None,
+        browser_session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         uid = user_id or self.user_id or "anonymous"
         run_id = generate_run_id()
         reset_trace(run_id)
         if progress_cb: progress_cb({"step":1,"label":"Reading your resume...","pct":10})
         has_jd = bool(jd_text and jd_text.strip())
+        track(
+            "analysis_started",
+            user_id=uid,
+            session_id=browser_session_id,
+            run_id=run_id,
+            has_jd=has_jd,
+            properties={
+                "resume_length_chars": len(resume_text or ""),
+                "has_jd": has_jd,
+            },
+        )
         with PhaseTimer("ats_score"):
             ats_result = score_resume(resume_text, jd_text if has_jd else None)
         if partial_result_cb:
@@ -1475,4 +1488,36 @@ class Orchestrator:
         except Exception as e:
             logging.warning("Failed to save full run result to session store: %s", e)
         log_trace_summary()
+        # ── Analytics: analysis_completed ─────────────────────────────────────
+        try:
+            _ats_score    = final_result.get("ats", {}).get("score")
+            _jd_match     = final_result.get("gap", {}).get("jd_match_score_before")
+            _seniority    = final_result.get("resume", {}).get("seniority")
+            if hasattr(_seniority, "value"):
+                _seniority = _seniority.value
+            _role_fit     = (
+                final_result.get("role_fit", {}).get("fitness")
+                or final_result.get("role_fit", {}).get("band")
+                if final_result.get("role_fit") else None
+            )
+            _fix_count    = len(final_result.get("fix_plan") or [])
+            track(
+                "analysis_completed",
+                user_id=uid,
+                session_id=browser_session_id,
+                run_id=run_id,
+                ats_score=_ats_score,
+                jd_match_score=_jd_match,
+                role_fit_band=_role_fit,
+                has_jd=has_jd,
+                seniority=str(_seniority) if _seniority else None,
+                properties={
+                    "fix_plan_count": _fix_count,
+                    "percentile": final_result.get("percentile"),
+                    "has_sim": final_result.get("sim") is not None,
+                },
+            )
+        except Exception as _analytics_exc:
+            logging.warning("Analytics completed event failed (non-fatal): %s", _analytics_exc)
+        # ─────────────────────────────────────────────────────────────────────
         return final_result

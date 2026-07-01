@@ -7,6 +7,7 @@ import { useResumeStore } from "../store/useResumeStore";
 import type { PersonaVerdict } from "../types";
 import { T } from "../tokens";
 import DataSourceNotice from "./DataSourceNotice";
+import { useTabEngagement } from "../hooks/useTabEngagement";
 
 export const getBadgeStyle = (
   persona: string
@@ -412,6 +413,8 @@ function PersonaCard({
 }
 
 export default function RecruiterSimulation() {
+  useTabEngagement("evaluate");
+
   const analysisResult = useResumeStore((s) => s.analysisResult);
   const setActiveTab = useResumeStore((s) => s.setActiveTab);
   const { isMobile, isTablet } = useWindowSize();
@@ -419,7 +422,7 @@ export default function RecruiterSimulation() {
 
   if (!analysisResult?.sim) {
     return (
-      <div style={{ minHeight: "100vh", background: T.bgPage }}>
+      <div id="tab-content-scroll" style={{ minHeight: "100vh", background: T.bgPage }}>
         <div style={pageContainerStyle(isMobile)}>
           <div
             style={{
@@ -464,7 +467,7 @@ export default function RecruiterSimulation() {
   const lift = Math.round(((personas.length - shortlistedCount) / personas.length) * 100);
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bgPage }}>
+    <div id="tab-content-scroll" style={{ minHeight: "100vh", background: T.bgPage }}>
       {/* Full-bleed hero */}
       <div style={{
         background: "linear-gradient(160deg, #f5f3ff, #faf5ff 50%, #ffffff)",

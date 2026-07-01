@@ -13,6 +13,8 @@ import { T } from "./tokens";
 import CompanyReadinessCard from "./components/CompanyReadiness/CompanyReadinessCard";
 import CompanySelector from "./components/CompanyReadiness/CompanySelector";
 import ReadinessBreakdown from "./components/CompanyReadiness/ReadinessBreakdown";
+import { useTabEngagement } from "./hooks/useTabEngagement";
+import { track } from "./utils/analytics";
 
 interface EvaluationDashboardProps {
   onTabChange?: (tab: string) => void;
@@ -84,9 +86,12 @@ function getDimensionDetails(
 }
 
 export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
+  useTabEngagement("overview");
+
   const analysisResult = useResumeStore((s) => s.analysisResult);
   const baselineAts = useResumeStore((s) => s.baselineAts);
   const jobId = useResumeStore((s) => s.jobId);
+  const docxId = useResumeStore((s) => s.docxId);
   const selectedStyle = useResumeStore((s) => s.selectedStyle);
   const isLoading = useResumeStore((s) => s.isLoading);
   const resetAnalysis = useResumeStore((s) => s.resetAnalysis);
@@ -233,6 +238,9 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
 
     setIsDownloading(true);
     try {
+      track("download_triggered", {
+        properties: { docx_id: docxId ?? null },
+      });
       const verification = await getDownloadVerification(downloadJobId);
       setVerificationResult(verification);
       await downloadResumeReport(downloadJobId, selectedStyle);
@@ -245,7 +253,7 @@ export function EvaluationDashboard({ onTabChange }: EvaluationDashboardProps) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bgPage }}>
+    <div id="tab-content-scroll" style={{ minHeight: "100vh", background: T.bgPage }}>
       {/* ── SECTION 1: Results Hero ── */}
       <div style={{
         background: T.gradientHeroResults,

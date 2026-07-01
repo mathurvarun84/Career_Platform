@@ -8,6 +8,7 @@ import {
   parseHttpLimitResponse,
   throwIfSseErrorPayload,
 } from "../../api/analyze";
+import { getOrCreateSessionId } from "../../utils/analyticsSession";
 import UpgradeModal from "../auth/UpgradeModal";
 import { useWindowSize } from "../../hooks/useWindowSize";
 import { supabase } from "../../lib/supabase";
@@ -803,6 +804,7 @@ export default function AnalysisProgress({
         const bearer = await resolveAccessTokenForAnalyze();
         const headers: Record<string, string> = {
           Authorization: `Bearer ${bearer}`,
+          "X-Session-ID": getOrCreateSessionId(),
         };
         const response = await fetch(`${API_BASE_URL}/api/analyze`, {
           method: "POST",

@@ -47,6 +47,8 @@ import StructuralPatchCard from "./cards/StructuralPatchCard";
 import SurfacePatchCard from "./cards/SurfacePatchCard";
 import type { ApplyState, CardHandlers } from "./cards/cardTypes";
 import FixValidation from "./FixValidation";
+import { useTabEngagement } from "../hooks/useTabEngagement";
+import { track } from "../utils/analytics";
 
 interface ActionableFixesProps {
   addSnapshot?: (snapshot: ProgressSnapshot) => void;
@@ -208,6 +210,8 @@ export default function ActionableFixes({
   totalPatchesApplied = 0,
   totalCoachingAnswers = 0,
 }: ActionableFixesProps) {
+  useTabEngagement("fixes");
+
   const analysisResult = useResumeStore((s) => s.analysisResult);
   const jobId = useResumeStore((s) => s.jobId);
   const applySectionFix = useResumeStore((s) => s.applySectionFix);
@@ -228,6 +232,8 @@ export default function ActionableFixes({
   const autoAppliedRef = useRef<Set<string>>(new Set());
   const patchCountRef = useRef(totalPatchesApplied);
   const coachingCountRef = useRef(totalCoachingAnswers);
+  const trackedCardOpened = useRef<Set<string>>(new Set());
+  const trackedFixApplied = useRef<Set<string>>(new Set());
   const { isMobile } = useWindowSize();
   const coachingSessionId = getCoachingSessionId(jobId, analysisResult);
   const { rescore } = useRescore(coachingSessionId);
@@ -288,6 +294,44 @@ export default function ActionableFixes({
     (fix: PriorityFix) => resolvePatchFromPlan(fix, patches),
     [patches]
   );
+
+  useEffect(() => {
+    const { visible: visibleFixes } = partitionFixesByCoachingCap(fixes);
+    visibleFixes.forEach((fix) => {
+      const index = fixes.indexOf(fix);
+      const fixKey = getFixKey(fix, index);
+      if (!trackedCardOpened.current.has(fixKey)) {
+        trackedCardOpened.current.add(fixKey);
+        track("fix_card_opened", {
+          properties: {
+            kind: fix.gap_type ?? "structural",
+            entry_id: fix.entry_id,
+            gap_reason: (fix.gap_reason ?? "").slice(0, 80),
+          },
+        });
+      }
+    });
+  }, [fixes]);
+
+  useEffect(() => {
+    fixes.forEach((fix, index) => {
+      const fixKey = getFixKey(fix, index);
+      if (
+        applyState[fixKey] === "applied" &&
+        !trackedFixApplied.current.has(fixKey)
+      ) {
+        trackedFixApplied.current.add(fixKey);
+        const patch = getPatchForFix(fix);
+        track("fix_applied", {
+          properties: {
+            kind: fix.gap_type ?? "structural",
+            entry_id: fix.entry_id,
+            patch_id: patch?.patch_id ?? null,
+          },
+        });
+      }
+    });
+  }, [applyState, fixes, getPatchForFix]);
 
   const getBeforeText = useCallback(
     (fix: PriorityFix): string =>
@@ -625,7 +669,7 @@ export default function ActionableFixes({
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: T.bgPage }}>
+    <div id="tab-content-scroll" style={{ minHeight: "100vh", background: T.bgPage }}>
       <div style={pageContainerStyle(isMobile, isMobile ? 88 : 72)}>
 
         {/* HERO */}

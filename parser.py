@@ -40,7 +40,7 @@ def _build_structured_resume(text: str) -> Dict[str, Any]:
         "name": name,
         "title": title,
         "contact": contact,
-        "summary": section_blocks.get("summary", ""),
+        "summary": _strip_contact_artifacts(section_blocks.get("summary", "")),
         "skills": section_blocks.get("skills", ""),
         "experience": _parse_experience_entries(section_blocks.get("experience", "")),
         "education": _parse_education_entries(section_blocks.get("education", "")),
@@ -372,9 +372,14 @@ def _clean_text(text: str) -> str:
     return text.strip()
 
 
+_EMAIL_OR_URL_RE = re.compile(r"@|\.(com|in|io|org|net|co)\b|linkedin|github", re.IGNORECASE)
+
+
 def _split_runon_token(token: str) -> str:
     """Insert spaces into a single glued token (e.g. Servingasasoftwareengineer)."""
     if len(token) < 20 or " " in token:
+        return token
+    if _EMAIL_OR_URL_RE.search(token):
         return token
     glued = re.sub(
         r"(?<=[a-z])(of|in|and|for|at|to|with|the|as|by|on|or|an|is|are|was|were)(?=[a-z])",
@@ -515,10 +520,32 @@ def _extract_section_blocks(text: str) -> Dict[str, str]:
     return blocks
 
 
+_CONTACT_LINE_RE = re.compile(
+    r"(@|\+91|\+1\d|linkedin\.com|github\.com)", re.IGNORECASE
+)
+
+_CONTACT_STRONG_SIGNAL_RE = re.compile(
+    r"(@|\+?\d[\d\-\s]{7,}|linkedin\.com|github\.com|medium\.com|https?://|www\.)",
+    re.IGNORECASE,
+)
+
+
+def _strip_contact_artifacts(text: str) -> str:
+    """Drop lines that look like a contact line (email/phone/linkedin) that
+    leaked into a section block during extraction, e.g. a header absorbed
+    into the summary block when the parser couldn't separate them."""
+    if not text:
+        return text
+    kept = [
+        line for line in text.splitlines()
+        if not (_CONTACT_LINE_RE.search(line) and ("|" in line or len(line) < 120))
+    ]
+    return "\n".join(kept).strip()
+
+
 def _extract_contact_line(lines: List[str]) -> str:
     for line in lines:
-        lowered = line.lower()
-        if any(token in lowered for token in ("@", "|", "+91", "+1", "linkedin", "github", ".com")):
+        if _CONTACT_STRONG_SIGNAL_RE.search(line):
             return line
     return lines[0] if lines else ""
 
